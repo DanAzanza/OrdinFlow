@@ -152,8 +152,8 @@ class SoMGrounder:
                     if res:
                         for line in res:
                             box = line[0]
-                            xs = [p[0] for p in box]
-                            ys = [p[1] for p in box]
+                            xs = [float(p[0]) for p in box]
+                            ys = [float(p[1]) for p in box]
                             w = max(xs) - min(xs)
                             h = max(ys) - min(ys)
                             if w > 15 and h > 8:
@@ -374,8 +374,8 @@ class SkillExecutor:
                                     else (loc_val.lower() in t.lower())
                                 )
                                 if matched:
-                                    xs = [p[0] for p in box]
-                                    ys = [p[1] for p in box]
+                                    xs = [float(p[0]) for p in box]
+                                    ys = [float(p[1]) for p in box]
                                     cx = int(sum(xs) / len(xs))
                                     cy = int(sum(ys) / len(ys))
                                     offset = cast(
