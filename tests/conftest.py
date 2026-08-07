@@ -1,4 +1,8 @@
-"""Test-Konfiguration (shared fixtures)."""
+import sys
+from pathlib import Path
+
+# Ensure project root is in sys.path for cross-platform imports
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import pytest
 from flask import Flask
