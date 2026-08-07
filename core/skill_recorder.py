@@ -13,7 +13,7 @@ try:
     from pynput import keyboard, mouse  # type: ignore[import-untyped]
 
     PYNPUT_AVAILABLE = True
-except ImportError:
+except Exception:
     PYNPUT_AVAILABLE = False
     keyboard = None  # type: ignore[assignment]
     mouse = None  # type: ignore[assignment]
@@ -25,22 +25,23 @@ try:
     from rapidocr_onnxruntime import RapidOCR  # type: ignore[import-untyped]
 
     rapid_ocr = RapidOCR()
-except (ImportError, RuntimeError, OSError):
+except (ImportError, RuntimeError, OSError, Exception):
     rapid_ocr = None
 
 
 def get_active_window_title() -> str:
     """Returns the window title of the currently active foreground window on Windows."""
-    try:
-        hwnd = ctypes.windll.user32.GetForegroundWindow()
-        if hwnd:
-            length = ctypes.windll.user32.GetWindowTextLengthW(hwnd)
-            if length > 0:
-                buff = ctypes.create_unicode_buffer(length + 1)
-                ctypes.windll.user32.GetWindowTextW(hwnd, buff, length + 1)
-                return buff.value
-    except (AttributeError, OSError, RuntimeError, ValueError):
-        logger.debug("Unable to read active window title", exc_info=True)
+    if hasattr(ctypes, "windll"):
+        try:
+            hwnd = ctypes.windll.user32.GetForegroundWindow()  # type: ignore[attr-defined]
+            if hwnd:
+                length = ctypes.windll.user32.GetWindowTextLengthW(hwnd)  # type: ignore[attr-defined]
+                if length > 0:
+                    buff = ctypes.create_unicode_buffer(length + 1)
+                    ctypes.windll.user32.GetWindowTextW(hwnd, buff, length + 1)  # type: ignore[attr-defined]
+                    return buff.value
+        except (AttributeError, OSError, RuntimeError, ValueError):
+            logger.debug("Unable to read active window title", exc_info=True)
     return "Remote Desktop*"
 
 
