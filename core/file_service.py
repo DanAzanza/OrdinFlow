@@ -80,13 +80,11 @@ class FileService:
         if existing_folder:
             existing_folder_name = os.path.basename(existing_folder)
             existing_fehlt_count = (
-                existing_folder_name.upper().count("FEHLT")
-                + existing_folder_name.upper().count("MISSING")
+                existing_folder_name.upper().count("MISSING")
                 + existing_folder_name.count("----")
             )
             target_fehlt_count = (
-                target_folder_name.upper().count("FEHLT")
-                + target_folder_name.upper().count("MISSING")
+                target_folder_name.upper().count("MISSING")
                 + target_folder_name.count("----")
             )
 
@@ -183,15 +181,15 @@ class FileService:
         doc = fitz.open(filepath)  # type: ignore[assignment]
         try:
             for group_res in page_results:
-                g_type = group_res.get("Dokument", "UNKNOWN")
+                g_type = group_res.get("Document", "UNKNOWN")
                 g_pages = group_res.get("pages", [])
 
                 part_extracted = dict(group_res)
-                part_extracted["Dokument"] = g_type
+                part_extracted["Document"] = g_type
 
                 for k, v in extracted_base.items():
                     if k not in {
-                        "Dokument",
+                        "Document",
                         "pages",
                         "page_results",
                         "vision_description",
@@ -231,7 +229,7 @@ class FileService:
                     ext=orig_ext,
                     optional_fields=g_opt,
                     extraction_fields=g_ext_fields_keys,
-                    fallbacks={"Dokument": g_type},
+                    fallbacks={"Document": g_type},
                 )
 
                 new_doc = fitz.open()  # type: ignore[assignment]

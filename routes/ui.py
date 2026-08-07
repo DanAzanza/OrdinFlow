@@ -22,7 +22,6 @@ def api_legal(doc_name: str):
     valid = {
         "license": os.path.join(root_dir, "LICENSE"),
         "thirdparty": os.path.join(root_dir, "THIRD_PARTY_LICENSES.md"),
-        "datenschutz": os.path.join(root_dir, "docs", "legal", "PRIVACY_POLICY.md"),
         "privacy": os.path.join(root_dir, "docs", "legal", "PRIVACY_POLICY.md"),
         "checklist": os.path.join(root_dir, "docs", "legal", "COMPLIANCE_CHECKLIST.md"),
     }

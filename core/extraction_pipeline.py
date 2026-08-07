@@ -109,7 +109,7 @@ KONSENS_THRESHOLD = 0.67
 
 # Fields excluded when collecting keys from extraction results
 _EXCLUDE_KEYS = {
-    "Dokument",
+    "Document",
     "pages",
     "page_results",
     "description",
@@ -365,14 +365,14 @@ class ExtractionPipeline:
 
         doc_type_result = self.llm_extractor.classify_image(b64_img)
         doc_type = (
-            doc_type_result.get("Dokument", "")
+            doc_type_result.get("Document", "")
             if isinstance(doc_type_result, dict)
             else str(doc_type_result)
         )
         logger.info(f"[+] Page {idx + 1} classification: {doc_type}")
 
         matched_name, matched_info = self.llm_extractor.find_doc_type_config(doc_type)
-        if matched_name.upper() in {"UNBEKANNT", "LEER"}:
+        if matched_name.upper() in {"UNKNOWN", "EMPTY"}:
             matched_info = {}
 
         return {
@@ -440,7 +440,7 @@ class ExtractionPipeline:
         """Phase 2: Extraction and signature check on a bundled page group."""
         res = self.process_document_pages(group_pages)
         if res:
-            res["Dokument"] = doc_type
+            res["Document"] = doc_type
         return res
 
     def process_document_pages(
@@ -479,7 +479,7 @@ class ExtractionPipeline:
                 f"[+] Document '{d_type}' (pages {page_nums}): No extraction fields configured and no signature required. Skipping KI requests."
             )
             return {
-                "Dokument": d_type,
+                "Document": d_type,
                 "pages": page_nums,
                 "Signed": False,
                 "_confidence": {},
@@ -673,21 +673,21 @@ class ExtractionPipeline:
         if not extracted:
             return False, "No data extracted"
 
-        dok_art_raw = str(extracted.get("Dokument", "")).strip()
+        dok_art_raw = str(extracted.get("Document", "")).strip()
         if (
             not dok_art_raw
             or is_missing_value(dok_art_raw)
-            or dok_art_raw.upper() in ("UNBEKANNT", "LEER")
+            or dok_art_raw.upper() in ("UNKNOWN", "EMPTY")
         ):
             return False, "Document unknown or missing"
 
         page_results = extracted.get("page_results") or [extracted]
         for idx, res in enumerate(page_results, 1):
-            d_art = str(res.get("Dokument", "")).strip()
+            d_art = str(res.get("Document", "")).strip()
             if (
                 not d_art
                 or is_missing_value(d_art)
-                or d_art.upper() in ("UNBEKANNT", "LEER")
+                or d_art.upper() in ("UNKNOWN", "EMPTY")
             ):
                 page_info = (
                     f"on page group {idx}"
@@ -697,7 +697,7 @@ class ExtractionPipeline:
                 return False, f"Document unknown or missing {page_info}"
 
             matched_type, matched_info = self.llm_extractor.find_doc_type_config(d_art)
-            if not matched_type or matched_type.upper() == "UNBEKANNT":
+            if not matched_type or matched_type.upper() == "UNKNOWN":
                 return False, f"Document type '{d_art}' unknown or missing"
 
             extraction_fields = matched_info.get("extraction_fields", {})

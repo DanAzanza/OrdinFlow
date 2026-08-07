@@ -246,7 +246,7 @@ class DocumentProcessor:
         for doc_type, group_pages in groups:
             g_nums = [p["page_num"] for p in group_pages]
             g_res = dict(doc_res)
-            g_res["Dokument"] = doc_type
+            g_res["Document"] = doc_type
             g_res["pages"] = g_nums
             g_info = group_pages[0].get("matched_info", {})
             if g_info.get("validation", {}).get("signature_required", False):
@@ -255,7 +255,7 @@ class DocumentProcessor:
 
         final_doc = dict(doc_res)
         dok_arten = [g[0] for g in groups if not is_missing_value(g[0])]
-        final_doc["Dokument"] = (
+        final_doc["Document"] = (
             "+".join(dok_arten) if dok_arten else MISSING_PLACEHOLDER
         )
         final_doc["page_results"] = page_results
@@ -297,7 +297,7 @@ class DocumentProcessor:
             dok_art_raw = ""
 
             if extracted:
-                dok_art_raw = clean_path_component(extracted.get("Dokument", ""))
+                dok_art_raw = clean_path_component(extracted.get("Document", ""))
                 matched_type, matched_info = self.llm_extractor.find_doc_type_config(
                     dok_art_raw
                 )
@@ -358,7 +358,7 @@ class DocumentProcessor:
                         optional_fields=optional_fields,
                         extraction_fields=extraction_fields,
                         fallbacks={
-                            "Dokument": matched_type if matched_type else dok_art_raw
+                            "Document": matched_type if matched_type else dok_art_raw
                         },
                     )
                     return td, tf
@@ -395,7 +395,7 @@ class DocumentProcessor:
                             doc_len = len(doc)
                             doc.close()
                             for pr in page_results:
-                                if pr.get("Dokument", "").upper() not in (
+                                if pr.get("Document", "").upper() not in (
                                     "LEER",
                                     "BLANK",
                                 ):

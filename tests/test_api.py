@@ -92,7 +92,7 @@ def test_api_config_driven_routing(client, tmp_path):
     DashboardState.config.document_types = {
         "CustomDoc": {
             "routing": {
-                "filename_template": "{Dokument}_{Kunde}_{Datum}",
+                "filename_template": "{Document}_{Kunde}_{Datum}",
             }
         }
     }
@@ -107,12 +107,12 @@ def test_api_config_driven_routing(client, tmp_path):
 def test_api_pydantic_schema_validation():
     from routes.schemas import AssignDocumentSchema, validate_schema
 
-    valid_payload = {"dokument": "Rechnung", "Betrag": "100.00 EUR"}
+    valid_payload = {"document": "Rechnung", "Betrag": "100.00 EUR"}
     model, err = validate_schema(AssignDocumentSchema, valid_payload)
     assert err is None
     assert model is not None
     clean = model.to_clean_dict()
-    assert clean["dokument"] == "Rechnung"
+    assert clean["document"] == "Rechnung"
     assert clean["Betrag"] == "100.00 EUR"
 
     model_bad, err_bad = validate_schema(AssignDocumentSchema, ["Kein Dict"])  # type: ignore[arg-type]

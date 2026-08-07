@@ -180,13 +180,13 @@ def processor(tmp_path):
 
 def test_vertrag_validation_requires_signature(processor):
     # Vertrag ohne Unterschrift -> Fehlschlag
-    data_no_sign = {"Dokument": "Vertrag", "Nachname": "Muster", "Vorname": "Max", "Datum": "2026-07-01", "Produkt": "Software", "Signed": False}
+    data_no_sign = {"Document": "Vertrag", "Nachname": "Muster", "Vorname": "Max", "Datum": "2026-07-01", "Produkt": "Software", "Signed": False}
     valid, reason = processor._validate_extracted_data(data_no_sign)
     assert not valid
     assert "Signature" in reason or "Unterschrift" in reason
 
     # Vertrag mit Unterschrift -> OK
-    data_sign = {"Dokument": "Vertrag", "Nachname": "Muster", "Vorname": "Max", "Datum": "2026-07-01", "Produkt": "Software", "Signed": True}
+    data_sign = {"Document": "Vertrag", "Nachname": "Muster", "Vorname": "Max", "Datum": "2026-07-01", "Produkt": "Software", "Signed": True}
     valid, reason = processor._validate_extracted_data(data_sign)
     assert valid
     assert reason == "OK"
@@ -195,20 +195,20 @@ def test_vertrag_validation_requires_signature(processor):
 def test_other_docs_require_signature_only(processor):
     for doc_type in ["Datenschutzerklärung", "Kostenaufstellung", "Zuzahlungsaufstellung"]:
         # Ohne Unterschrift -> Fehlschlag
-        data_no_sign = {"Dokument": doc_type, "Nachname": "Muster", "Vorname": "Max", "Datum": "2026-07-01", "Produkt": "Software", "Signed": False}
+        data_no_sign = {"Document": doc_type, "Nachname": "Muster", "Vorname": "Max", "Datum": "2026-07-01", "Produkt": "Software", "Signed": False}
         valid, reason = processor._validate_extracted_data(data_no_sign)
         assert not valid
         assert "Signature" in reason or "Unterschrift" in reason
 
         # Mit Unterschrift -> OK
-        data_sign = {"Dokument": doc_type, "Nachname": "Muster", "Vorname": "Max", "Datum": "2026-07-01", "Produkt": "Software", "Signed": True}
+        data_sign = {"Document": doc_type, "Nachname": "Muster", "Vorname": "Max", "Datum": "2026-07-01", "Produkt": "Software", "Signed": True}
         valid, reason = processor._validate_extracted_data(data_sign)
         assert valid
         assert reason == "OK"
 
 
 def test_notiz_no_signature_required(processor):
-    data_notiz = {"Dokument": "Notiz", "Nachname": "Muster", "Vorname": "Max", "Datum": "2026-07-01", "Produkt": "Software", "Signed": False}
+    data_notiz = {"Document": "Notiz", "Nachname": "Muster", "Vorname": "Max", "Datum": "2026-07-01", "Produkt": "Software", "Signed": False}
     valid, reason = processor._validate_extracted_data(data_notiz)
     assert valid
     assert reason == "OK"
@@ -221,7 +221,7 @@ def test_person_memory_persists_even_on_validation_failure(processor, tmp_path):
 
     # Mocke extract_hybrid_voting, dass ein Vertrag OHNE Unterschrift für "Hans Müller" herauskommt
     mock_extracted = {
-        "Dokument": "Vertrag",
+        "Document": "Vertrag",
         "Vorname": "Hans",
         "Nachname": "Müller",
         "Datum": "2026-07-01",
@@ -251,7 +251,7 @@ def test_notiz_routes_to_rejected_vertrag_person(processor, tmp_path):
     vertrag_file.write_text("dummy vertrag", encoding="utf-8")
 
     mock_vertrag = {
-        "Dokument": "Vertrag",
+        "Document": "Vertrag",
         "Vorname": "Anna",
         "Nachname": "Schmidt",
         "Datum": "2026-07-02",
@@ -272,11 +272,11 @@ def test_notiz_routes_to_rejected_vertrag_person(processor, tmp_path):
     notiz_file.write_text("dummy notiz", encoding="utf-8")
 
     mock_notiz = {
-        "Dokument": "Notiz",
-        "Vorname": "[FEHLT]",
-        "Nachname": "[FEHLT]",
-        "Datum": "[Datum-FEHLT]",
-        "Produkt": "[Produktname-FEHLT]",
+        "Document": "Notiz",
+        "Vorname": "[MISSING]",
+        "Nachname": "[MISSING]",
+        "Datum": "[Date-MISSING]",
+        "Produkt": "[ProductName-MISSING]",
         "Signed": False,
         "ocr_text": "Notiz ohne Namen",
         "page_results": []
@@ -295,7 +295,7 @@ def test_notiz_routes_to_rejected_vertrag_person(processor, tmp_path):
 def test_unbekannt_doc_type_fails_validation(processor):
     # Dokument UNBEKANNT -> Fehlschlag
     data_unbekannt = {
-        "Dokument": "UNBEKANNT",
+        "Document": "UNKNOWN",
         "Nachname": "Muster",
         "Vorname": "Max",
         "Datum": "2026-07-01",
@@ -308,15 +308,15 @@ def test_unbekannt_doc_type_fails_validation(processor):
 
     # Dokument mit UNBEKANNT auf einer Seite -> Fehlschlag
     data_multipage = {
-        "Dokument": "Vertrag+UNBEKANNT",
+        "Document": "Vertrag+UNKNOWN",
         "Nachname": "Muster",
         "Vorname": "Max",
         "Datum": "2026-07-01",
         "Produkt": "Software",
         "Signed": True,
         "page_results": [
-            {"Dokument": "Vertrag", "Signed": True},
-            {"Dokument": "UNBEKANNT", "Signed": True}
+            {"Document": "Vertrag", "Signed": True},
+            {"Document": "UNKNOWN", "Signed": True}
         ]
     }
     valid, reason = processor._validate_extracted_data(data_multipage)
@@ -328,13 +328,13 @@ def test_multipage_datenschutz_only_requires_last_page_signature(processor):
     # Datenschutzerklärung über 2 Seiten (Gruppierte Extraktion durch KI)
     # KI erkennt Unterschrift auf letzter Seite -> Signed = True
     data_valid = {
-        "Dokument": "Datenschutzerklärung",
+        "Document": "Datenschutzerklärung",
         "Nachname": "Muster",
         "Vorname": "Max",
         "Datum": "2026-07-01",
         "Signed": True,
         "page_results": [
-            {"Dokument": "Datenschutzerklärung", "Signed": True, "pages": [1, 2]}
+            {"Document": "Datenschutzerklärung", "Signed": True, "pages": [1, 2]}
         ]
     }
     valid, reason = processor._validate_extracted_data(data_valid)
@@ -342,13 +342,13 @@ def test_multipage_datenschutz_only_requires_last_page_signature(processor):
 
     # KI erkennt KEINE Unterschrift auf letzter Seite -> Signed = False
     data_invalid = {
-        "Dokument": "Datenschutzerklärung",
+        "Document": "Datenschutzerklärung",
         "Nachname": "Muster",
         "Vorname": "Max",
         "Datum": "2026-07-01",
         "Signed": False,
         "page_results": [
-            {"Dokument": "Datenschutzerklärung", "Signed": False, "pages": [1, 2]}
+            {"Document": "Datenschutzerklärung", "Signed": False, "pages": [1, 2]}
         ]
     }
     valid, reason = processor._validate_extracted_data(data_invalid)
@@ -359,12 +359,12 @@ def test_multipage_datenschutz_only_requires_last_page_signature(processor):
 def test_dependent_document_inherits_parent_optional_fields(processor):
     # Simuliere Eltern-Dokument (z.B. Lieferschein) ohne akademischen Titel (Titel ist optional)
     parent_extracted = {
-        "Dokument": "Lieferschein",
+        "Document": "Lieferschein",
         "Nachname": "Schmidt",
         "Vorname": "Thomas",
         "Datum": "2026-07-15",
         "Produkt": "Software",
-        "Titel": "[FEHLT]"
+        "Titel": "[MISSING]"
     }
 
     # Verarbeite Eltern-Dokument, um den Kontext zu belegen
@@ -372,9 +372,9 @@ def test_dependent_document_inherits_parent_optional_fields(processor):
     processor.last_optional_fields = {"titel"}
     processor.last_extraction_fields = {"datum", "nachname", "vorname", "titel", "produkt"}
 
-    # Simuliere abhängiges Dokument (z.B. Anhang, dependent: true)
+    # Simuliere abhängiges Dokument (z. B. Anhang, dependent: true)
     dependent_extracted = {
-        "Dokument": "Anhang"
+        "Document": "Anhang"
     }
 
     # Simuliere Verarbeitungs-Kontext wie in process_and_route_file
@@ -419,7 +419,7 @@ def test_dependent_document_inherits_parent_optional_fields(processor):
 
 def test_validate_extracted_data_low_confidence(processor):
     extracted_low_conf = {
-        "Dokument": "Vertrag",
+        "Document": "Vertrag",
         "Vorname": "Daniel-Timothy",
         "Nachname": "Peal",
         "Datum": "2026-05-13",
@@ -441,7 +441,7 @@ def test_validate_extracted_data_low_confidence(processor):
 
 def test_validate_multidoc_batch_low_confidence(processor):
     extracted_multidoc = {
-        "Dokument": "Vertrag+Kostenaufstellung",
+        "Document": "Vertrag+Kostenaufstellung",
         "Vorname": "Denise",
         "Nachname": "Wesselmann",
         "Datum": "2026-04-08",
@@ -449,7 +449,7 @@ def test_validate_multidoc_batch_low_confidence(processor):
         "Signed": True,
         "page_results": [
             {
-                "Dokument": "Vertrag",
+                "Document": "Vertrag",
                 "Vorname": "Denise",
                 "Nachname": "Wesselmann",
                 "Datum": "2026-04-08",
@@ -457,7 +457,7 @@ def test_validate_multidoc_batch_low_confidence(processor):
                 "_confidence": {"Datum": 0.50, "Vorname": 1.0, "Nachname": 1.0}
             },
             {
-                "Dokument": "Kostenaufstellung",
+                "Document": "Kostenaufstellung",
                 "Vorname": "Andre",
                 "Nachname": "Haverigo",
                 "Datum": "2026-04-08",
@@ -500,4 +500,4 @@ def test_notiz_skips_llm_vision_extraction(processor):
 
     assert not mock_tier.called
     assert res is not None
-    assert res.get("Dokument") == "Notiz"
+    assert res.get("Document") == "Notiz"

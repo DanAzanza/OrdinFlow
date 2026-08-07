@@ -119,7 +119,7 @@ def render_filename(
     routing_cfg = routing_cfg or {}
     filename_template = (
         routing_cfg.get("filename_template")
-        or "{Dokument}"
+        or "{Document}"
     )
     safe_ctx = SafeTemplateDict(
         data, fallbacks=fallbacks, optional_fields=optional_fields, extraction_fields=extraction_fields

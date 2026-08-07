@@ -212,11 +212,11 @@ class LLMExtractor:
             # 1. Exact match
             for dt in doc_types:
                 if dt.lower() == cleaned:
-                    return {"Dokument": dt}
+                    return {"Document": dt}
             # 2. Substring match
             for dt in doc_types:
                 if cleaned and (cleaned in dt.lower() or dt.lower() in cleaned):
-                    return {"Dokument": dt}
+                    return {"Document": dt}
 
         fallback = next(
             (
@@ -228,7 +228,7 @@ class LLMExtractor:
         )
         if not fallback and doc_types:
             fallback = next(iter(doc_types))
-        return {"Dokument": fallback if fallback else "UNKNOWN"}
+        return {"Document": fallback if fallback else "UNKNOWN"}
 
     def find_doc_type_config(self, doc_type: str) -> tuple[str, dict]:
         """Returns the document configuration for the given type. Case-insensitive."""
@@ -262,7 +262,7 @@ class LLMExtractor:
         """Builds the JSON schema format prompt for data extraction."""
         field_entries = []
         for field, desc in extraction_fields.items():
-            if field.lower() in ["dokument"]:
+            if field.lower() in ["document"]:
                 continue
             safe_desc = (desc or "").replace('"', "'")
             field_entries.append(f'  "{field}": "{safe_desc}"')
@@ -318,7 +318,7 @@ class LLMExtractor:
         if validation_cfg.get("signature_required", False) and not any(
             x in str(k).lower()
             for k in extraction_fields
-            for x in ["unterschrift", "signed"]
+            for x in ["signature", "signed"]
         ):
             sig_loc = validation_cfg.get("signature_location", "")
             desc = "true if handwritten signature/ink is present, otherwise false"
@@ -411,7 +411,7 @@ class LLMExtractor:
             val = res2.get(key)
             if key == "Signed":
                 if isinstance(val, str):
-                    res2["Signed"] = val.strip().lower() in ("true", "1", "yes", "ja")
+                    res2["Signed"] = val.strip().lower() in ("true", "1", "yes")
                 else:
                     res2["Signed"] = bool(val)
             elif is_missing_value(val):

@@ -74,7 +74,7 @@ def test_api_vorgaenge_edit_file_path_traversal_protection(client, tmp_path):
             "nachname": "Traveller",
             "datum": "2026-07-06",
             "produkt": "Schuhe",
-            "dokument": "TestDoc",
+            "document": "TestDoc",
         },
     )
     # Sollte fehlschlagen, weil 'escape' kein valider Unterordner von safe_target ist
@@ -127,7 +127,7 @@ def test_universal_document_router_custom_schema(tmp_path):
     dummy_file.write_text("Schokotorte", encoding="utf-8")
 
     mock_extracted = {
-        "Dokument": "Rezeptur",
+        "Document": "Rezeptur",
         "Kategorie": "Torten",
         "Rezeptname": "Schwarzwälder Kirsch",
         "Backzeit": "45"
@@ -175,7 +175,7 @@ def test_universal_document_router_custom_schema_custom_delimiter(tmp_path):
     dummy_file.write_text("Marmorkuchen", encoding="utf-8")
 
     mock_extracted = {
-        "Dokument": "Rezeptur",
+        "Document": "Rezeptur",
         "Kategorie": "Rührkuchen",
         "Rezeptname": "Marmorkuchen",
         "Backzeit": "50"
@@ -226,10 +226,10 @@ def test_optional_fields_in_folder_template(tmp_path):
     dummy_file.write_text("Dummy Vertrag", encoding="utf-8")
 
     mock_extracted = {
-        "Dokument": "Vertrag",
+        "Document": "Vertrag",
         "Vorname": "Max",
         "Nachname": "Müller",
-        "Titel": "[FEHLT]",
+        "Titel": "[MISSING]",
         "Datum": "2026-07-08",
         "Produkt": "Software"
     }
@@ -261,11 +261,11 @@ def test_split_multi_documents(tmp_path):
     config.document_types = {
         "Vertrag": {
             "validation": {"signature_required": True},
-            "routing": {"archive": True, "filename_template": "{Dokument}__{Nachname}"}
+            "routing": {"archive": True, "filename_template": "{Document}__{Nachname}"}
         },
         "Lieferschein": {
             "validation": {"signature_required": False},
-            "routing": {"archive": True, "filename_template": "{Dokument}__{Nachname}"}
+            "routing": {"archive": True, "filename_template": "{Document}__{Nachname}"}
         }
     }
 
@@ -284,7 +284,7 @@ def test_split_multi_documents(tmp_path):
 
     # Mocke die Extraktion, die 2 Dokumente zurückgibt
     mock_extracted = {
-        "Dokument": "Vertrag+Lieferschein",
+        "Document": "Vertrag+Lieferschein",
         "Vorname": "Max",
         "Nachname": "Mustermann",
         "Datum": "2026-07-10",
@@ -292,12 +292,12 @@ def test_split_multi_documents(tmp_path):
         "Signed": True,
         "page_results": [
             {
-                "Dokument": "Vertrag",
+                "Document": "Vertrag",
                 "pages": [1],
                 "Signed": True
             },
             {
-                "Dokument": "Lieferschein",
+                "Document": "Lieferschein",
                 "pages": [2],
                 "Signed": False
             }
@@ -354,7 +354,7 @@ def test_empty_pages_deleted(tmp_path):
                 "Produkt": "Produkt"
             },
             "validation": {"signature_required": False},
-            "routing": {"archive": True, "filename_template": "{Dokument}__{Nachname}"}
+            "routing": {"archive": True, "filename_template": "{Document}__{Nachname}"}
         }
     }
 
@@ -377,7 +377,7 @@ def test_empty_pages_deleted(tmp_path):
     ]
 
     mock_extracted_data = {
-        "Dokument": "Vertrag",
+        "Document": "Vertrag",
         "Vorname": "Max",
         "Nachname": "Mustermann",
         "Datum": "2026-07-10",
@@ -471,7 +471,7 @@ def test_empty_pages_saved(tmp_path):
                 "Produkt": "Produkt"
             },
             "validation": {"signature_required": False},
-            "routing": {"archive": True, "filename_template": "{Dokument}__{Nachname}"}
+            "routing": {"archive": True, "filename_template": "{Document}__{Nachname}"}
         }
     }
 
@@ -494,7 +494,7 @@ def test_empty_pages_saved(tmp_path):
     ]
 
     mock_extracted_data = {
-        "Dokument": "Rezept",
+        "Document": "Rezept",
         "Vorname": "Max",
         "Nachname": "Mustermann",
         "Datum": "2026-07-10",

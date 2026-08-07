@@ -131,7 +131,7 @@ def _render_target_filename(data: dict, doc_type: str, ext: str) -> str:
         data,
         routing_cfg=routing_cfg,
         ext=ext,
-        fallbacks={"Dokument": doc_type},
+        fallbacks={"Document": doc_type},
     )
 
 
@@ -239,7 +239,7 @@ def _generate_pdf_thumbnail(full_path: str):
 
 
 @documents_api_bp.route("/api/inbox")
-def api_eingang():
+def api_inbox():
     if not DashboardState.config:
         return jsonify([])
     watch_dir = DashboardState.config.watch_dir
@@ -297,7 +297,7 @@ def api_eingang():
 
 
 @documents_api_bp.route("/api/file/meta/inbox/<path:filename>")
-def api_file_meta_eingang(filename: str):
+def api_file_meta_inbox(filename: str):
     if not DashboardState.config:
         return jsonify({"error": "Config not available"}), 503
     filepath = os.path.abspath(os.path.join(DashboardState.config.watch_dir, filename))
@@ -321,7 +321,7 @@ def api_file_meta_eingang(filename: str):
 
 
 @documents_api_bp.route("/api/file/meta/cases/<folder>/<filename>")
-def api_file_meta_vorgaenge(folder: str, filename: str):
+def api_file_meta_cases(folder: str, filename: str):
     if not DashboardState.config:
         return jsonify({"error": "Config not available"}), 503
     filepath = os.path.abspath(
@@ -347,7 +347,7 @@ def api_file_meta_vorgaenge(folder: str, filename: str):
 
 
 @documents_api_bp.route("/api/inbox/<path:filename>/retry", methods=["POST"])
-def api_eingang_retry(filename: str):
+def api_inbox_retry(filename: str):
     if not DashboardState.config or not DashboardState.file_queue:
         return jsonify({"error": "Not available"}), 503
 
@@ -373,7 +373,7 @@ def api_eingang_retry(filename: str):
 
 
 @documents_api_bp.route("/api/inbox/<path:filename>", methods=["DELETE"])
-def api_eingang_delete(filename: str):
+def api_inbox_delete(filename: str):
     if not DashboardState.config:
         return jsonify({"error": "Config not available"}), 503
     filepath = os.path.join(DashboardState.config.watch_dir, filename)
@@ -397,7 +397,7 @@ def api_eingang_delete(filename: str):
 
 
 @documents_api_bp.route("/api/inbox/<path:filename>/assign", methods=["POST"])
-def api_eingang_assign(filename: str):
+def api_inbox_assign(filename: str):
     if not DashboardState.config:
         return jsonify({"error": "Config not available"}), 503
 
@@ -405,7 +405,7 @@ def api_eingang_assign(filename: str):
     if not validated or err:
         return jsonify({"error": err}), 400
     data = validated.to_clean_dict()
-    doc_type = str(data.get("dokument") or data.get("Dokument") or "Dokument").strip()
+    doc_type = str(data.get("document") or data.get("Document") or "Document").strip()
     err = _validate_required_api_fields(data, doc_type)
     if err:
         return jsonify({"error": err}), 400
@@ -440,7 +440,7 @@ def api_eingang_assign(filename: str):
 
 
 @documents_api_bp.route("/api/inbox/<path:filename>/auto_assign", methods=["POST"])
-def api_eingang_auto_assign(filename: str):
+def api_inbox_auto_assign(filename: str):
     if not DashboardState.config:
         return jsonify({"error": "Config not available"}), 503
 
@@ -459,11 +459,11 @@ def api_eingang_auto_assign(filename: str):
     parts = base_name.split(delimiter)
 
     data: dict = {}
-    doc_type = "Dokument"
+    doc_type = "Document"
 
     if len(parts) >= 2:
         doc_type = parts[0].strip()
-        data["Dokument"] = doc_type
+        data["Document"] = doc_type
         folder_structure = getattr(DashboardState.config, "folder_structure", []) or []
         field_order = [s.strip("{}") for s in folder_structure]
         for i, field_name in enumerate(field_order):
@@ -479,8 +479,8 @@ def api_eingang_auto_assign(filename: str):
                 extracted_data = meta_data.get("extracted", {}) or {}
                 if isinstance(extracted_data, dict):
                     data = extracted_data
-                    if "Dokument" in data:
-                        doc_type = str(data["Dokument"]).strip()
+                    if "Document" in data:
+                        doc_type = str(data["Document"]).strip()
             except (OSError, UnicodeError, json.JSONDecodeError, ValueError, TypeError):
                 logger.debug("Could not load sidecar metadata for %s", src_path)
 
@@ -515,7 +515,7 @@ def api_eingang_auto_assign(filename: str):
 
 
 @documents_api_bp.route("/api/cases")
-def api_vorgaenge():
+def api_cases():
     if not DashboardState.config:
         return jsonify([])
     base_dir = DashboardState.config.target_base_dir
@@ -557,7 +557,7 @@ def api_vorgaenge():
 
 
 @documents_api_bp.route("/api/cases/<path:folder_name>")
-def api_vorgaenge_detail(folder_name: str):
+def api_cases_detail(folder_name: str):
     if not DashboardState.config:
         return jsonify({"error": "Config not available"}), 503
     folder_path = os.path.join(DashboardState.config.target_base_dir, folder_name)
@@ -596,7 +596,7 @@ def api_vorgaenge_detail(folder_name: str):
 
 
 @documents_api_bp.route("/api/cases/<path:folder_name>", methods=["PUT"])
-def api_vorgaenge_edit(folder_name: str):
+def api_cases_edit(folder_name: str):
     if not DashboardState.config:
         return jsonify({"error": "Config not available"}), 503
 
@@ -696,7 +696,7 @@ def api_split_inspector_submit():
             single_doc[k] = v.strip() if isinstance(v, str) else v
         documents_input = [single_doc]
 
-    if context in ("cases", "vorgaenge"):
+    if context == "cases":
         if not folder:
             return jsonify({"error": "Folder is required for cases context"}), 400
         src_path = os.path.join(DashboardState.config.target_base_dir, folder, filename)
@@ -785,7 +785,7 @@ def api_split_inspector_submit():
             except OSError:
                 pass
 
-        if context in ("cases", "vorgaenge") and folder:
+        if context == "cases" and folder:
             src_dir = os.path.join(DashboardState.config.target_base_dir, folder)
             if os.path.exists(src_dir):
                 try:
@@ -830,7 +830,7 @@ def api_split_inspector_submit():
 @documents_api_bp.route(
     "/api/cases/<path:folder_name>/<filename>/edit", methods=["POST"]
 )
-def api_vorgaenge_edit_file(folder_name: str, filename: str):
+def api_cases_edit_file(folder_name: str, filename: str):
     if not DashboardState.config:
         return jsonify({"error": "Config not available"}), 503
 
@@ -838,7 +838,7 @@ def api_vorgaenge_edit_file(folder_name: str, filename: str):
     if not data:
         return jsonify({"error": "No data provided"}), 400
 
-    doc_type = str(data.get("dokument") or data.get("Dokument") or "Dokument").strip()
+    doc_type = str(data.get("document") or data.get("Document") or "Document").strip()
     err = _validate_required_api_fields(data, doc_type)
     if err:
         return jsonify({"error": err}), 400
@@ -889,7 +889,7 @@ def api_vorgaenge_edit_file(folder_name: str, filename: str):
 
 
 @documents_api_bp.route("/api/cases/<path:folder_name>/<filename>", methods=["DELETE"])
-def api_vorgaenge_delete_file(folder_name: str, filename: str):
+def api_cases_delete_file(folder_name: str, filename: str):
     if not DashboardState.config:
         return jsonify({"error": "Config not available"}), 503
     filepath = os.path.join(
@@ -910,7 +910,7 @@ def api_vorgaenge_delete_file(folder_name: str, filename: str):
 
 
 @documents_api_bp.route("/api/cases/<path:folder_name>", methods=["DELETE"])
-def api_vorgaenge_delete_folder(folder_name: str):
+def api_cases_delete_folder(folder_name: str):
     if not DashboardState.config:
         return jsonify({"error": "Config not available"}), 503
     folder_path = os.path.join(DashboardState.config.target_base_dir, folder_name)
@@ -945,7 +945,7 @@ def api_preview(filepath: str):
 
 
 @documents_api_bp.route("/api/file/cases/<path:subpath>")
-def api_file_vorgaenge(subpath: str):
+def api_file_cases(subpath: str):
     if not DashboardState.config:
         return jsonify({"error": "Config not available"}), 503
     full_path, err = _resolve_and_guard(subpath, DashboardState.config.target_base_dir)
@@ -956,7 +956,7 @@ def api_file_vorgaenge(subpath: str):
 
 
 @documents_api_bp.route("/api/file/inbox/<path:subpath>")
-def api_file_eingang(subpath: str):
+def api_file_inbox(subpath: str):
     if not DashboardState.config:
         return jsonify({"error": "Config not available"}), 503
     full_path, err = _resolve_and_guard(subpath, DashboardState.config.watch_dir)
@@ -967,7 +967,7 @@ def api_file_eingang(subpath: str):
 
 
 @documents_api_bp.route("/api/inbox/preview/<path:subpath>")
-def api_eingang_preview(subpath: str):
+def api_inbox_preview(subpath: str):
     if not DashboardState.config:
         return jsonify({"error": "Config not available"}), 503
     full_path, err = _resolve_and_guard(subpath, DashboardState.config.watch_dir)
@@ -977,7 +977,7 @@ def api_eingang_preview(subpath: str):
 
 
 @documents_api_bp.route("/api/preview/Cases/<path:folder_name>/<path:filename>")
-def api_vorgaenge_preview(folder_name: str, filename: str):
+def api_cases_preview(folder_name: str, filename: str):
     if not DashboardState.config:
         return jsonify({"error": "Config not available"}), 503
     subpath = os.path.join(folder_name, filename)

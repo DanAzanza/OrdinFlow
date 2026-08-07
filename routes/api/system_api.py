@@ -33,9 +33,9 @@ class FlexibleDocumentPayload(BaseModel):
     """Base schema for document metadata with dynamic extra fields."""
     model_config = ConfigDict(extra="allow", populate_by_name=True)
 
-    dokument: str | None = Field(
-        default="Dokument",
-        alias="Dokument",
+    document: str | None = Field(
+        default="Document",
+        alias="Document",
         description="Type or category of the document",
     )
 
@@ -48,17 +48,17 @@ class FlexibleDocumentPayload(BaseModel):
                 cleaned[k] = v.strip()
             else:
                 cleaned[k] = v
-        if "dokument" in cleaned:
-            cleaned["Dokument"] = cleaned["dokument"]
+        if "document" in cleaned:
+            cleaned["Document"] = cleaned["document"]
         return cleaned
 
 
 class AssignDocumentSchema(FlexibleDocumentPayload):
-    """Schema for POST /api/eingang/<filename>/assign."""
+    """Schema for POST /api/inbox/<filename>/assign."""
 
 
 class FolderEditSchema(BaseModel):
-    """Schema for PUT /api/vorgaenge/<folder_name>."""
+    """Schema for PUT /api/cases/<folder_name>."""
     model_config = ConfigDict(extra="allow")
 
     def to_clean_dict(self) -> dict[str, Any]:

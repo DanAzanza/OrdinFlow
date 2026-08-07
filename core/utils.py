@@ -69,17 +69,15 @@ _MISSING_VALUES = frozenset(
     [
         "NONE",
         "NULL",
-        "UNBEKANNT",
+        "UNKNOWN",
         "",
-        "[FEHLT]",
-        "FEHLT",
-        "MISSING",
         "[MISSING]",
+        "MISSING",
         "NA",
         "N/A",
         "N.A.",
         "-",
-        "KEINE ANGABE",
+        "NO INFORMATION",
         "----",
     ]
 )
@@ -87,13 +85,13 @@ _MISSING_VALUES = frozenset(
 def clean_path_component(text: str) -> str:
     """Strips characters from text that are invalid or disruptive in the Windows filesystem (e.g. square brackets)."""
     if not text:
-        return "UNBEKANNT"
+        return "UNKNOWN"
     cleaned = _RE_INVALID_PATH_CHARS.sub("", str(text))
     # Since "__" is our folder delimiter, replace it with a single "_"
     cleaned = cleaned.replace("__", "_")
     cleaned = cleaned.replace("--", "-")
     cleaned = cleaned.strip()
-    return cleaned if cleaned else "UNBEKANNT"
+    return cleaned if cleaned else "UNKNOWN"
 
 
 def clean_template_result(text: str, delimiter: str = "__") -> str:
@@ -119,13 +117,13 @@ def clean_template_result(text: str, delimiter: str = "__") -> str:
 
 
 def is_missing_value(val: Any) -> bool:
-    """Checks whether a value is empty or contains a typical AI placeholder (e.g. NA, N/A, [FEHLT])."""
+    """Checks whether a value is empty or contains a typical AI placeholder (e.g. NA, N/A, [MISSING])."""
     if not val:
         return True
     s = str(val).strip().upper()
     if s in _MISSING_VALUES:
         return True
-    if "FEHLT" in s:
+    if "MISSING" in s:
         return True
     return False
 
@@ -141,7 +139,7 @@ def clean_extracted_value(val: Any) -> str:
 
 def format_date_robust(date_str: str) -> str:
     """Robustly converts an extracted date string to YYYY-MM-DD format and validates date range."""
-    if not date_str or "FEHLT" in date_str.upper() or "MISSING" in date_str.upper() or "----" in date_str:
+    if not date_str or "MISSING" in date_str.upper() or "----" in date_str:
         return "----"
 
     final_date = None

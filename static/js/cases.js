@@ -29,31 +29,31 @@ function docLabel(type) {
 	return matchKey || type;
 }
 
-function sortVorgaenge(col) {
+function sortCases(col) {
 	if (state.sortCol === col) {
 		state.sortAsc = !state.sortAsc;
 	} else {
 		state.sortCol = col;
 		state.sortAsc = true;
 	}
-	renderVorgaenge();
+	renderCases();
 }
 
-function filterVorgaenge() {
-	renderVorgaenge();
+function filterCases() {
+	renderCases();
 }
 
-async function fetchVorgaenge() {
+async function fetchCases() {
 	try {
-		state.vorgaenge = await api("/api/cases");
-		const badge = document.getElementById("badgeCases") || document.getElementById("badgeVorgaenge");
-		if (badge) badge.textContent = state.vorgaenge.length;
+		state.cases = await api("/api/cases");
+		const badge = document.getElementById("badgeCases");
+		if (badge) badge.textContent = state.cases.length;
 
 		if (state.expandedFolder) {
-			const folderExists = state.vorgaenge.some((v) => v.folder === state.expandedFolder);
+			const folderExists = state.cases.some((v) => v.folder === state.expandedFolder);
 			if (folderExists) {
 				try {
-					const d = await api("/api/vorgaenge/" + encodeURIComponent(state.expandedFolder));
+					const d = await api("/api/cases/" + encodeURIComponent(state.expandedFolder));
 					state.expandedFiles = d.files || [];
 				} catch (_) {
 					state.expandedFiles = [];
@@ -64,10 +64,10 @@ async function fetchVorgaenge() {
 			}
 		}
 
-		renderVorgaenge();
+		renderCases();
 		bindDetailEvents();
 	} catch (e) {
-		console.error("Error fetching Vorgaenge:", e);
+		console.error("Error fetching Cases:", e);
 	}
 }
 
@@ -98,21 +98,21 @@ function parseDateToTimestamp(str) {
 	return null;
 }
 
-function renderVorgaenge() {
+function renderCases() {
 	const struct = (state.config && state.config.folder_structure) || [];
 
 	// Determine sort column index
 	const sortIdx = typeof state.sortCol === "number" ? state.sortCol : 0;
 
 	// Render dynamic table headers
-	const headerRow = document.getElementById("vorgaengeHeaderRow");
+	const headerRow = document.getElementById("casesHeaderRow");
 	if (headerRow) {
 		let headerHtml = "";
 		struct.forEach((comp, idx) => {
 			const label = cleanHeaderLabel(comp);
 			const isSorted = sortIdx === idx;
 			const arrow = isSorted ? (state.sortAsc ? "▲" : "▼") : "▲";
-			headerHtml += `<th onclick="sortVorgaenge(${idx})" class="${isSorted ? "sorted" : ""}" style="cursor: pointer; white-space: nowrap; width: 1%; padding-right: 100px;">
+			headerHtml += `<th onclick="sortCases(${idx})" class="${isSorted ? "sorted" : ""}" style="cursor: pointer; white-space: nowrap; width: 1%; padding-right: 100px;">
                             <span>${escapeHtml(label)}</span> <span class="sort-arrow">${isSorted ? arrow : ""}</span>
                         </th>`;
 		});
@@ -120,8 +120,8 @@ function renderVorgaenge() {
 		headerRow.innerHTML = headerHtml;
 	}
 
-	const q = document.getElementById("searchVorgaenge").value.toLowerCase();
-	const data = state.vorgaenge.filter(
+	const q = document.getElementById("searchCases").value.toLowerCase();
+	const data = state.cases.filter(
 		(a) =>
 			!q ||
 			(a.folder || "").toLowerCase().includes(q) ||
@@ -145,12 +145,12 @@ function renderVorgaenge() {
 		return state.sortAsc ? va.localeCompare(vb) : vb.localeCompare(va);
 	});
 
-	const tbody = document.getElementById("vorgaengeBody");
-	document.getElementById("emptyVorgaenge").style.display = data.length
+	const tbody = document.getElementById("casesBody");
+	document.getElementById("emptyCases").style.display = data.length
 		? "none"
 		: "block";
-	const vorgaengeWrap = document.querySelector("#tab-vorgaenge .table-wrap");
-	if (vorgaengeWrap) vorgaengeWrap.style.display = data.length ? "" : "none";
+	const casesWrap = document.querySelector("#tab-cases .table-wrap");
+	if (casesWrap) casesWrap.style.display = data.length ? "" : "none";
 
 	let html = "";
 	data.forEach((a, i) => {
@@ -272,7 +272,7 @@ function bindDetailEvents() {
 		el.addEventListener("click", (e) => {
 			e.stopPropagation();
 			const filename = decodeURIComponent(el.dataset.inspectvorgang);
-			openSplitInspector("vorgaenge", state.expandedFolder, filename);
+			openSplitInspector("cases", state.expandedFolder, filename);
 		});
 	});
 
@@ -281,7 +281,7 @@ function bindDetailEvents() {
 		btn.addEventListener("click", (e) => {
 			e.stopPropagation();
 			const filename = decodeURIComponent(btn.dataset.delfile);
-			deleteFile("vorgaenge", state.expandedFolder, filename);
+			deleteFile("cases", state.expandedFolder, filename);
 		});
 	});
 }
@@ -290,19 +290,19 @@ async function toggleDetail(folder) {
 	if (state.expandedFolder === folder) {
 		state.expandedFolder = null;
 		state.expandedFiles = [];
-		renderVorgaenge();
+		renderCases();
 		return;
 	}
 	state.expandedFolder = folder;
 	state.expandedFiles = [];
-	renderVorgaenge(); // show loading
+	renderCases(); // show loading
 	try {
 		const d = await api("/api/cases/" + encodeURIComponent(folder));
 		state.expandedFiles = d.files || [];
 	} catch (_) {
 		state.expandedFiles = [];
 	}
-	renderVorgaenge();
+	renderCases();
 	bindDetailEvents();
 }
 

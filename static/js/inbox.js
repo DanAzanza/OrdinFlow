@@ -1,11 +1,11 @@
-if (!state.selectedEingang) state.selectedEingang = new Set();
+if (!state.selectedInbox) state.selectedInbox = new Set();
 
-async function fetchEingang() {
+async function fetchInbox() {
 	try {
-		state.eingang = await api("/api/inbox");
-		const pruefCount = state.eingang.filter((f) => f.is_pruefen).length;
-		const bIn = document.getElementById("badgeInbox") || document.getElementById("badgeEingang");
-		if (bIn) bIn.textContent = state.eingang.length;
+		state.inbox = await api("/api/inbox");
+		const pruefCount = state.inbox.filter((f) => f.is_pruefen).length;
+		const bIn = document.getElementById("badgeInbox");
+		if (bIn) bIn.textContent = state.inbox.length;
 		const bp = document.getElementById("badgePruefen");
 		if (bp) {
 			if (pruefCount > 0) {
@@ -15,31 +15,31 @@ async function fetchEingang() {
 				bp.style.display = "none";
 			}
 		}
-		const pathEl = document.getElementById("eingangWatchDirPath");
+		const pathEl = document.getElementById("inboxWatchDirPath");
 		if (pathEl && state.config && state.config.watch_dir) {
 			pathEl.textContent = state.config.watch_dir;
 		}
-		renderEingang();
+		renderInbox();
 	} catch (e) {
-		console.error("Error fetching Eingang:", e);
+		console.error("Error fetching Inbox:", e);
 	}
 }
 
-function filterEingang() {
-	renderEingang();
+function filterInbox() {
+	renderInbox();
 }
 
 function togglePruefenFilter() {
 	state.pruefenOnly = !state.pruefenOnly;
 	const btn = document.getElementById("filterPruefen");
 	btn.classList.toggle("btn-warning", state.pruefenOnly);
-	renderEingang();
+	renderInbox();
 }
 
 function updateBatchBar() {
 	const bar = document.getElementById("batchActionBar");
 	const countLabel = document.getElementById("batchSelectCount");
-	const count = state.selectedEingang.size;
+	const count = state.selectedInbox.size;
 	if (bar && countLabel) {
 		if (count > 0) {
 			bar.style.display = "flex";
@@ -50,24 +50,24 @@ function updateBatchBar() {
 	}
 }
 
-function toggleSelectAllEingang(checked) {
+function toggleSelectAllInbox(checked) {
 	if (checked) {
-		state.eingang.forEach((f) => state.selectedEingang.add(f.path));
+		state.inbox.forEach((f) => state.selectedInbox.add(f.path));
 	} else {
-		state.selectedEingang.clear();
+		state.selectedInbox.clear();
 	}
-	renderEingang();
+	renderInbox();
 	updateBatchBar();
 }
 
-function renderEingang() {
-	const q = document.getElementById("searchEingang").value.toLowerCase();
-	let data = state.eingang;
+function renderInbox() {
+	const q = document.getElementById("searchInbox").value.toLowerCase();
+	let data = state.inbox;
 	if (state.pruefenOnly) data = data.filter((f) => f.is_pruefen);
 	if (q) data = data.filter((f) => (f.name || "").toLowerCase().includes(q));
 
-	const list = document.getElementById("eingangList");
-	document.getElementById("emptyEingang").style.display = data.length
+	const list = document.getElementById("inboxList");
+	document.getElementById("emptyInbox").style.display = data.length
 		? "none"
 		: "block";
 
@@ -76,7 +76,7 @@ function renderEingang() {
 		.map((f) => {
 			const hasPreview = !!f.preview_url;
 			const fileUrl = f.file_url || "";
-			const isChecked = state.selectedEingang.has(f.path);
+			const isChecked = state.selectedInbox.has(f.path);
 
 			// Check if filename has all information for auto assign
 			const parts = splitByDelimiter(f.name.split(".")[0]);
@@ -89,8 +89,8 @@ function renderEingang() {
       <div class="preview" data-inspect="${encodeURIComponent(f.path)}" style="cursor:pointer">
         ${
 					hasPreview
-						? `<img src="${f.preview_url}" alt="Vorschau" loading="lazy" onerror="this.parentElement.innerHTML='<span class=no-preview>Vorschau nicht verfügbar</span>'">`
-						: '<span class="no-preview">Keine Vorschau</span>'
+						? `<img src="${f.preview_url}" alt="Preview" loading="lazy" onerror="this.parentElement.innerHTML='<span class=no-preview>Preview unavailable</span>'">`
+						: '<span class="no-preview">No preview</span>'
 				}
       </div>
       <div class="file-info" data-inspect="${encodeURIComponent(f.path)}" style="cursor:pointer">
@@ -110,7 +110,7 @@ function renderEingang() {
 							? `<button class="btn btn-sm btn-success" data-autoassign="${encodeURIComponent(f.path)}">✅ Assign</button>`
 							: `<button class="btn btn-sm btn-accent" data-inspect="${encodeURIComponent(f.path)}">🔍 Inspector</button>`
 					}
-          <button class="btn btn-sm btn-danger" data-deleingang="${encodeURIComponent(f.path)}">🗑️</button>
+          <button class="btn btn-sm btn-danger" data-delinbox="${encodeURIComponent(f.path)}">🗑️</button>
         `
 						: `<button class="btn btn-sm btn-accent" data-inspect="${encodeURIComponent(f.path)}">🔍 Open Document</button>`
 				}
@@ -133,9 +133,9 @@ function renderEingang() {
 			e.stopPropagation();
 			const path = decodeURIComponent(chk.dataset.selectfile);
 			if (chk.checked) {
-				state.selectedEingang.add(path);
+				state.selectedInbox.add(path);
 			} else {
-				state.selectedEingang.delete(path);
+				state.selectedInbox.delete(path);
 			}
 			updateBatchBar();
 		});
@@ -146,10 +146,10 @@ function renderEingang() {
 			retryFile(decodeURIComponent(btn.dataset.retryfile));
 		});
 	});
-	list.querySelectorAll("button[data-deleingang]").forEach((btn) => {
+	list.querySelectorAll("button[data-delinbox]").forEach((btn) => {
 		btn.addEventListener("click", (e) => {
 			e.stopPropagation();
-			deleteFile("eingang", "", decodeURIComponent(btn.dataset.deleingang));
+			deleteFile("inbox", "", decodeURIComponent(btn.dataset.delinbox));
 		});
 	});
 	list.querySelectorAll("button[data-autoassign]").forEach((btn) => {
@@ -163,12 +163,12 @@ function renderEingang() {
 async function autoAssignFile(filename) {
 	try {
 		const safePath = filename.split("/").map(encodeURIComponent).join("/");
-		await api("/api/eingang/" + safePath + "/auto_assign", {
+		await api("/api/inbox/" + safePath + "/auto_assign", {
 			method: "POST",
 		});
 		toast("File assigned successfully");
-		fetchEingang();
-		fetchVorgaenge();
+		fetchInbox();
+		fetchCases();
 	} catch (e) {
 		toast("Assignment error: " + e.message, "error");
 	}
@@ -181,7 +181,7 @@ async function retryFile(filename) {
 			method: "POST",
 		});
 		toast("Reprocessing file: " + filename);
-		fetchEingang();
+		fetchInbox();
 	} catch (e) {
 		toast("Error: " + e.message, "error");
 	}
@@ -195,7 +195,7 @@ async function retryFile(filename) {
    MANUAL ASSIGNMENT & FILE EDITING
    ═══════════════════════════════════════════════════════════ */
 function openAssign(type, folder, filename) {
-	state.assignType = type; // 'eingang' or 'vorgaenge'
+	state.assignType = type; // 'inbox' or 'cases'
 	state.assignFolder = folder;
 	state.assignFile = filename;
 
@@ -208,8 +208,8 @@ function openAssign(type, folder, filename) {
 		produkt = "",
 		dokArt = "";
 
-	if (type === "vorgaenge") {
-		const folderData = state.vorgaenge.find((v) => v.folder === folder);
+	if (type === "cases") {
+		const folderData = state.cases.find((v) => v.folder === folder);
 		datum = folderData ? folderData.datum : "";
 		produkt = folderData ? folderData.produkt : "";
 		personStr = folderData ? folderData.person : "";
@@ -243,7 +243,7 @@ function openAssign(type, folder, filename) {
 	// Populate datalist with existing unique folders
 	const personList = document.getElementById("personList");
 	personList.innerHTML = "";
-	state.vorgaenge.forEach((a) => {
+	state.cases.forEach((a) => {
 		if (a.parts && a.parts.length) {
 			const opt = document.createElement("option");
 			opt.value = a.parts.join(" | ");
@@ -278,15 +278,15 @@ function closeAssign() {
                SPLIT-SCREEN INSPECTOR & BATCH OPERATIONS
                ═══════════════════════════════════════════════════════════ */
 
-async function batchAutoAssignEingang() {
-	const files = Array.from(state.selectedEingang);
+async function batchAutoAssignInbox() {
+	const files = Array.from(state.selectedInbox);
 	if (files.length === 0) return;
 
 	let successCount = 0;
 	for (const filename of files) {
 		try {
 			const safePath = filename.split("/").map(encodeURIComponent).join("/");
-			await api("/api/eingang/" + safePath + "/auto_assign", {
+			await api("/api/inbox/" + safePath + "/auto_assign", {
 				method: "POST",
 			});
 			successCount++;
@@ -295,13 +295,13 @@ async function batchAutoAssignEingang() {
 		}
 	}
 	toast(`${successCount} of ${files.length} file(s) assigned successfully.`);
-	state.selectedEingang.clear();
-	fetchEingang();
-	fetchVorgaenge();
+	state.selectedInbox.clear();
+	fetchInbox();
+	fetchCases();
 }
 
-async function batchDeleteEingang() {
-	const files = Array.from(state.selectedEingang);
+async function batchDeleteInbox() {
+	const files = Array.from(state.selectedInbox);
 	if (files.length === 0) return;
 	if (!confirm(`Do you really want to delete ${files.length} file(s)?`))
 		return;
@@ -317,17 +317,17 @@ async function batchDeleteEingang() {
 		}
 	}
 	toast(`${deleteCount} file(s) deleted.`);
-	state.selectedEingang.clear();
-	fetchEingang();
+	state.selectedInbox.clear();
+	fetchInbox();
 }
 
-function extractFieldsFromFilenameAndFolder(dokArt, filename, folderName = "") {
+function extractFieldsFromFilenameAndFolder(docType, filename, folderName = "") {
 	const extracted = {};
 	if (!filename) return extracted;
 
 	const baseName = filename.split("/").pop().split(".")[0];
 	const docTypes = getImportSkillsDocTypes();
-	const docCfg = docTypes[dokArt] || (state.config && state.config.document_types ? state.config.document_types[dokArt] : null);
+	const docCfg = docTypes[docType] || (state.config && state.config.document_types ? state.config.document_types[docType] : null);
 
 	const filenameTemplate = (docCfg && docCfg.routing && docCfg.routing.filename_template)
 		? docCfg.routing.filename_template
@@ -367,8 +367,8 @@ function extractFieldsFromFilenameAndFolder(dokArt, filename, folderName = "") {
 	const delimiter = baseName.includes("__") ? "__" : (baseName.includes("--") ? "--" : "_");
 	const parts = baseName.split(delimiter).map(p => p.trim()).filter(Boolean);
 
-	if (parts.length > 0 && !extracted.Dokument && parts[0] !== "----") {
-		extracted.Dokument = parts[0];
+	if (parts.length > 0 && !extracted.Document && parts[0] !== "----") {
+		extracted.Document = parts[0];
 	}
 
 	if (folderName) {
@@ -391,7 +391,7 @@ function extractFieldsFromFilenameAndFolder(dokArt, filename, folderName = "") {
 				fieldKey = comp.template.replace(/^\{|\}$/g, "").trim();
 			}
 
-			if (fieldKey && val && val !== "----" && val !== "MISSING" && val !== "FEHLT") {
+			if (fieldKey && val && val !== "----" && val !== "MISSING") {
 				if (!extracted[fieldKey]) {
 					extracted[fieldKey] = val;
 				}
@@ -406,17 +406,17 @@ async function openSplitInspector(contextOrFilename, folder = null, filename = n
 	await ensureSkillsLoaded();
 	state.drawerDocSections = null;
 
-	let context = "eingang";
+	let context = "inbox";
 	let targetFile = contextOrFilename;
 
 	if (contextOrFilename === "folder_edit") {
 		context = "folder_edit";
 		targetFile = null;
-	} else if (contextOrFilename === "vorgaenge" || contextOrFilename === "eingang") {
+	} else if (contextOrFilename === "cases" || contextOrFilename === "inbox") {
 		context = contextOrFilename;
 		targetFile = filename;
 	} else {
-		context = "eingang";
+		context = "inbox";
 		targetFile = contextOrFilename;
 	}
 
@@ -426,7 +426,7 @@ async function openSplitInspector(contextOrFilename, folder = null, filename = n
 
 	if (context === "folder_edit") {
 		const safeFolder = encodeURIComponent(folder);
-		const folderData = (state.vorgaenge || []).find((v) => v.folder === folder);
+		const folderData = (state.cases || []).find((v) => v.folder === folder);
 
 		const delimiter = (state.config && state.config.folder_delimiter) || "--";
 		const struct = (state.config && Array.isArray(state.config.folder_structure)) ? state.config.folder_structure : [];
@@ -438,7 +438,7 @@ async function openSplitInspector(contextOrFilename, folder = null, filename = n
 			if (m) {
 				const fieldName = m[1];
 				let val = (i < parts.length) ? parts[i].trim() : "";
-				if (val === "----" || val.toUpperCase() === "FEHLT" || val.toUpperCase() === "MISSING") {
+				if (val === "----" || val.toUpperCase() === "MISSING") {
 					val = "";
 				}
 				extractedData[fieldName] = val;
@@ -453,12 +453,12 @@ async function openSplitInspector(contextOrFilename, folder = null, filename = n
 		let fileUrl = "";
 		let previewUrl = "";
 		try {
-			const d = await api("/api/vorgaenge/" + safeFolder);
+			const d = await api("/api/cases/" + safeFolder);
 			if (d && d.files && d.files.length > 0) {
 				const firstFile = d.files.find(f => f.has_preview) || d.files[0];
 				const safeFirst = encodeURIComponent(firstFile.name);
-				fileUrl = `/api/file/vorgaenge/${safeFolder}/${safeFirst}`;
-				previewUrl = firstFile.preview_url || `/api/preview/Vorgaenge/${safeFolder}/${safeFirst}`;
+				fileUrl = `/api/file/cases/${safeFolder}/${safeFirst}`;
+				previewUrl = firstFile.preview_url || `/api/preview/Cases/${safeFolder}/${safeFirst}`;
 				state.inspectorFile = firstFile.name;
 			}
 		} catch (e) {
@@ -502,16 +502,16 @@ async function openSplitInspector(contextOrFilename, folder = null, filename = n
 	let extractedData = {};
 	let hasMetaFile = false;
 
-	if (context === "vorgaenge") {
+	if (context === "cases") {
 		const safeFolder = encodeURIComponent(folder);
 		const safeFile = encodeURIComponent(targetFile);
-		fileUrl = `/api/file/vorgaenge/${safeFolder}/${safeFile}`;
-		previewUrl = `/api/preview/Vorgaenge/${safeFolder}/${safeFile}`;
+		fileUrl = `/api/file/cases/${safeFolder}/${safeFile}`;
+		previewUrl = `/api/preview/Cases/${safeFolder}/${safeFile}`;
 	} else {
-		fileObj = (state.eingang || []).find(
+		fileObj = (state.inbox || []).find(
 			(f) => f.path === targetFile || f.name === targetFile,
 		) || { name: targetFile, path: targetFile };
-		fileUrl = fileObj.file_url || `/api/file/eingang/${encodeURIComponent(targetFile)}`;
+		fileUrl = fileObj.file_url || `/api/file/inbox/${encodeURIComponent(targetFile)}`;
 		previewUrl = fileObj.preview_url || "";
 
 		if (fileObj.extracted && Object.keys(fileObj.extracted).length > 0) {
@@ -523,9 +523,9 @@ async function openSplitInspector(contextOrFilename, folder = null, filename = n
 	// 1. Try fetching .meta sidecar file if not already loaded from state
 	if (!hasMetaFile) {
 		try {
-			const metaUrl = context === "vorgaenge"
-				? `/api/file/meta/vorgaenge/${encodeURIComponent(folder)}/${encodeURIComponent(targetFile)}`
-				: `/api/file/meta/eingang/${encodeURIComponent(targetFile)}`;
+			const metaUrl = context === "cases"
+				? `/api/file/meta/cases/${encodeURIComponent(folder)}/${encodeURIComponent(targetFile)}`
+				: `/api/file/meta/inbox/${encodeURIComponent(targetFile)}`;
 			const metaRes = await fetch(metaUrl);
 			if (metaRes.ok) {
 				const metaJson = await metaRes.json();
@@ -539,14 +539,14 @@ async function openSplitInspector(contextOrFilename, folder = null, filename = n
 		}
 	}
 
-	let dokArt = extractedData.Dokument || extractedData.Dokumentart || splitByDelimiter(targetFile)[0] || "";
+	let docType = extractedData.Document || extractedData.DocumentType || splitByDelimiter(targetFile)[0] || "";
 
 	// 2. If NO .meta file exists, parse field values from filename & folder based on import skill definition
 	if (!hasMetaFile) {
-		const parsedFromFilename = extractFieldsFromFilenameAndFolder(dokArt, targetFile, folder);
+		const parsedFromFilename = extractFieldsFromFilenameAndFolder(docType, targetFile, folder);
 		extractedData = Object.assign({}, parsedFromFilename, extractedData);
-		if (!dokArt && parsedFromFilename.Dokument) {
-			dokArt = parsedFromFilename.Dokument;
+		if (!docType && parsedFromFilename.Document) {
+			docType = parsedFromFilename.Document;
 		}
 	}
 
@@ -556,7 +556,7 @@ async function openSplitInspector(contextOrFilename, folder = null, filename = n
 		openAppInspector({
 			icon: fileObj?.is_pruefen ? "⚠" : "📄",
 			title: fileObj?.name || targetFile,
-			subtitle: context === "vorgaenge" ? `Case: ${folder}` : (fileObj?.is_pruefen ? "Verification required" : "Ready for processing"),
+			subtitle: context === "cases" ? `Case: ${folder}` : (fileObj?.is_pruefen ? "Verification required" : "Ready for processing"),
 			previewUrl: previewUrl || fileUrl,
 			html: `
 				<div class="inspector-card">
@@ -572,7 +572,7 @@ async function openSplitInspector(contextOrFilename, folder = null, filename = n
 						<span>✏️</span> Edit & Assign Document
 					</h4>
 					<div id="drawerFormWrapper">
-						${buildGenericInspectorForm(dokArt, "", "", "", extractedData)}
+						${buildGenericInspectorForm(docType, "", "", "", extractedData)}
 					</div>
 				</div>
 			`
@@ -583,10 +583,10 @@ async function openSplitInspector(contextOrFilename, folder = null, filename = n
 function addDrawerDocSection() {
 	if (!state.drawerDocSections) state.drawerDocSections = [];
 	const options = getDokArtOptions();
-	const defaultType = options[0] || "Dokument";
+	const defaultType = options[0] || "Document";
 	state.drawerDocSections.push({
 		id: Date.now() + Math.random(),
-		dokArt: defaultType,
+		docType: defaultType,
 		pages: "",
 		extracted: {}
 	});
@@ -603,7 +603,7 @@ function onSectionDokArtChange(secId, newDokArt) {
 	if (!state.drawerDocSections) return;
 	const sec = state.drawerDocSections.find(s => s.id === secId);
 	if (sec) {
-		sec.dokArt = newDokArt;
+		sec.docType = newDokArt;
 		renderDrawerSections();
 	}
 }
@@ -615,11 +615,11 @@ function renderDrawerSections() {
 	}
 }
 
-function buildGenericInspectorForm(dokArt, personStr, datum, produkt, extractedData = {}) {
+function buildGenericInspectorForm(docType, personStr, datum, produkt, extractedData = {}) {
 	if (!state.drawerDocSections || state.drawerDocSections.length === 0) {
-		const initialType = dokArt || getDokArtOptions()[0] || "Dokument";
+		const initialType = docType || getDokArtOptions()[0] || "Document";
 		state.drawerDocSections = [
-			{ id: 1, dokArt: initialType, pages: "alle", extracted: extractedData }
+			{ id: 1, docType: initialType, pages: "all", extracted: extractedData }
 		];
 	}
 
@@ -629,7 +629,7 @@ function buildGenericInspectorForm(dokArt, personStr, datum, produkt, extractedD
 	let html = `<div id="drawerSectionsList" style="display: flex; flex-direction: column; gap: 14px;">`;
 
 	state.drawerDocSections.forEach((sec, idx) => {
-		const curDokArt = sec.dokArt;
+		const curDokArt = sec.docType;
 		const docTypes = getImportSkillsDocTypes();
 		const docCfg = docTypes[curDokArt] || (state.config && state.config.document_types ? state.config.document_types[curDokArt] : null);
 		const extractionFieldsConfig = (docCfg && docCfg.extraction_fields) ? docCfg.extraction_fields : null;
@@ -719,7 +719,7 @@ function buildGenericInspectorForm(dokArt, personStr, datum, produkt, extractedD
 		} else {
 			for (const key of keys) {
 				const val = fieldValues[key] !== null && fieldValues[key] !== undefined ? String(fieldValues[key]) : "";
-				const isDate = key.toLowerCase().includes("datum");
+				const isDate = key.toLowerCase().includes("datum") || key.toLowerCase().includes("date");
 				const isBool = typeof fieldValues[key] === "boolean" || key.toLowerCase() === "signed";
 
 				html += `
@@ -730,8 +730,8 @@ function buildGenericInspectorForm(dokArt, personStr, datum, produkt, extractedD
 						${isDate ? `<input type="date" class="doc-editor-input drawer-field" data-field="${escapeHtml(key)}" value="${escapeHtml(val)}" style="width:100%; padding: 5px 8px; border-radius: 6px; background: #0a0d15; border: 1px solid var(--border); color: var(--text); font-size: 0.8rem;" />`
 								: isBool
 								? `<select class="doc-editor-input drawer-field" data-field="${escapeHtml(key)}" style="width:100%; padding: 5px 8px; border-radius: 6px; background: #0a0d15; border: 1px solid var(--border); color: var(--text); font-size: 0.8rem;">
-										<option value="true" ${val === "true" || val === "Ja" || fieldValues[key] === true ? "selected" : ""}>Yes / Signed</option>
-										<option value="false" ${val === "false" || val === "Nein" || fieldValues[key] === false ? "selected" : ""}>No / Not signed</option>
+										<option value="true" ${val === "true" || val === "Yes" || fieldValues[key] === true ? "selected" : ""}>Yes / Signed</option>
+										<option value="false" ${val === "false" || val === "No" || fieldValues[key] === false ? "selected" : ""}>No / Not signed</option>
 								   </select>`
 								: `<input type="text" class="doc-editor-input drawer-field" data-field="${escapeHtml(key)}" value="${escapeHtml(val)}" placeholder="${escapeHtml(key)}" style="width:100%; padding: 5px 8px; border-radius: 6px; background: #0a0d15; border: 1px solid var(--border); color: var(--text); font-size: 0.8rem;" />`
 						}
@@ -775,7 +775,7 @@ function buildFolderInspectorForm(folder, extractedData = {}) {
 	fieldSet.forEach(fieldKey => {
 		const label = cleanHeaderLabel ? cleanHeaderLabel(fieldKey) : fieldKey;
 		const val = extractedData[fieldKey] !== undefined ? extractedData[fieldKey] : "";
-		const inputType = (fieldKey.toLowerCase().includes("datum")) ? "date" : "text";
+		const inputType = (fieldKey.toLowerCase().includes("datum") || fieldKey.toLowerCase().includes("date")) ? "date" : "text";
 
 		html += `
 			<div class="form-group" style="margin-bottom: 8px;">
@@ -800,13 +800,13 @@ function buildFolderInspectorForm(folder, extractedData = {}) {
 
 function onDrawerDokArtChange(newDokArt) {
 	if (state.drawerDocSections && state.drawerDocSections.length > 0) {
-		state.drawerDocSections[0].dokArt = newDokArt;
+		state.drawerDocSections[0].docType = newDokArt;
 	}
 	renderDrawerSections();
 }
 
 async function submitDrawerInspector() {
-	const context = state.inspectorContext || "eingang";
+	const context = state.inspectorContext || "inbox";
 	const filename = state.inspectorFile;
 	const folder = state.inspectorFolder;
 
@@ -822,7 +822,7 @@ async function submitDrawerInspector() {
 		});
 
 		try {
-			const res = await api("/api/vorgaenge/" + encodeURIComponent(folder), {
+			const res = await api("/api/cases/" + encodeURIComponent(folder), {
 				method: "PUT",
 				body: JSON.stringify(payload)
 			});
@@ -830,7 +830,7 @@ async function submitDrawerInspector() {
 			toast(res.message || "Folder updated successfully!");
 			closeAppInspector();
 			if (state.expandedFolder === folder) state.expandedFolder = res.folder || folder;
-			fetchVorgaenge();
+			fetchCases();
 		} catch (e) {
 			toast("Error saving folder: " + e.message, "error");
 		}
@@ -843,12 +843,12 @@ async function submitDrawerInspector() {
 	const documentsPayload = [];
 
 	sectionCards.forEach((card) => {
-		const dokArt = card.querySelector(".sec-dok-art")?.value || "Dokument";
-		const pagesVal = card.querySelector(".sec-pages")?.value || "alle";
+		const dokArt = card.querySelector(".sec-dok-art")?.value || "Document";
+		const pagesVal = card.querySelector(".sec-pages")?.value || "all";
 
 		const secData = {
-			Dokument: dokArt,
-			dokument: dokArt,
+			Document: dokArt,
+			document: dokArt,
 			pages: pagesVal
 		};
 
@@ -877,8 +877,8 @@ async function submitDrawerInspector() {
 
 		toast(res.message || "Approved successfully!");
 		closeAppInspector();
-		fetchEingang();
-		fetchVorgaenge();
+		fetchInbox();
+		fetchCases();
 	} catch (e) {
 		toast("Approval error: " + e.message, "error");
 	}
@@ -894,7 +894,7 @@ function closeSplitInspector() {
 }
 
 async function inspectorDeleteCurrent() {
-	const context = state.inspectorContext || "eingang";
+	const context = state.inspectorContext || "inbox";
 	const fn = state.inspectorFile;
 	const folder = state.inspectorFolder;
 
@@ -907,9 +907,9 @@ async function inspectorDeleteCurrent() {
 
 	if (!fn) return;
 	closeAppInspector();
-	if (context === "vorgaenge") {
-		deleteFile("vorgaenge", folder, fn);
+	if (context === "cases") {
+		deleteFile("cases", folder, fn);
 	} else {
-		deleteFile("eingang", "", fn);
+		deleteFile("inbox", "", fn);
 	}
 }

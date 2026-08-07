@@ -1,13 +1,13 @@
 const state = {
-	vorgaenge: [],
-	eingang: [],
+	cases: [],
+	inbox: [],
 	config: null,
 	expandedFolder: null,
 	expandedFiles: [],
 	sortCol: 0,
 	sortAsc: true,
 	paused: false,
-	selectedEingangFile: null,
+	selectedInboxFile: null,
 	editingFolder: null,
 	editingFile: null,
 };
@@ -216,8 +216,8 @@ async function fetchConfig() {
 		state.config = await api("/api/config");
 		await ensureSkillsLoaded();
 		renderLegend();
-		renderVorgaenge();
-		renderEingang();
+		renderCases();
+		renderInbox();
 	} catch (e) {
 		console.error("Error fetching config:", e);
 	}

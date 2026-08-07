@@ -91,7 +91,7 @@ function openAppInspector(data) {
 	inspector.classList.remove("hidden-inspector");
 
 	if (icon) icon.textContent = data.icon || "📄";
-	if (title) title.textContent = data.title || "Dokumenten-Inspector";
+	if (title) title.textContent = data.title || "Document Inspector";
 	if (subtitle) subtitle.textContent = data.subtitle || "";
 
 	if (data.html) {
@@ -126,9 +126,9 @@ function openAppInspector(data) {
 					: ""
 			}
 			<div class="inspector-card">
-				<h4 style="font-size: 0.82rem; margin-bottom: 8px; color: var(--accent);">📋 Extrahierte KI-Daten</h4>
+				<h4 style="font-size: 0.82rem; margin-bottom: 8px; color: var(--accent);">📋 Extracted AI Data</h4>
 				<div class="inspector-field-group">
-					${fieldsHtml || '<p style="font-size: 0.76rem; color: var(--text-dim);">Keine Extraktionsdaten vorhanden.</p>'}
+					${fieldsHtml || '<p style="font-size: 0.76rem; color: var(--text-dim);">No extraction data available.</p>'}
 				</div>
 			</div>
 			${
@@ -146,7 +146,7 @@ function openAppInspector(data) {
 function deleteFile(type, folder, filename) {
 	state.pendingConfirm = { type, folder, filename };
 	document.getElementById("confirmMessage").textContent =
-		"Möchten Sie diese Datei wirklich löschen?";
+		"Are you sure you want to delete this file?";
 	document.getElementById("confirmFilename").textContent = filename;
 	document.getElementById("confirmModal").classList.add("show");
 }
@@ -158,7 +158,7 @@ function deleteFolder(folder) {
 		filename: folder,
 	};
 	document.getElementById("confirmMessage").textContent =
-		"Möchten Sie diesen Vorgangsordner und ALLE darin enthaltenen Dateien wirklich unwiderruflich löschen?";
+		"Are you sure you want to delete this case folder and ALL contained files permanently?";
 	document.getElementById("confirmFilename").textContent = folder;
 	document.getElementById("confirmModal").classList.add("show");
 }
@@ -172,40 +172,40 @@ async function confirmAction() {
 	const { type, folder, filename } = state.pendingConfirm;
 	closeConfirm();
 	try {
-		if (type === "vorgaenge") {
+		if (type === "cases") {
 			await api(
-				"/api/vorgaenge/" +
+				"/api/cases/" +
 					encodeURIComponent(folder) +
 					"/" +
 					encodeURIComponent(filename),
 				{ method: "DELETE" },
 			);
 			if (state.expandedFolder === folder) {
-				const d = await api("/api/vorgaenge/" + encodeURIComponent(folder));
+				const d = await api("/api/cases/" + encodeURIComponent(folder));
 				state.expandedFiles = d.files || [];
 			}
-			fetchVorgaenge();
-			toast("Gelöscht: " + filename);
+			fetchCases();
+			toast("Deleted: " + filename);
 		} else if (type === "folder") {
-			await api("/api/vorgaenge/" + encodeURIComponent(folder), {
+			await api("/api/cases/" + encodeURIComponent(folder), {
 				method: "DELETE",
 			});
 			if (state.expandedFolder === folder) {
 				state.expandedFolder = null;
 				state.expandedFiles = [];
 			}
-			fetchVorgaenge();
-			toast("Ordner gelöscht: " + folder);
+			fetchCases();
+			toast("Folder deleted: " + folder);
 		} else {
 			const safePath = filename.split("/").map(encodeURIComponent).join("/");
-			await api("/api/eingang/" + safePath, {
+			await api("/api/inbox/" + safePath, {
 				method: "DELETE",
 			});
-			fetchEingang();
-			toast("Gelöscht: " + filename);
+			fetchInbox();
+			toast("Deleted: " + filename);
 		}
 	} catch (e) {
-		toast("Fehler beim Löschen: " + e.message, "error");
+		toast("Error deleting: " + e.message, "error");
 	}
 }
 
@@ -319,9 +319,9 @@ async function submitAssign() {
 	}
 
 	try {
-		if (state.assignType === "vorgaenge") {
+		if (state.assignType === "cases") {
 			await api(
-				"/api/vorgaenge/" +
+				"/api/cases/" +
 					encodeURIComponent(state.assignFolder) +
 					"/" +
 					encodeURIComponent(state.assignFile) +
@@ -450,7 +450,7 @@ async function submitFileEdit() {
    LOADING SKELETONS
    ═══════════════════════════════════════════════════════════ */
 function showSkeletons() {
-	const tbody = document.getElementById("vorgaengeBody");
+	const tbody = document.getElementById("casesBody");
 	let html = "";
 	for (let i = 0; i < 6; i++) {
 		html += `<tr><td><div class="skeleton" style="height:14px;width:${70 + Math.random() * 60}px">&nbsp;</div></td>
@@ -497,7 +497,6 @@ document.getElementById("legalModal").addEventListener("click", (e) => {
 async function openLegal(docName) {
 	const titles = {
 		license: "License & Terms (GNU AGPL v3.0)",
-		datenschutz: "Data Privacy Policy (PRIVACY_POLICY.md)",
 		privacy: "Data Privacy Policy (PRIVACY_POLICY.md)",
 		thirdparty: "Third-Party Open-Source Licenses",
 		checklist: "Compliance Checklist (COMPLIANCE_CHECKLIST.md)",
@@ -574,8 +573,8 @@ async function pollJobs() {
 			ticker.style.display = "none";
 			if (_hadActiveJobs) {
 				_hadActiveJobs = false;
-				fetchVorgaenge();
-				fetchEingang();
+				fetchCases();
+				fetchInbox();
 			}
 		}
 	} catch (e) {}
@@ -586,20 +585,20 @@ showSkeletons();
 fetchStatus();
 pollJobs();
 fetchConfig().then(() => {
-	fetchVorgaenge();
-	fetchEingang();
+	fetchCases();
+	fetchInbox();
 });
 
-// Status every 5s für UI-Updates (aktualisiert last_heartbeat als Fallback)
+// Status every 5s for UI updates (updates last_heartbeat as fallback)
 setInterval(fetchStatus, 5000);
 setInterval(pollJobs, 2000);
 
-// Dedizierter Heartbeat alle 15s → hält die App am Leben auch wenn fetchStatus hängt
+// Dedicated heartbeat every 15s -> keeps the app alive even if fetchStatus hangs
 setInterval(() => {
 	fetch("/api/heartbeat", { method: "POST" }).catch(() => {});
 }, 15000);
 
-// Bei Sichtbarkeitsänderungen (z. B. Rückkehr aus dem Hintergrund-Tab) sofort Heartbeat senden
+// On visibility changes (e.g. return from background tab) send heartbeat immediately
 document.addEventListener("visibilitychange", () => {
 	if (document.visibilityState === "visible") {
 		fetchStatus();
@@ -608,9 +607,9 @@ document.addEventListener("visibilitychange", () => {
 
 // Data every 10s (skip if detail view is open)
 setInterval(() => {
-	if (!state.expandedFolder) fetchVorgaenge();
-	fetchEingang();
+	if (!state.expandedFolder) fetchCases();
+	fetchInbox();
 }, 10000);
 
-// Beim Schließen des Browser-Tabs: Shutdown-Signal senden.
-// Der Server beendet sich automatisch nach 30 Sekunden Inaktivität über den Heartbeat-Monitor (heartbeat_monitor).
+// When closing browser tab: send shutdown signal.
+// The server terminates automatically after 30 seconds of inactivity via the heartbeat monitor.
