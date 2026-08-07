@@ -5,11 +5,18 @@ from pathlib import Path
 import yaml
 
 MODEL_URLS = {
-    "Qwen3-VL-8B-Instruct-UD-Q4_K_XL.gguf": "https://huggingface.co/Qwen/Qwen2-VL-7B-Instruct-GGUF/resolve/main/qwen2-vl-7b-instruct-q4_k_m.gguf",
-    "mmproj-BF16.gguf": "https://huggingface.co/Qwen/Qwen2-VL-7B-Instruct-GGUF/resolve/main/mmproj-F16.gguf"
+    "Qwen3-VL-8B-Instruct-UD-Q4_K_XL.gguf": "https://huggingface.co/unsloth/Qwen3-VL-8B-Instruct-GGUF/resolve/main/Qwen3-VL-8B-Instruct-UD-Q4_K_XL.gguf",
+    "mmproj-BF16.gguf": "https://huggingface.co/unsloth/Qwen3-VL-8B-Instruct-GGUF/resolve/main/mmproj-BF16.gguf"
 }
 
+def resolve_download_url(url: str) -> str:
+    """Converts HuggingFace web blob URLs to raw download resolve URLs if needed."""
+    if "huggingface.co" in url and "/blob/" in url:
+        return url.replace("/blob/", "/resolve/")
+    return url
+
 def download_file(url: str, dest_path: Path):
+    url = resolve_download_url(url)
     print(f"[*] Downloading {dest_path.name} from {url}...")
     dest_path.parent.mkdir(parents=True, exist_ok=True)
 
