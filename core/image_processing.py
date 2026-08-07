@@ -135,7 +135,7 @@ class ImagePreprocessor:
             _, buffer = cv2.imencode(
                 ".jpg", img, [int(cv2.IMWRITE_JPEG_QUALITY), _JPEG_QUALITY]
             )
-            return base64.b64encode(buffer).decode("utf-8")
+            return base64.b64encode(buffer.tobytes()).decode("utf-8")
         except Exception:
             logger.exception("[!] Error during scaling and encoding")
             return _encode_pil_fallback(pil_image)

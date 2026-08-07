@@ -1,0 +1,6 @@
+{
+  "include": ["core"],
+  "pythonVersion": "3.10",
+  "reportMissingImports": false,
+  "reportMissingModuleSource": false
+}
