@@ -120,15 +120,15 @@ def test_document_type_filtering(temp_skills_dir):
     # Erstelle temporäre Test-Dateien
     folder = tempfile.mkdtemp()
     try:
-        f1 = os.path.join(folder, "Befundbogen__Einlagen__2026.pdf")
-        f2 = os.path.join(folder, "Rezept__Einlagen__2026.pdf")
+        f1 = os.path.join(folder, "Lieferschein__Software__2026.pdf")
+        f2 = os.path.join(folder, "Vertrag__Software__2026.pdf")
         open(f1, "w").close()
         open(f2, "w").close()
 
         # 1. Filter mit spezifischem Typ
-        matched = executor.filter_matching_files(folder, allowed_types=["Befundbogen"])
+        matched = executor.filter_matching_files(folder, allowed_types=["Lieferschein"])
         assert len(matched) == 1
-        assert matched[0]["filename"] == "Befundbogen__Einlagen__2026.pdf"
+        assert matched[0]["filename"] == "Lieferschein__Software__2026.pdf"
 
         # 2. Filter mit '*' (alle)
         matched_all = executor.filter_matching_files(folder, allowed_types=["*"])

@@ -202,8 +202,8 @@ def test_optional_fields_in_folder_template(tmp_path):
     os.makedirs(config.target_base_dir, exist_ok=True)
     config.folder_structure = ["{Datum}", "{Produkt}", "{Nachname}, {Titel} {Vorname}"]
     config.document_types = {
-        "Rezept": {
-            "classification_desc": "Arztrezept",
+        "Vertrag": {
+            "classification_desc": "Vertragsdokument",
             "extraction_fields": {
                 "Vorname": "Vorname",
                 "Nachname": "Nachname",
@@ -216,22 +216,22 @@ def test_optional_fields_in_folder_template(tmp_path):
             },
             "routing": {
                 "archive": True,
-                "filename_template": "Rezept__{Produkt}__{Datum}"
+                "filename_template": "Vertrag__{Produkt}__{Datum}"
             }
         }
     }
 
     processor = DocumentProcessor(config)
-    dummy_file = tmp_path / "watch" / "rezept.pdf"
-    dummy_file.write_text("Dummy Rezept", encoding="utf-8")
+    dummy_file = tmp_path / "watch" / "vertrag.pdf"
+    dummy_file.write_text("Dummy Vertrag", encoding="utf-8")
 
     mock_extracted = {
-        "Dokument": "Rezept",
+        "Dokument": "Vertrag",
         "Vorname": "Max",
         "Nachname": "Müller",
         "Titel": "[FEHLT]",
         "Datum": "2026-07-08",
-        "Produkt": "Einlagen"
+        "Produkt": "Software"
     }
 
     with patch.object(processor, "extract_hybrid_voting", return_value=mock_extracted):
@@ -239,7 +239,7 @@ def test_optional_fields_in_folder_template(tmp_path):
 
     assert success
     # Sollte sauber "{Datum}__{Produkt}__{Nachname}, {Vorname}" ergeben ohne doppelte Leerzeichen
-    expected_folder = tmp_path / "target" / "2026-07-08__Einlagen__Müller, Max"
+    expected_folder = tmp_path / "target" / "2026-07-08__Software__Müller, Max"
     assert expected_folder.exists()
 
 
@@ -259,11 +259,11 @@ def test_split_multi_documents(tmp_path):
     config.folder_structure = ["{Datum}", "{Produkt}", "{Nachname}", "{Vorname}"]
     config.split_multi_documents = True
     config.document_types = {
-        "Rezept": {
+        "Vertrag": {
             "validation": {"signature_required": True},
             "routing": {"archive": True, "filename_template": "{Dokument}__{Nachname}"}
         },
-        "Befundbogen": {
+        "Lieferschein": {
             "validation": {"signature_required": False},
             "routing": {"archive": True, "filename_template": "{Dokument}__{Nachname}"}
         }
@@ -284,20 +284,20 @@ def test_split_multi_documents(tmp_path):
 
     # Mocke die Extraktion, die 2 Dokumente zurückgibt
     mock_extracted = {
-        "Dokument": "Rezept+Befundbogen",
+        "Dokument": "Vertrag+Lieferschein",
         "Vorname": "Max",
         "Nachname": "Mustermann",
         "Datum": "2026-07-10",
-        "Produkt": "Einlagen",
+        "Produkt": "Software",
         "Signed": True,
         "page_results": [
             {
-                "Dokument": "Rezept",
+                "Dokument": "Vertrag",
                 "pages": [1],
                 "Signed": True
             },
             {
-                "Dokument": "Befundbogen",
+                "Dokument": "Lieferschein",
                 "pages": [2],
                 "Signed": False
             }
@@ -310,20 +310,20 @@ def test_split_multi_documents(tmp_path):
     assert success
     assert not os.path.exists(pdf_path)
 
-    target_dir = os.path.join(config.target_base_dir, "2026-07-10__Einlagen__Mustermann__Max")
+    target_dir = os.path.join(config.target_base_dir, "2026-07-10__Software__Mustermann__Max")
     assert os.path.exists(target_dir)
 
-    rezept_path = os.path.join(target_dir, "Rezept__Mustermann.pdf")
-    befund_path = os.path.join(target_dir, "Befundbogen__Mustermann.pdf")
+    vertrag_path = os.path.join(target_dir, "Vertrag__Mustermann.pdf")
+    lieferschein_path = os.path.join(target_dir, "Lieferschein__Mustermann.pdf")
 
-    assert os.path.exists(rezept_path)
-    assert os.path.exists(befund_path)
+    assert os.path.exists(vertrag_path)
+    assert os.path.exists(lieferschein_path)
 
-    doc_rep = fitz.open(rezept_path)
+    doc_rep = fitz.open(vertrag_path)
     assert len(doc_rep) == 1
     doc_rep.close()
 
-    doc_bef = fitz.open(befund_path)
+    doc_bef = fitz.open(lieferschein_path)
     assert len(doc_bef) == 1
     doc_bef.close()
 
@@ -346,7 +346,7 @@ def test_empty_pages_deleted(tmp_path):
     config.save_empty_pages = False
     config.folder_structure = ["{Datum}", "{Produkt}", "{Nachname}", "{Vorname}"]
     config.document_types = {
-        "Rezept": {
+        "Vertrag": {
             "extraction_fields": {
                 "Vorname": "Vorname des Personen",
                 "Nachname": "Nachname des Personen",
@@ -371,17 +371,17 @@ def test_empty_pages_deleted(tmp_path):
 
     # Mock _classify_single_page
     mock_classifications = [
-        {"idx": 0, "page_num": 1, "raw_img": None, "prep_img": None, "b64_img": "dummy1", "ocr_text": "Rezepttext", "doc_type": "Rezept", "matched_name": "Rezept", "matched_info": config.document_types["Rezept"]},
+        {"idx": 0, "page_num": 1, "raw_img": None, "prep_img": None, "b64_img": "dummy1", "ocr_text": "Vertragstext", "doc_type": "Vertrag", "matched_name": "Vertrag", "matched_info": config.document_types["Vertrag"]},
         {"idx": 1, "page_num": 2, "raw_img": None, "prep_img": None, "b64_img": "dummy2", "ocr_text": "", "doc_type": "LEER", "matched_name": "LEER", "matched_info": {}},
-        {"idx": 2, "page_num": 3, "raw_img": None, "prep_img": None, "b64_img": "dummy3", "ocr_text": "Rezepttext 2", "doc_type": "Rezept", "matched_name": "Rezept", "matched_info": config.document_types["Rezept"]}
+        {"idx": 2, "page_num": 3, "raw_img": None, "prep_img": None, "b64_img": "dummy3", "ocr_text": "Vertragstext 2", "doc_type": "Vertrag", "matched_name": "Vertrag", "matched_info": config.document_types["Vertrag"]}
     ]
 
     mock_extracted_data = {
-        "Dokument": "Rezept",
+        "Dokument": "Vertrag",
         "Vorname": "Max",
         "Nachname": "Mustermann",
         "Datum": "2026-07-10",
-        "Produkt": "Einlagen"
+        "Produkt": "Software"
     }
 
     with patch.object(processor, "_classify_single_page", side_effect=mock_classifications), \
@@ -391,10 +391,11 @@ def test_empty_pages_deleted(tmp_path):
     assert success
     assert not os.path.exists(pdf_path)
 
-    target_dir = os.path.join(config.target_base_dir, "2026-07-10__Einlagen__Mustermann__Max")
+    target_dir = os.path.join(config.target_base_dir, "2026-07-10__Software__Mustermann__Max")
     assert os.path.exists(target_dir)
 
-    reconstructed_pdf = os.path.join(target_dir, "Rezept__Mustermann.pdf")
+    reconstructed_pdf = os.path.join(target_dir, "Vertrag__Mustermann.pdf")
+    assert os.path.exists(reconstructed_pdf)
     assert os.path.exists(reconstructed_pdf)
 
     # Das rekonstruierte PDF sollte nur 2 Seiten haben (Seite 2 LEER wurde gelöscht)
@@ -646,7 +647,7 @@ def test_stage2_target_fields_only():
 
     config = AppConfig()
     config.document_types = {
-        "Rezept": {
+        "Vertrag": {
             "extraction_fields": {
                 "Vorname": "Vorname",
                 "Nachname": "Nachname",
@@ -655,7 +656,7 @@ def test_stage2_target_fields_only():
         }
     }
     pipeline = ExtractionPipeline(config, MagicMock(), MagicMock())
-    group_pages = [{"page_num": 1, "prep_img": None, "b64_img": "dummy", "ocr_text": "Max Mustermann", "matched_info": config.document_types["Rezept"]}]
+    group_pages = [{"page_num": 1, "prep_img": None, "b64_img": "dummy", "ocr_text": "Max Mustermann", "matched_info": config.document_types["Vertrag"]}]
 
     # Stufe 1 liefert Vorname & Nachname sicher, Geburtsdatum fehlt ("----")
     # Stufe 2 wird mit target_fields=["Geburtsdatum"] aufgerufen
@@ -668,7 +669,7 @@ def test_stage2_target_fields_only():
         return [{"Vorname": "Max", "Nachname": "Mustermann", "Geburtsdatum": "----"}]
 
     pipeline.run_extraction_tier = MagicMock(side_effect=mock_run_tier)
-    res = pipeline.process_page_group("Rezept", group_pages)
+    res = pipeline.process_page_group("Vertrag", group_pages)
 
     assert res is not None
     assert recorded_target_fields == [["Geburtsdatum"]]
