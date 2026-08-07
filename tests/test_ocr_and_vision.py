@@ -135,25 +135,29 @@ def test_image_preprocessor_scale_and_encode_returns_base64(processor):
 
 
 def test_routing_without_signature_marks_pruefen(processor, tmp_path):
-    """Rezept OHNE Unterschrift markiert Datei als 'prüfen'."""
+    """Vertrag OHNE Unterschrift markiert Datei als 'prüfen'."""
     watch_dir = tmp_path / "Inbox"
     target_dir = tmp_path / "Cases"
     os.makedirs(watch_dir, exist_ok=True)
     os.makedirs(target_dir, exist_ok=True)
     processor.config.watch_dir = str(watch_dir)
     processor.config.target_base_dir = str(target_dir)
+    processor.config.document_types["Vertrag"] = {
+        "validation": {"signature_required": True},
+        "routing": {"archive": True, "filename_template": "Vertrag__{Produkt}__{Datum}"}
+    }
 
     dummy_file = watch_dir / "no_sign.pdf"
-    dummy_file.write_text("dummy rezept", encoding="utf-8")
+    dummy_file.write_text("dummy vertrag", encoding="utf-8")
 
     mock_extracted = {
-        "Dokument": "Rezept",
+        "Dokument": "Vertrag",
         "Vorname": "Hans",
         "Nachname": "Müller",
         "Datum": "2026-07-01",
-        "Produkt": "Einlagen",
+        "Produkt": "Software",
         "Signed": False,
-        "ocr_text": "Rezept Hans Müller",
+        "ocr_text": "Vertrag Hans Müller",
         "page_results": [],
     }
 
@@ -175,16 +179,30 @@ def test_routing_with_missing_name_keeps_in_watch(processor, tmp_path):
     os.makedirs(target_dir, exist_ok=True)
     processor.config.watch_dir = str(watch_dir)
     processor.config.target_base_dir = str(target_dir)
+    processor.config.document_types["Vertrag"] = {
+        "extraction_fields": {
+            "Vorname": "Vorname",
+            "Nachname": "Nachname",
+            "Datum": "Datum",
+            "Produkt": "Produkt",
+        },
+        "validation": {"signature_required": True},
+        "routing": {
+            "archive": True,
+            "filename_template": "Vertrag__{Produkt}__{Datum}",
+            "match_folder_by": ["Nachname", "Vorname"],
+        },
+    }
 
     dummy_file = watch_dir / "no_name.pdf"
     dummy_file.write_text("dummy", encoding="utf-8")
 
     mock_extracted = {
-        "Dokument": "Rezept",
+        "Dokument": "Vertrag",
         "Vorname": "[FEHLT]",
         "Nachname": "[FEHLT]",
         "Datum": "2026-07-01",
-        "Produkt": "Einlagen",
+        "Produkt": "Software",
         "Signed": True,
         "ocr_text": "",
         "page_results": [],
