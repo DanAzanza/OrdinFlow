@@ -1,6 +1,7 @@
 """
 OrdinFlow — Web Dashboard Backend
 """
+
 import logging
 import os
 import queue
@@ -8,6 +9,7 @@ import subprocess
 import sys
 import threading
 import time
+import urllib.error
 import urllib.request
 import webbrowser
 
@@ -24,13 +26,15 @@ app = Flask(__name__, template_folder="templates", static_folder="static")
 app.register_blueprint(api_bp)
 app.register_blueprint(ui_bp)
 
+logger = logging.getLogger(__name__)
+
 
 def heartbeat_monitor() -> None:
     while not DashboardState.shutdown_event.is_set():
         time.sleep(5)
         # 120 seconds (2 minutes) inactivity timeout when browser tab is closed
         if time.time() - DashboardState.last_heartbeat > 120:
-            logging.info(
+            logger.info(
                 "[*] Dashboard closed (no heartbeat for 120s). Terminating application..."
             )
             DashboardState.shutdown_event.set()
@@ -52,38 +56,36 @@ def open_browser(port: int) -> None:
                 if resp.status == 200:
                     server_ready = True
                     break
-        except Exception:
+        except (urllib.error.URLError, TimeoutError, OSError):
             pass
 
     if not server_ready:
-        logging.warning(
-            f"[Dashboard] Server on port {port} did not respond within 20s."
-        )
+        logger.warning(f"[Dashboard] Server on port {port} did not respond within 20s.")
 
     opened = False
     if sys.platform == "win32":
         try:
             subprocess.Popen(f'cmd /c start "" "{url}"', shell=True)
-            logging.info(f"[Dashboard] Browser opened via cmd start ({url})")
+            logger.info(f"[Dashboard] Browser opened via cmd start ({url})")
             opened = True
-        except Exception as e:
-            logging.error(f"[Dashboard] Error in cmd start: {e}")
+        except (OSError, RuntimeError, subprocess.SubprocessError) as e:
+            logger.error(f"[Dashboard] Error in cmd start: {e}")
 
     if not opened:
         try:
             if webbrowser.open(url, new=2, autoraise=True):
-                logging.info(f"[Dashboard] Browser opened via webbrowser.open({url})")
+                logger.info(f"[Dashboard] Browser opened via webbrowser.open({url})")
                 opened = True
-        except Exception as e:
-            logging.error(f"[Dashboard] Error in webbrowser.open: {e}")
+        except (OSError, RuntimeError, webbrowser.Error) as e:
+            logger.error(f"[Dashboard] Error in webbrowser.open: {e}")
 
     if not opened and hasattr(os, "startfile"):
         try:
             os.startfile(url)
-            logging.info(f"[Dashboard] Browser opened via os.startfile({url})")
+            logger.info(f"[Dashboard] Browser opened via os.startfile({url})")
             opened = True
-        except Exception as e:
-            logging.error(f"[Dashboard] Error in os.startfile: {e}")
+        except (OSError, RuntimeError) as e:
+            logger.error(f"[Dashboard] Error in os.startfile: {e}")
 
 
 def start_dashboard(
@@ -107,11 +109,10 @@ def start_dashboard(
     logging.getLogger("werkzeug").setLevel(logging.ERROR)
 
     try:
-        logging.info(
+        logger.info(
             f"[Dashboard] WSGI Server started at http://127.0.0.1:{config.dashboard_port}/"
         )
         server = make_server("127.0.0.1", config.dashboard_port, app, threaded=True)
         server.serve_forever()
-    except Exception as e:
-        logging.error(f"[!] Error starting Dashboard: {e}", exc_info=True)
-
+    except (OSError, RuntimeError, ValueError) as e:
+        logger.error(f"[!] Error starting Dashboard: {e}", exc_info=True)

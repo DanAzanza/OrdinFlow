@@ -169,13 +169,13 @@ class _LlamaCppBackend(LLMBackend):
                     "[-] No valid mmproj path found. Model loading without vision support."
                 )
 
-            kwargs = dict(
-                model_path=model_path,
-                n_ctx=n_ctx,
-                chat_handler=chat_handler,
-                verbose=False,
-                n_gpu_layers=n_gpu_layers,
-            )
+            kwargs = {
+                "model_path": model_path,
+                "n_ctx": n_ctx,
+                "chat_handler": chat_handler,
+                "verbose": False,
+                "n_gpu_layers": n_gpu_layers,
+            }
             self._llm = Llama(**kwargs)  # type: ignore[assignment]
             _GLOBAL_LLM_INSTANCE = self._llm
             _GLOBAL_LLM_KEY = cache_key
@@ -236,19 +236,19 @@ class _LlamaCppBackend(LLMBackend):
                 if hasattr(self._llm, "reset"):
                     try:
                         self._llm.reset()  # type: ignore[union-attr]
-                    except Exception:
-                        pass
+                    except (AttributeError, RuntimeError, OSError):
+                        logger.debug("LLM reset failed", exc_info=True)
                 raw_msgs = payload.get("messages") or []  # type: ignore[assignment]
                 messages = self._convert_messages(raw_msgs)  # type: ignore[arg-type]
 
                 max_tok = getattr(self.config, "max_tokens", 1536) or 1536
                 json_schema = payload.get("json_schema")
+                options = payload.get("options")
+                options_dict = options if isinstance(options, dict) else {}
                 kwargs: dict[str, object] = {
                     "messages": messages,
-                    "temperature": (payload.get("options") or {}).get(
-                        "temperature", 0.0
-                    ),  # type: ignore[union-attr]
-                    "top_p": (payload.get("options") or {}).get("top_p", 0.1),  # type: ignore[union-attr]
+                    "temperature": options_dict.get("temperature", 0.0),
+                    "top_p": options_dict.get("top_p", 0.1),
                     "max_tokens": max_tok,
                 }
                 if json_schema and isinstance(json_schema, dict):
@@ -291,7 +291,7 @@ class _LlamaCppBackend(LLMBackend):
                     str(content).strip() if isinstance(content, (str, list)) else ""
                 )
                 return result
-            except Exception as e:
+            except (AttributeError, RuntimeError, ValueError, TypeError) as e:
                 logger.warning("[-] LLM call failed: %s", e)
                 return ""
 
@@ -331,7 +331,7 @@ class _ServerBackend(LLMBackend):
                 ),
                 mode=instructor.Mode.JSON,
             )
-        except Exception as e:
+        except (ImportError, AttributeError, RuntimeError, OSError, ValueError) as e:
             logger.error(
                 "[!] Instructor setup failed (openai/instructor not installed?): %s", e
             )
@@ -358,7 +358,7 @@ class _ServerBackend(LLMBackend):
                 temperature=(payload.get("options") or {}).get("temperature", 0.0),  # type: ignore[union-attr]
             )
             return (resp.choices[0].message.content or "").strip()  # type: ignore[union-attr, attr-defined]
-        except Exception as e:
+        except (AttributeError, RuntimeError, ValueError, TypeError) as e:
             logger.warning("[-] Server call failed: %s", e)
             return ""
 

@@ -1,4 +1,3 @@
-
 import datetime
 import json
 import logging
@@ -24,6 +23,7 @@ def _repair_and_parse_json(raw_text: str) -> dict[str, Any]:
 
     text = raw_text.strip()
     import re
+
     if "```" in text:
         text = re.sub(r"^```[a-zA-Z]*\n?", "", text, flags=re.MULTILINE)
         text = re.sub(r"\n?```$", "", text, flags=re.MULTILINE)
@@ -33,7 +33,7 @@ def _repair_and_parse_json(raw_text: str) -> dict[str, Any]:
     last_brace = text.rfind("}")
     if first_brace != -1:
         if last_brace > first_brace:
-            candidate = text[first_brace:last_brace + 1]
+            candidate = text[first_brace : last_brace + 1]
         else:
             candidate = text[first_brace:]
     else:
@@ -49,10 +49,10 @@ def _repair_and_parse_json(raw_text: str) -> dict[str, Any]:
     repaired = candidate.strip()
     if repaired.count('"') % 2 != 0:
         repaired += '"'
-    open_braces = repaired.count('{')
-    close_braces = repaired.count('}')
+    open_braces = repaired.count("{")
+    close_braces = repaired.count("}")
     if open_braces > close_braces:
-        repaired += '}' * (open_braces - close_braces)
+        repaired += "}" * (open_braces - close_braces)
 
     try:
         data = json.loads(repaired)
@@ -64,7 +64,7 @@ def _repair_and_parse_json(raw_text: str) -> dict[str, Any]:
     harvested = {}
     pattern = re.compile(
         r'"([^"]+)":\s*(?:"([^"\\]*(?:\\.[^"\\]*)*)"|(true|false|null|\d+(?:\.\d+)?))',
-        re.IGNORECASE
+        re.IGNORECASE,
     )
     for match in pattern.finditer(candidate):
         key = match.group(1)
@@ -81,7 +81,11 @@ def _repair_and_parse_json(raw_text: str) -> dict[str, Any]:
                 harvested[key] = None
             else:
                 try:
-                    harvested[key] = float(val_primitive) if "." in val_primitive else int(val_primitive)
+                    harvested[key] = (
+                        float(val_primitive)
+                        if "." in val_primitive
+                        else int(val_primitive)
+                    )
                 except ValueError:
                     harvested[key] = val_primitive
         elif val_str is not None:
@@ -117,7 +121,11 @@ class LLMExtractor:
             matched_info.setdefault("validation", {"signature_required": False})
             routing = matched_info.setdefault(
                 "routing",
-                {"archive": True, "folder_template": "", "filename_template": matched_type},
+                {
+                    "archive": True,
+                    "folder_template": "",
+                    "filename_template": matched_type,
+                },
             )
             routing.setdefault("folder_template", "")
             routing.setdefault("filename_template", matched_type)
@@ -130,7 +138,7 @@ class LLMExtractor:
         try:
             self._backend._ensure_loaded()  # type: ignore[attr-defined]
         except RuntimeError as _e:
-            logging.error(str(_e))
+            logger.error(str(_e))
             raise
         retries = getattr(self.config, "vision_api_retries", 3)
         last_error = ""
@@ -139,14 +147,24 @@ class LLMExtractor:
                 result = self._backend.call_vision_api(payload)  # type: ignore[attr-defined]
                 if isinstance(result, str) and len(result.strip()) > 0:
                     return result.strip()
-                logging.debug(f"[-] Empty response from backend (attempt {attempt + 1}/{retries})")
-            except Exception as e:
+                logger.debug(
+                    f"[-] Empty response from backend (attempt {attempt + 1}/{retries})"
+                )
+            except (
+                ConnectionError,
+                OSError,
+                RuntimeError,
+                TimeoutError,
+                ValueError,
+            ) as e:
                 last_error = str(e)
                 wait_time = 2 ** (attempt + 1)
-                logging.warning(f"[-] LLM call failed (attempt {attempt + 1}/{retries}): {e}. Waiting {wait_time}s...")
+                logger.warning(
+                    f"[-] LLM call failed (attempt {attempt + 1}/{retries}): {e}. Waiting {wait_time}s..."
+                )
                 time.sleep(wait_time)
         if last_error:
-            logging.error(f"[!] Vision API error after {retries} attempts: {last_error}")
+            logger.error(f"[!] Vision API error after {retries} attempts: {last_error}")
         return ""
 
     def call_vision_api_json(self, payload: dict[str, Any]) -> dict[str, Any] | None:
@@ -158,12 +176,14 @@ class LLMExtractor:
         try:
             return json.loads(raw)
         except json.JSONDecodeError as e:
-            logging.warning(f"[-] JSONDecodeError parsing Vision response: {e}. Attempting auto-repair...")
+            logger.warning(
+                f"[-] JSONDecodeError parsing Vision response: {e}. Attempting auto-repair..."
+            )
             repaired = _repair_and_parse_json(raw)
             if repaired:
-                logging.info(f"[+] Auto-repaired JSON response successfully: {repaired}")
+                logger.info(f"[+] Auto-repaired JSON response successfully: {repaired}")
                 return repaired
-            logging.error(f"[!] Unable to salvage JSON response. Raw: {raw!r}")
+            logger.error(f"[!] Unable to salvage JSON response. Raw: {raw!r}")
             return None
 
     def classify_image(self, b64_image: str) -> dict[str, Any]:
@@ -182,37 +202,41 @@ class LLMExtractor:
             f"Options:\n{type_str}\n\n"
             "Reply ONLY with the exact category name - no JSON, no explanation."
         )
-        payload = {"messages": [{"role": "user", "content": prompt, "images": [b64_image]}]}
+        payload = {
+            "messages": [{"role": "user", "content": prompt, "images": [b64_image]}]
+        }
 
         raw_resp = self.call_vision_api(payload)
         if raw_resp:
             cleaned = raw_resp.strip().strip("'\" ").lower()
             # 1. Exact match
-            for dt in doc_types.keys():
+            for dt in doc_types:
                 if dt.lower() == cleaned:
                     return {"Dokument": dt}
             # 2. Substring match
-            for dt in doc_types.keys():
+            for dt in doc_types:
                 if cleaned and (cleaned in dt.lower() or dt.lower() in cleaned):
                     return {"Dokument": dt}
 
         fallback = next(
-            (k for k, v in doc_types.items() if (v.get("classification_desc") or "").strip()),
+            (
+                k
+                for k, v in doc_types.items()
+                if (v.get("classification_desc") or "").strip()
+            ),
             None,
         )
         if not fallback and doc_types:
-            fallback = list(doc_types.keys())[0]
+            fallback = next(iter(doc_types))
         return {"Dokument": fallback if fallback else "UNKNOWN"}
 
     def find_doc_type_config(self, doc_type: str) -> tuple[str, dict]:
         """Returns the document configuration for the given type. Case-insensitive."""
         if not isinstance(doc_type, str):
-            fallback_key = next(
-                iter(self._get_effective_document_types()), "UNKNOWN"
-            )
-            logging.warning(
+            fallback_key = next(iter(self._get_effective_document_types()), "UNKNOWN")
+            logger.warning(
                 f"[!] find_doc_type_config: Invalid doc_type {type(doc_type).__name__} "
-                f"(value={doc_type!r}). Falling back to \"{fallback_key}\"."
+                f'(value={doc_type!r}). Falling back to "{fallback_key}".'
             )
             doc_type = fallback_key
         doc_types = self._get_effective_document_types()
@@ -244,7 +268,13 @@ class LLMExtractor:
             field_entries.append(f'  "{field}": "{safe_desc}"')
         return "{\n" + ",\n".join(field_entries) + "\n}"
 
-    def _build_extraction_prompt(self, doc_type_name: str, extraction_fields: dict[str, str], base_rules_tmpl: str, specific_rules: str = "") -> str:
+    def _build_extraction_prompt(
+        self,
+        doc_type_name: str,
+        extraction_fields: dict[str, str],
+        base_rules_tmpl: str,
+        specific_rules: str = "",
+    ) -> str:
         """Constructs the extraction prompt."""
         if specific_rules:
             doc_section = f"\n<document_rules>\n{specific_rules}\n</document_rules>\n"
@@ -260,7 +290,7 @@ class LLMExtractor:
         target_fields: list[str] | None = None,
     ) -> dict[str, Any]:
         """Extracts data from one or more images based on document type rules."""
-        current_date = datetime.date.today()
+        current_date = datetime.datetime.now(datetime.timezone.utc).date()
         min_date = current_date - datetime.timedelta(days=365)
         max_future = current_date + datetime.timedelta(days=31)
 
@@ -286,7 +316,9 @@ class LLMExtractor:
 
         # Add signature check field if required
         if validation_cfg.get("signature_required", False) and not any(
-            x in str(k).lower() for k in extraction_fields for x in ["unterschrift", "signed"]
+            x in str(k).lower()
+            for k in extraction_fields
+            for x in ["unterschrift", "signed"]
         ):
             sig_loc = validation_cfg.get("signature_location", "")
             desc = "true if handwritten signature/ink is present, otherwise false"
@@ -302,13 +334,13 @@ class LLMExtractor:
 
         base_rules_tmpl = (
             f'1. MISSING DATA: If information is missing in the document, enter EXACTLY "{MISSING_PLACEHOLDER}".\n'
-            '2. STRIKETHROUGH & CROSSED-OUT TEXT RULE (CRITICAL):\n'
-            '   - Examine every word (printed OR handwritten) carefully for pen strokes, horizontal lines, or scribbles passing through it.\n'
-            '   - Any text, name, or header entry (printed or handwritten) with a line, stroke, or line-through drawn THROUGH or ACROSS it is VOID / CROSSED OUT / DELETED.\n'
-            '   - On scans, drawings, or forms, a line drawn through a patient name or header text means the name is STUCK OUT. DO NOT extract crossed-out names under ANY circumstances.\n'
-            '   - If crossed-out text has a NEW LEGIBLE REPLACEMENT above/beside it -> extract ONLY the replacement.\n'
+            "2. STRIKETHROUGH & CROSSED-OUT TEXT RULE (CRITICAL):\n"
+            "   - Examine every word (printed OR handwritten) carefully for pen strokes, horizontal lines, or scribbles passing through it.\n"
+            "   - Any text, name, or header entry (printed or handwritten) with a line, stroke, or line-through drawn THROUGH or ACROSS it is VOID / CROSSED OUT / DELETED.\n"
+            "   - On scans, drawings, or forms, a line drawn through a patient name or header text means the name is STUCK OUT. DO NOT extract crossed-out names under ANY circumstances.\n"
+            "   - If crossed-out text has a NEW LEGIBLE REPLACEMENT above/beside it -> extract ONLY the replacement.\n"
             f'   - If crossed-out text has NO replacement -> treat that field as missing and enter EXACTLY "{MISSING_PLACEHOLDER}".\n'
-            '3. OUTPUT FORMAT: Respond exclusively in the specified JSON format.'
+            "3. OUTPUT FORMAT: Respond exclusively in the specified JSON format."
         )
         doc_type_name, specific_rules = self._get_specific_rules_for_doctype(doc_type)
         prompt2 = self._build_extraction_prompt(
@@ -326,9 +358,9 @@ class LLMExtractor:
             {
                 "type": "object",
                 "properties": {
-                    field: {"type": "string"} for field in extraction_fields.keys()
+                    field: {"type": "string"} for field in extraction_fields
                 },
-                "required": list(extraction_fields.keys()),
+                "required": list(extraction_fields),
                 "additionalProperties": False,
             }
             if extraction_fields
@@ -352,8 +384,12 @@ class LLMExtractor:
 
         # Case normalization and strict filtering of requested fields
         raw_fields = matched_doc_info.get("extraction_fields", {})
-        optional_list = matched_doc_info.get("validation", {}).get("optional_fields") or []
-        sig_req = matched_doc_info.get("validation", {}).get("signature_required", False)
+        optional_list = (
+            matched_doc_info.get("validation", {}).get("optional_fields") or []
+        )
+        sig_req = matched_doc_info.get("validation", {}).get(
+            "signature_required", False
+        )
 
         if raw_fields or sig_req:
             allowed_keys = set(extraction_fields.keys()) | set(optional_list)
@@ -394,10 +430,16 @@ class LLMExtractor:
 
     def describe_for_unknown(self, b64_image: str) -> dict[str, Any]:
         """Returns a short description of the image (for UNKNOWN cases)."""
-        prompt = "<instruction>Describe the document briefly in 2-3 sentences.</instruction>"
-        res_raw = self.call_vision_api({"messages": [{"role": "user", "content": prompt, "images": [b64_image]}]})
-        return {"description": res_raw.strip() if isinstance(res_raw, str) else "", "pages": []}
-
+        prompt = (
+            "<instruction>Describe the document briefly in 2-3 sentences.</instruction>"
+        )
+        res_raw = self.call_vision_api(
+            {"messages": [{"role": "user", "content": prompt, "images": [b64_image]}]}
+        )
+        return {
+            "description": res_raw.strip() if isinstance(res_raw, str) else "",
+            "pages": [],
+        }
 
 
 __all__ = ["LLMExtractor"]

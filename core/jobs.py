@@ -100,7 +100,8 @@ class BackgroundJobQueue:
             # Evict completed jobs when the list grows too large
             if len(self._jobs) > 200:
                 completed = [
-                    (jid, t) for jid, t in self._jobs.items()
+                    (jid, t)
+                    for jid, t in self._jobs.items()
                     if t.status in _TERMINAL_STATUSES
                 ]
                 if len(completed) > 100:
@@ -142,7 +143,7 @@ class BackgroundJobQueue:
                 task.result = task.func(*task.args, **task.kwargs)
                 task.status = JobStatus.DONE
             except Exception as e:
-                logger.exception(f"[JobQueue] Error in job {task.job_id}: {e}")
+                logger.exception(f"[JobQueue] Error in job {task.job_id}")
                 task.error = str(e)
                 task.status = JobStatus.ERROR
             finally:

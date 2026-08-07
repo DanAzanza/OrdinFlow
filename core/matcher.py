@@ -7,12 +7,14 @@ from core.utils import is_missing_value
 
 logger = logging.getLogger(__name__)
 
+
 def _clean_name(name: str) -> str:
     if not name:
         return ""
     name = name.replace(".", " ")
     # Removes hyphens for matching
     return name.lower().replace("-", " ").strip()
+
 
 def _split_person_name(person_raw: str) -> tuple[str, str]:
     # Cleans square brackets and extracts first/last name
@@ -21,6 +23,7 @@ def _split_person_name(person_raw: str) -> tuple[str, str]:
         parts = person_raw.split(",", 1)
         return parts[0].strip(), parts[1].strip()
     return person_raw, ""
+
 
 def _names_match(n1: str, v1: str, n2: str, v2: str, threshold: float) -> bool:
     n1_c, v1_c = _clean_name(n1), _clean_name(v1)
@@ -55,12 +58,16 @@ def _names_match(n1: str, v1: str, n2: str, v2: str, threshold: float) -> bool:
 
     return True
 
+
 class FileSystemRouter:
     """Encapsulates filesystem logic."""
+
     def __init__(self, config: AppConfig):
         self.config = config
 
-    def find_existing_person_folder(self, base_dir: str, last_name: str, first_name: str) -> str | None:
+    def find_existing_person_folder(
+        self, base_dir: str, last_name: str, first_name: str
+    ) -> str | None:
         """Searches base directory for a matching folder using fuzzy/keyword matching."""
         if not os.path.exists(base_dir) or not last_name or not first_name:
             return None
@@ -78,7 +85,9 @@ class FileSystemRouter:
                     return item_path
         return None
 
-    def find_existing_folder_by_keywords(self, base_dir: str, keywords: list) -> str | None:
+    def find_existing_folder_by_keywords(
+        self, base_dir: str, keywords: list
+    ) -> str | None:
         """Searches base directory for a matching folder based on a list of keywords."""
         if not os.path.exists(base_dir) or not keywords:
             return None
@@ -101,7 +110,11 @@ class FileSystemRouter:
             watch_dir_abs = os.path.abspath(self.config.watch_dir)
             dir_path_abs = os.path.abspath(directory)
 
-            while dir_path_abs and dir_path_abs != watch_dir_abs and dir_path_abs.startswith(watch_dir_abs):
+            while (
+                dir_path_abs
+                and dir_path_abs != watch_dir_abs
+                and dir_path_abs.startswith(watch_dir_abs)
+            ):
                 if not os.path.exists(dir_path_abs):
                     break
                 if not os.listdir(dir_path_abs):
@@ -110,12 +123,12 @@ class FileSystemRouter:
                         logger.info(f"[+] Deleted empty folder: {dir_path_abs}")
                     except OSError:
                         # Under Windows, folders are often temporarily locked by Explorer or file watchers.
-                        logger.info(f"[*] Empty folder could not be cleaned up (locked): {dir_path_abs}")
+                        logger.info(
+                            f"[*] Empty folder could not be cleaned up (locked): {dir_path_abs}"
+                        )
                         break
                     dir_path_abs = os.path.dirname(dir_path_abs)
                 else:
                     break
-        except Exception as e:
+        except (OSError, ValueError) as e:
             logger.debug(f"Error in cleanup_empty_directories: {e}")
-
-

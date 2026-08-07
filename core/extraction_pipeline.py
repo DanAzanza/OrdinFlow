@@ -29,7 +29,7 @@ def _get_rapid_ocr():
             from rapidocr_onnxruntime import RapidOCR  # type: ignore[import-untyped]
 
             _RAPID_OCR_ENGINE = RapidOCR()
-        except Exception:
+        except (ImportError, RuntimeError, OSError):
             _RAPID_OCR_ENGINE = False
     return _RAPID_OCR_ENGINE if _RAPID_OCR_ENGINE is not False else None
 
@@ -44,8 +44,8 @@ def _run_ocr_with_bin_filter(raw_img: Any) -> str:
                 raw_img = Image.frombytes(
                     "RGB", (raw_img.width, raw_img.height), raw_img.samples
                 )
-        except Exception:
-            pass
+        except (AttributeError, OSError, ValueError):
+            logger.debug("Image conversion for OCR failed", exc_info=True)
 
         engine = _get_rapid_ocr()
         if engine is not None:
@@ -108,7 +108,13 @@ OCR_BOOST_PER_PAGE = 0.5
 KONSENS_THRESHOLD = 0.67
 
 # Fields excluded when collecting keys from extraction results
-_EXCLUDE_KEYS = {"Dokument", "pages", "page_results", "description", "vision_description"}
+_EXCLUDE_KEYS = {
+    "Dokument",
+    "pages",
+    "page_results",
+    "description",
+    "vision_description",
+}
 
 
 _UMLAUT_MAP = str.maketrans(
@@ -153,9 +159,12 @@ def _are_similar_or_substring(a: str, b: str, threshold: float = 0.80) -> bool:
         return False
 
     # 1-character typo allowance for short names (e.g. Audre vs Andre)
-    if abs(len(norm_a) - len(norm_b)) <= 1 and min(len(norm_a), len(norm_b)) >= 4:
-        if _fuzz_similarity(norm_a, norm_b) >= 0.75:
-            return True
+    if (
+        abs(len(norm_a) - len(norm_b)) <= 1
+        and min(len(norm_a), len(norm_b)) >= 4
+        and _fuzz_similarity(norm_a, norm_b) >= 0.75
+    ):
+        return True
 
     # Direct substring inclusion
     if norm_a in norm_b or norm_b in norm_a:
@@ -419,7 +428,9 @@ class ExtractionPipeline:
             res = ext if isinstance(ext, dict) else {}
             tier_page_results.append(res)
             if not res and target_fields:
-                logging.debug(f"[*] Page {p_num} ({p_type}) {label}: Skipped (no matching target fields for this page type).")
+                logging.debug(
+                    f"[*] Page {p_num} ({p_type}) {label}: Skipped (no matching target fields for this page type)."
+                )
             else:
                 logging.info(f"[*] Page {p_num} ({p_type}) {label} result: {res}")
 
@@ -575,7 +586,7 @@ class ExtractionPipeline:
         if not any(bool(r) for r in t1_page_results) and not any(
             bool(r) for r in t2_page_results
         ):
-            logging.warning(
+            logger.warning(
                 f"[-] No valid extractions across all {len(document_pages)} pages."
             )
             return None
@@ -618,7 +629,7 @@ class ExtractionPipeline:
 
         # ── Tier 3 Tiebreaker (1676px) on conflict fields ──
         if conflicts:
-            logging.info(
+            logger.info(
                 f"[*] Disagreement in field(s) {conflicts} detected. Starting Tier 3 (tiebreaker)..."
             )
             t3_page_results = self.run_extraction_tier(
@@ -696,7 +707,7 @@ class ExtractionPipeline:
             if isinstance(res.get("_confidence"), dict):
                 confidences.update(res["_confidence"])
 
-            for field in extraction_fields.keys():
+            for field in extraction_fields:
                 if field in optional_fields:
                     continue
                 val = res.get(field)

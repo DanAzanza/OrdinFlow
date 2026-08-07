@@ -2,6 +2,7 @@
 OrdinFlow — File Service Module
 Handles all filesystem operations, sidecar metadata, target directory determination, and PDF splitting.
 """
+
 import datetime
 import json
 import logging
@@ -48,7 +49,11 @@ class FileService:
         optional_fields = optional_fields or set()
         extraction_fields = extraction_fields or set()
 
-        match_folder_by = routing_cfg.get("match_folder_by") or getattr(self.config, "match_folder_by", None) or []
+        match_folder_by = (
+            routing_cfg.get("match_folder_by")
+            or getattr(self.config, "match_folder_by", None)
+            or []
+        )
         existing_folder = None
         if match_folder_by:
             match_keywords = [
@@ -85,30 +90,25 @@ class FileService:
                 + target_folder_name.count("----")
             )
 
-            if target_fehlt_count < existing_fehlt_count:
-                if os.path.abspath(existing_folder) != os.path.abspath(target_dir):
-                    try:
-                        logger.info(
-                            f"[+] Renaming existing case folder: '{existing_folder_name}' -> '{target_folder_name}'"
-                        )
-                        os.rename(existing_folder, target_dir)
-                        return target_dir
-                    except OSError as e:
-                        logger.warning(
-                            f"[!] Renaming of case folder failed: {e}"
-                        )
-            logger.info(
-                f"[*] Using existing case folder: '{existing_folder_name}'"
-            )
+            if target_fehlt_count < existing_fehlt_count and os.path.abspath(
+                existing_folder
+            ) != os.path.abspath(target_dir):
+                try:
+                    logger.info(
+                        f"[+] Renaming existing case folder: '{existing_folder_name}' -> '{target_folder_name}'"
+                    )
+                    os.rename(existing_folder, target_dir)
+                    return target_dir
+                except OSError as e:
+                    logger.warning(f"[!] Renaming of case folder failed: {e}")
+            logger.info(f"[*] Using existing case folder: '{existing_folder_name}'")
             return existing_folder
 
         logger.info(f"[+] Creating new case folder: '{target_folder_name}'")
         os.makedirs(target_dir, exist_ok=True)
         return target_dir
 
-    def move_file(
-        self, filepath: str, target_dir: str, target_filename: str
-    ) -> str:
+    def move_file(self, filepath: str, target_dir: str, target_filename: str) -> str:
         """Safely moves a file into the target directory."""
         target_filepath = _deduplicate_path(os.path.join(target_dir, target_filename))
         logger.info(
@@ -128,7 +128,9 @@ class FileService:
         meta: dict[str, Any] = {
             "status": "pruefen",
             "grund": grund,
-            "zeit": datetime.datetime.now().isoformat(timespec="seconds"),
+            "zeit": datetime.datetime.now(datetime.timezone.utc).isoformat(
+                timespec="seconds"
+            ),
             "dateiname": os.path.basename(filepath),
         }
         if extracted:
@@ -142,7 +144,11 @@ class FileService:
                     else:
                         extracted_raw[str(k)] = str(v)
             meta_extracted: dict[str, Any] = {"raw": extracted_raw}
-            desc = extracted.get("description") or extracted.get("vision_description") or ""
+            desc = (
+                extracted.get("description")
+                or extracted.get("vision_description")
+                or ""
+            )
             if isinstance(desc, str) and desc.strip():
                 meta_extracted["description"] = desc.strip()
             meta["extracted"] = meta_extracted
@@ -150,10 +156,8 @@ class FileService:
             with open(meta_path, "w", encoding="utf-8") as f:
                 json.dump(meta, f, ensure_ascii=False, indent=2)
             logger.info(f"[*] Sidecar file created: {os.path.basename(meta_path)}")
-        except Exception as e:
-            logger.error(
-                f"[!] Error writing sidecar file '{meta_path}': {e}"
-            )
+        except (OSError, TypeError, ValueError) as e:
+            logger.error(f"[!] Error writing sidecar file '{meta_path}': {e}")
 
     def split_multi_page_pdf(
         self,
@@ -166,9 +170,7 @@ class FileService:
     ) -> bool:
         """Splits a batch PDF into multiple partial PDFs based on page groups."""
         if not self.can_split_pdf:
-            logger.error(
-                "[!] PyMuPDF ('fitz') is missing. Cannot split batch PDF!"
-            )
+            logger.error("[!] PyMuPDF ('fitz') is missing. Cannot split batch PDF!")
             return False
 
         filename = os.path.basename(filepath)
@@ -188,18 +190,17 @@ class FileService:
                 part_extracted["Dokument"] = g_type
 
                 for k, v in extracted_base.items():
-                    if k not in [
+                    if k not in {
                         "Dokument",
                         "pages",
                         "page_results",
                         "vision_description",
-                    ]:
-                        if (
-                            k not in part_extracted
-                            or not part_extracted[k]
-                            or part_extracted[k] == MISSING_PLACEHOLDER
-                        ):
-                            part_extracted[k] = v
+                    } and (
+                        k not in part_extracted
+                        or not part_extracted[k]
+                        or part_extracted[k] == MISSING_PLACEHOLDER
+                    ):
+                        part_extracted[k] = v
 
                 _, g_info = find_doc_type_cfg_fn(g_type)
                 g_routing = g_info.get("routing") or {} if g_info else {}
@@ -207,7 +208,9 @@ class FileService:
                 g_opt = set(g_val.get("optional_fields", []))
                 g_ext_fields = g_info.get("extraction_fields", {}) if g_info else {}
 
-                g_is_dependent = bool(g_info.get("dependent", False)) if g_info else False
+                g_is_dependent = (
+                    bool(g_info.get("dependent", False)) if g_info else False
+                )
                 if g_is_dependent:
                     g_opt = g_opt | optional_fields
                     g_ext_fields_keys = set(g_ext_fields.keys()) | extraction_fields
@@ -250,7 +253,9 @@ class FileService:
         _remove_source_with_meta(filepath)
         return True
 
-    def save_filtered_pdf(self, src_path: str, dst_path: str, kept_pages: list[int]) -> bool:
+    def save_filtered_pdf(
+        self, src_path: str, dst_path: str, kept_pages: list[int]
+    ) -> bool:
         """Saves a PDF without empty pages."""
         if not self.can_split_pdf:
             return False
