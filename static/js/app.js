@@ -343,7 +343,7 @@ async function submitAssign() {
 				.split("/")
 				.map(encodeURIComponent)
 				.join("/");
-			await api("/api/eingang/" + safePath + "/assign", {
+			await api("/api/inbox/" + safePath + "/assign", {
 				method: "POST",
 				body: JSON.stringify({
 					nachname,
@@ -356,8 +356,8 @@ async function submitAssign() {
 		}
 		toast("File moved successfully");
 		closeAssign();
-		fetchEingang();
-		fetchVorgaenge();
+		fetchInbox();
+		fetchCases();
 	} catch (e) {
 		toast("Processing error: " + e.message, "error");
 	}
@@ -369,7 +369,7 @@ function openFileEdit(folder, filename) {
 
 	document.getElementById("fileEditFilename").textContent = filename;
 
-	const folderData = state.vorgaenge.find((v) => v.folder === folder);
+	const folderData = state.cases.find((v) => v.folder === folder);
 
 	const fileParts = splitByDelimiter(
 		filename.replace(".pdf", "").replace(".jpg", "").replace(/_\d+$/, ""),
@@ -405,7 +405,7 @@ async function submitFileEdit() {
 	}
 
 	// Extract person from original folder name
-	const editFolderData = state.vorgaenge.find(
+	const editFolderData = state.cases.find(
 		(v) => v.folder === state.editFileFolder,
 	);
 	const personStr = editFolderData ? editFolderData.person : "";
@@ -419,7 +419,7 @@ async function submitFileEdit() {
 
 	try {
 		await api(
-			"/api/vorgaenge/" +
+			"/api/cases/" +
 				encodeURIComponent(state.editFileFolder) +
 				"/" +
 				encodeURIComponent(state.editFile) +
@@ -440,7 +440,7 @@ async function submitFileEdit() {
 		closeFileEdit();
 		if (state.expandedFolder === state.editFileFolder)
 			state.expandedFolder = null;
-		fetchVorgaenge();
+		fetchCases();
 	} catch (e) {
 		toast("Processing error: " + e.message, "error");
 	}
@@ -461,7 +461,7 @@ function showSkeletons() {
 	}
 	tbody.innerHTML = html;
 
-	const list = document.getElementById("eingangList");
+	const list = document.getElementById("inboxList");
 	let ehtml = "";
 	for (let i = 0; i < 4; i++) {
 		ehtml += `<div class="inbox-item"><div class="file-icon skeleton" style="width:38px;height:38px">&nbsp;</div>

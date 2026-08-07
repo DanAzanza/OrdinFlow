@@ -16,21 +16,21 @@ classify_dimension: 1280
 vision_api_timeout: 120
 vision_api_retries: 3
 base_dir: .
-watch_dir: C:\Users\danie\Desktop\Motioncheck_DMS\Inbox
-target_base_dir: C:\Users\danie\Desktop\Motioncheck_DMS\Cases
+watch_dir: C:\OrdinFlowTest\Inbox
+target_base_dir: C:\OrdinFlowTest\Cases
 vision_base_rules: ''
 signature_base_rules: 'SIGNATURE / SIGNING RULES:
 
   - Search extremely tolerantly on the submitted pages for handwritten signatures,
-  initials, pen-scribbles, hand marks, wavy lines, crosses, ticks,
-  ballpoint pen scribbles, handwritten name signatures or outlines.
+  initials, pen-scribbles, hand marks, wavy lines, crosses, ticks, ballpoint pen scribbles,
+  handwritten name signatures or outlines.
 
-  - On documents and prescriptions, the signature is very often drawn directly on or
-  across/around the printed name of the doctor or the practice stamp.
-  Any such handwritten ink on the document must strictly be evaluated as present.
+  - On documents and prescriptions, the signature is very often drawn directly on
+  or across/around the printed name of the doctor or the practice stamp. Any such
+  handwritten ink on the document must strictly be evaluated as present.
 
-  - An empty signature field or exclusively printed text without handwritten
-  ink is evaluated as false.'
+  - An empty signature field or exclusively printed text without handwritten ink is
+  evaluated as false.'
 folder_delimiter: __
 folder_structure:
 - '{Datum}'
@@ -42,3 +42,5 @@ match_folder_by:
 - Nachname
 - Vorname
 - Titel
+split_multi_documents: false
+save_empty_pages: false
