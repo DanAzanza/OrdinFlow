@@ -1,0 +1,10 @@
+Pillow is provided by the Python Software Foundation under the HPND License.
+
+Python Pillow (formerly PIL) – Historic Permission Notice and Disclaimer
+========================================================================
+
+Copyright (c) 2010-2024, Pillow Contributors (Alex Clark and contributors)
+
+Permission to use, copy, modify, and distribute this software for any purpose with or without fee is hereby granted, provided that the above copyright notice and this permission notice appear in all copies.
+
+THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES ARISING OUT OF THE USE OF OR INABILITY TO USE THIS SOFTWARE.

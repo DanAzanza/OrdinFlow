@@ -1,0 +1,12 @@
+Flask
+llama-cpp-python
+numpy
+opencv-python
+Pillow
+PyYAML
+rapidocr-onnxruntime
+pymupdf
+pytest
+pytest-mock
+watchdog
+pynput

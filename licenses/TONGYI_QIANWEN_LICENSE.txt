@@ -1,0 +1,30 @@
+# Tongyi Qianwen Open Source Community Agreement / Lizensierungshinweise
+
+**Quelle:** https://huggingface.co/Qwen/Qwen-VL/blob/main/LICENSE
+**Stand:** Abgerufen Juli 2026
+
+---
+
+## Zusammenfassung der wichtigsten Bedingungen (deutsche Kurzfassung)
+
+Dieses Dokument ist eine **vereinfachte Zusammenfassung**. Für verbindliche rechtliche Auslegung lesen Sie bitte den vollständigen Lizenztext auf Hugging Face.
+
+### Erlaubte Nutzung
+
+- ✅ Forschung und akademische Nutzung
+- ✅ Kommerzielle Nutzung innerhalb von Produkten (mit Auflagen in § 3)
+- ✅ Nutzung als internes Geschäftsinstrument (z.B. Dokumentenverarbeitung)
+
+### Wichtige Einschränkänkungen (§§ 2–4)
+
+1. **Keine wettbewerbsfähigen Angebote:** Der Lizenznehmer darf kein eigenständiges KI-Modell anbieten, das funktional den Fähigkeiten von Qwen/Vision entspricht – ausser bei einer expliziten schriftlichen Vereinbarung mit der Plattform.
+2. **Kennzeichnungspflicht:** Der Benutzer muss klar kenntlich machen, dass das Modell nicht von Alibaba Cloud hergestellt oder unterstützt wird.
+3. **Haftungsausschluss:** Keine Garantie für Korrektheit der Ausgabe – insbesondere keine medizinische Beratung durch KI.
+
+### Konformität in OrdinFlow:
+
+- Qwen Vision wird ausschliesslich intern als Werkzeug zur automatisierten Sortierung von Verordnungen eingesetzt.
+- Es wird KEIN wettbewerbsfähiges KI-Angebot nach aussen gemacht.
+- Die Ausgabe der KI dient nicht als medizinische Beratung, sondern nur zur Dokumentenerkennung und -klassifizierung im internen Workflow.
+
+Damit sind die Bedingungen der Tongyi-Qianwen-Lizenz erfüllt für den vorgesehenen Nutzungszweck.
