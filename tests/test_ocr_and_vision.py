@@ -151,7 +151,7 @@ def test_routing_without_signature_marks_pruefen(processor, tmp_path):
     dummy_file.write_text("dummy vertrag", encoding="utf-8")
 
     mock_extracted = {
-        "Dokument": "Vertrag",
+        "Document": "Vertrag",
         "Vorname": "Hans",
         "Nachname": "Müller",
         "Datum": "2026-07-01",
@@ -198,9 +198,9 @@ def test_routing_with_missing_name_keeps_in_watch(processor, tmp_path):
     dummy_file.write_text("dummy", encoding="utf-8")
 
     mock_extracted = {
-        "Dokument": "Vertrag",
-        "Vorname": "[FEHLT]",
-        "Nachname": "[FEHLT]",
+        "Document": "Vertrag",
+        "Vorname": "[MISSING]",
+        "Nachname": "[MISSING]",
         "Datum": "2026-07-01",
         "Produkt": "Software",
         "Signed": True,
@@ -267,7 +267,7 @@ def test_extract_hybrid_voting_two_phase_grouping(processor):
 
     assert len(doc_calls) == 1
     assert doc_calls[0] == [1, 2, 3]
-    assert final_doc["Dokument"] == "Vertrag+Datenschutzerklärung"
+    assert final_doc["Document"] == "Vertrag+Datenschutzerklärung"
     assert len(final_doc["page_results"]) == 2
 
 
@@ -292,7 +292,7 @@ def test_optional_field_fehlt_is_cleared_to_empty_string():
         return_value={
             "Nachname": "Mustermann",
             "Vorname": "Max",
-            "Titel": "[FEHLT]",
+            "Titel": "[MISSING]",
             "Datum": "10-07-2026",
             "Produkt": "Software",
         },

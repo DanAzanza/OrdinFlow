@@ -104,7 +104,7 @@ def test_creative_photo_archive_domain():
     data_without_title = {
         "Projekt": "Alpen-Shooting",
         "Ort": "Innsbruck",
-        "Titel": "[FEHLT]",
+        "Titel": "[MISSING]",
     }
     folder_structure = ["{Projekt}", "{Ort}", "{Titel}"]
     # Test optionales Feld 'Titel'
@@ -127,11 +127,11 @@ def test_real_estate_domain_sanitization():
         "ObjektID": "OBJ/2026/01",
         "Mieter": 'Müller & "Partner" <GmbH>',
         "Wohnung": "WE: 04 / 2. OG",
-        "Dokument": "Mietvertrag",
+        "Document": "Mietvertrag",
     }
     routing_cfg = {
         "folder_template": "{ObjektID}--{Mieter}",
-        "filename_template": "{Dokument}_{ObjektID}_{Wohnung}",
+        "filename_template": "{Document}_{ObjektID}_{Wohnung}",
     }
 
     folder = render_folder_name(data, routing_cfg=routing_cfg)

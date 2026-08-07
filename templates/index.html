@@ -65,12 +65,12 @@
                 <!-- BATCH ACTION BAR -->
                 <div id="batchActionBar" class="batch-action-bar" style="display: none;">
                     <div class="batch-info">
-                        <input type="checkbox" id="selectAllCheckbox" onchange="toggleSelectAllEingang(this.checked)" style="cursor: pointer; width: 16px; height: 16px;">
+                        <input type="checkbox" id="selectAllCheckbox" onchange="toggleSelectAllInbox(this.checked)" style="cursor: pointer; width: 16px; height: 16px;">
                         <span id="batchSelectCount">0 selected</span>
                     </div>
                     <div class="batch-actions">
-                        <button class="btn btn-sm btn-success" onclick="batchAutoAssignEingang()">✅ Assign selected</button>
-                        <button class="btn btn-sm btn-danger" onclick="batchDeleteEingang()">🗑️ Delete selected</button>
+                        <button class="btn btn-sm btn-success" onclick="batchAutoAssignInbox()">✅ Assign selected</button>
+                        <button class="btn btn-sm btn-danger" onclick="batchDeleteInbox()">🗑️ Delete selected</button>
                     </div>
                 </div>
 
@@ -81,21 +81,21 @@
                             type="text"
                             id="searchInbox"
                             placeholder="Search file..."
-                            oninput="filterEingang()"
+                            oninput="filterInbox()"
                         />
                     </div>
                     <button
                         class="btn btn-sm"
-                        onclick="fetchEingang()"
+                        onclick="fetchInbox()"
                         title="Rescan folder manually"
                     >
                         🔄 Refresh
                     </button>
                 </div>
-                <div class="inbox-list" id="eingangList"></div>
+                <div class="inbox-list" id="inboxList"></div>
                 <div
                     class="empty-state"
-                    id="emptyEingang"
+                    id="emptyInbox"
                     style="display: none"
                 >
                     <div class="empty-icon">📥</div>
@@ -110,9 +110,9 @@
                         <span class="search-icon">🔍</span>
                         <input
                             type="text"
-                            id="searchVorgaenge"
+                            id="searchCases"
                             placeholder="Search case..."
-                            oninput="filterVorgaenge()"
+                            oninput="filterCases()"
                         />
                     </div>
                 </div>
@@ -122,16 +122,16 @@
                     style="display: none"
                 ></div>
                 <div class="table-wrap">
-                    <table id="vorgaengeTable">
+                    <table id="casesTable">
                         <thead>
-                            <tr id="vorgaengeHeaderRow"></tr>
+                            <tr id="casesHeaderRow"></tr>
                         </thead>
-                        <tbody id="vorgaengeBody"></tbody>
+                        <tbody id="casesBody"></tbody>
                     </table>
                 </div>
                 <div
                     class="empty-state"
-                    id="emptyVorgaenge"
+                    id="emptyCases"
                     style="display: none"
                 >
                     <div class="empty-icon">📂</div>

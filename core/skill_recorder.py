@@ -70,7 +70,7 @@ class SkillRecorder:
 
     def __init__(self):
         self.is_recording: bool = False
-        self.skill_name: str = "Neuer Aufgezeichneter Skill"
+        self.skill_name: str = "New Recorded Skill"
         self.skill_id: str = ""
         self.target_window: str = "Remote Desktop*"
         self.rdp_path_prefix: str = "\\\\tsclient\\C"
@@ -81,8 +81,7 @@ class SkillRecorder:
         self.current_window: str = ""
         self.start_time: float = 0.0
         self.last_event_time: float = 0.0
-        self.last_action_desc: str = "Bereit"
-        self.last_click_time: float = 0.0
+        self.last_action_desc: str = "Ready"
         self.last_click_coords: tuple = (0, 0)
 
         self._keyboard_buffer: list[str] = []
@@ -97,17 +96,17 @@ class SkillRecorder:
             return cls._instance
 
     def start_recording(
-        self, skill_name: str = "Neuer Aufgezeichneter Skill"
+        self, skill_name: str = "New Recorded Skill"
     ) -> dict[str, Any]:
         with self._lock:
             if self.is_recording:
                 return {"status": "already_recording", "step_count": len(self.steps)}
 
             if not PYNPUT_AVAILABLE:
-                raise RuntimeError("Das Modul 'pynput' ist nicht installiert.")
+                raise RuntimeError("The module 'pynput' is not installed.")
 
             self.is_recording = True
-            self.skill_name = skill_name or "Neuer Aufgezeichneter Skill"
+            self.skill_name = skill_name or "New Recorded Skill"
             self.skill_id = (
                 "rdp_rec_"
                 + re.sub(r"\W+", "_", self.skill_name.lower()).strip("_")
@@ -116,7 +115,7 @@ class SkillRecorder:
             self.steps = []
             self.current_window = ""
             self.start_time = time.time()
-            self.last_action_desc = "Aufnahme gestartet..."
+            self.last_action_desc = "Recording started..."
             self._keyboard_buffer = []
 
             # Initial active window check
@@ -127,7 +126,7 @@ class SkillRecorder:
                 self._add_step(
                     {
                         "id": f"step_{len(self.steps) + 1}",
-                        "description": f"Fenster fokussieren: {win}",
+                        "description": f"Focus window: {win}",
                         "action_type": "FOCUS_WINDOW",
                         "window_title": win,
                     }
@@ -246,9 +245,9 @@ class SkillRecorder:
             # Convert previous click to DOUBLE_CLICK
             self.steps[-1]["action_type"] = "DOUBLE_CLICK"
             self.steps[-1]["description"] = self.steps[-1]["description"].replace(
-                "Klick", "Doppelklick"
+                "Click", "Double click"
             )
-            self.last_action_desc = "Doppelklick erfasst"
+            self.last_action_desc = "Double click captured"
             return
 
         # Capture cropped screenshot around click for OCR
@@ -262,10 +261,10 @@ class SkillRecorder:
 
         if ocr_text:
             locator = {"type": "ocr_contains", "prompt": ocr_text}
-            desc = f"Klick auf '{ocr_text}'"
+            desc = f"Click on '{ocr_text}'"
         else:
-            locator = {"type": "som_vlm", "prompt": f"Element an Pos ({x}, {y})"}
-            desc = f"Klick an Position ({x}, {y})"
+            locator = {"type": "som_vlm", "prompt": f"Element at pos ({x}, {y})"}
+            desc = f"Click at position ({x}, {y})"
 
         time_diff = now - (self.last_event_time or now)
         self.last_event_time = now
@@ -316,7 +315,7 @@ class SkillRecorder:
             cleaned_steps = [
                 {
                     "id": "step_1",
-                    "description": "Fenster fokussieren",
+                    "description": "Focus window",
                     "action_type": "FOCUS_WINDOW",
                     "window_title": self.target_window or "Remote Desktop*",
                 }
@@ -324,8 +323,8 @@ class SkillRecorder:
 
         skill_obj = {
             "id": self.skill_id or f"rdp_recorded_{int(time.time())}",
-            "name": self.skill_name or "Neuer Aufgezeichneter Skill",
-            "description": f"Automatisch aufgezeichneter Workflow ({len(cleaned_steps)} Schritte).",
+            "name": self.skill_name or "New Recorded Skill",
+            "description": f"Automatically recorded workflow ({len(cleaned_steps)} steps).",
             "target_window": self.target_window or "Remote Desktop*",
             "rdp_path_prefix": self.rdp_path_prefix,
             "document_types": self.document_types,

@@ -235,7 +235,7 @@ function renderDocTypesSidebar() {
 	if (keys.length === 0) {
 		container.innerHTML = `
 			<div style="padding: 16px; text-align: center; color: var(--text-dim); font-size: 0.82rem; background: rgba(0,0,0,0.15); border-radius: 8px;">
-				Keine Kategorien im Skill vorhanden.
+				No categories defined in this skill.
 			</div>
 		`;
 		return;
@@ -341,13 +341,13 @@ function renderDocTypeForm(typeName) {
 						<input type="text" class="doc-editor-input" value="${escapeHtml(fKey)}" readonly style="background: rgba(99, 102, 241, 0.08); border-color: rgba(99, 102, 241, 0.25); color: #a5b4fc; font-weight: 700;" />
 					</td>
 					<td style="padding: 10px 12px; vertical-align: top;">
-						<textarea class="doc-editor-textarea auto-resize-ta" rows="1" placeholder="Beschreibung für die KI..." oninput="autoResizeTextarea(this)" onchange="updateDocTypeField('${escapeHtml(typeName)}', '${escapeHtml(fKey)}', 'desc', this.value)" style="resize: none; overflow: hidden; min-height: 38px;">${escapeHtml(desc)}</textarea>
+						<textarea class="doc-editor-textarea auto-resize-ta" rows="1" placeholder="Description for the AI..." oninput="autoResizeTextarea(this)" onchange="updateDocTypeField('${escapeHtml(typeName)}', '${escapeHtml(fKey)}', 'desc', this.value)" style="resize: none; overflow: hidden; min-height: 38px;">${escapeHtml(desc)}</textarea>
 					</td>
 					<td style="padding: 10px 12px; vertical-align: top; text-align: center;">
 						<input type="checkbox" ${req ? "checked" : ""} onchange="updateDocTypeField('${escapeHtml(typeName)}', '${escapeHtml(fKey)}', 'req', this.checked)" style="width: 18px; height: 18px; accent-color: #6366f1; cursor: pointer; margin-top: 8px;" />
 					</td>
 					<td style="padding: 10px 12px; vertical-align: top; text-align: center;">
-						<button class="btn btn-sm btn-danger" onclick="removeExtractionField('${escapeHtml(typeName)}', '${escapeHtml(fKey)}')" title="Feld entfernen" style="padding: 6px 10px; margin-top: 4px;">🗑️</button>
+						<button class="btn btn-sm btn-danger" onclick="removeExtractionField('${escapeHtml(typeName)}', '${escapeHtml(fKey)}')" title="Remove field" style="padding: 6px 10px; margin-top: 4px;">🗑️</button>
 					</td>
 				</tr>
 			`;
@@ -358,10 +358,10 @@ function renderDocTypeForm(typeName) {
 		<table class="doc-fields-table" style="width: 100%; border-collapse: separate; border-spacing: 0; background: rgba(10, 13, 20, 0.5); border-radius: 10px; border: 1px solid rgba(255,255,255,0.08); overflow: hidden;">
 			<thead>
 				<tr style="background: rgba(255, 255, 255, 0.03); color: var(--text-dim); font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.05em;">
-					<th style="padding: 12px; text-align: left; width: 22%; border-bottom: 1px solid rgba(255,255,255,0.08);">Feldname</th>
-					<th style="padding: 12px; text-align: left; width: 60%; border-bottom: 1px solid rgba(255,255,255,0.08);">Extraktionsprompt / Anweisung</th>
-					<th style="padding: 12px; text-align: center; width: 10%; border-bottom: 1px solid rgba(255,255,255,0.08);">Pflicht</th>
-					<th style="padding: 12px; text-align: center; width: 8%; border-bottom: 1px solid rgba(255,255,255,0.08);">Aktion</th>
+					<th style="padding: 12px; text-align: left; width: 22%; border-bottom: 1px solid rgba(255,255,255,0.08);">Field name</th>
+					<th style="padding: 12px; text-align: left; width: 60%; border-bottom: 1px solid rgba(255,255,255,0.08);">Extraction prompt / Instruction</th>
+					<th style="padding: 12px; text-align: center; width: 10%; border-bottom: 1px solid rgba(255,255,255,0.08);">Required</th>
+					<th style="padding: 12px; text-align: center; width: 8%; border-bottom: 1px solid rgba(255,255,255,0.08);">Action</th>
 				</tr>
 			</thead>
 			<tbody>
@@ -371,7 +371,7 @@ function renderDocTypeForm(typeName) {
 	`;
 
 	if (fieldKeys.length === 0) {
-		tableHtml = `<div style="padding: 20px; color: var(--text-dim); font-size: 0.85rem; text-align: center; background: rgba(0,0,0,0.15); border-radius: 8px;">Keine Extraktionsfelder definiert.</div>`;
+		tableHtml = `<div style="padding: 20px; color: var(--text-dim); font-size: 0.85rem; text-align: center; background: rgba(0,0,0,0.15); border-radius: 8px;">No extraction fields defined.</div>`;
 	}
 
 	container.innerHTML = `
@@ -380,24 +380,24 @@ function renderDocTypeForm(typeName) {
 				<div class="doc-form-header-emoji">${emoji}</div>
 				<div>
 					<h3 style="margin: 0; font-size: 1.15rem; font-weight: 700; color: var(--text);">${escapeHtml(typeName)}</h3>
-					<span style="font-size: 0.78rem; color: var(--text-dim);">${fieldKeys.length} Extraktionsfelder konfiguriert</span>
+					<span style="font-size: 0.78rem; color: var(--text-dim);">${fieldKeys.length} extraction fields configured</span>
 				</div>
 			</div>
-			<button class="btn btn-sm btn-danger" onclick="deleteDocType('${escapeHtml(typeName)}')">🗑️ Kategorie löschen</button>
+			<button class="btn btn-sm btn-danger" onclick="deleteDocType('${escapeHtml(typeName)}')">🗑️ Delete Category</button>
 		</div>
 
 		<div class="doc-editor-section" style="margin-top: 16px;">
-			<h4>🧠 Erkennungs- & Klassifizierungsregeln (KI Vision)</h4>
+			<h4>🧠 Recognition & Classification Rules (AI Vision)</h4>
 			<span style="font-size: 0.8rem; color: var(--text-dim); margin-top: -8px; margin-bottom: 6px; display: block;">
-				Legen Sie fest, an welchen optischen Text- oder Layoutmerkmalen die KI dieses Dokument erkennt.
+				Define the visual, text, or layout features the AI uses to recognize this document.
 			</span>
-			<textarea class="doc-editor-textarea auto-resize-ta" rows="2" placeholder="Z.B. Dokument mit dem Text 'Befundbogen' im Kopfbereich..." oninput="autoResizeTextarea(this)" onchange="updateDocTypeRules('${escapeHtml(typeName)}', this.value)" style="resize: none; overflow: hidden; min-height: 52px;">${escapeHtml(descValue)}</textarea>
+			<textarea class="doc-editor-textarea auto-resize-ta" rows="2" placeholder="E.g. Document containing the text 'Report' in the header area..." oninput="autoResizeTextarea(this)" onchange="updateDocTypeRules('${escapeHtml(typeName)}', this.value)" style="resize: none; overflow: hidden; min-height: 52px;">${escapeHtml(descValue)}</textarea>
 		</div>
 
 		<div class="doc-editor-section" style="margin-top: 16px;">
 			<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-				<h4 style="margin: 0;">📋 Extraktionsfelder & KI-Prompts</h4>
-				<button class="btn btn-sm btn-accent" onclick="addExtractionField('${escapeHtml(typeName)}')">➕ Feld hinzufügen</button>
+				<h4 style="margin: 0;">📋 Extraction Fields & AI Prompts</h4>
+				<button class="btn btn-sm btn-accent" onclick="addExtractionField('${escapeHtml(typeName)}')">➕ Add Field</button>
 			</div>
 			${tableHtml}
 		</div>
@@ -432,7 +432,7 @@ function updateDocTypeField(typeName, fieldKey, property, value) {
 }
 
 function addExtractionField(typeName) {
-	const key = prompt("Feld-Schlüsselname (z.B. Rechnungsnummer, Datum, Summe):");
+	const key = prompt("Field key name (e.g. InvoiceNumber, Date, Total):");
 	if (!key || !key.trim()) return;
 
 	const cleanKey = key.trim();
@@ -440,7 +440,7 @@ function addExtractionField(typeName) {
 	const fields = state.editingDocTypes[typeName].extraction_fields || {};
 
 	if (fields[cleanKey]) {
-		toast("Feld existiert bereits.", "error");
+		toast("Field already exists.", "error");
 		return;
 	}
 
@@ -485,7 +485,7 @@ async function renderQueueInspector() {
 	if (qState.items.length === 0) {
 		queueListHtml = `
 			<div style="padding: 24px; text-align: center; color: var(--text-dim); background: rgba(0,0,0,0.18); border: 1px dashed var(--border); border-radius: 10px; font-size: 0.82rem;">
-				Warteliste ist leer.<br>Füge unten einen Skill hinzu.
+				Queue is empty.<br>Add a skill below.
 			</div>
 		`;
 	} else {

@@ -12,12 +12,12 @@ def test_clean_path_component():
     assert clean_path_component("Hans Müller") == "Hans Müller"
     assert clean_path_component("Hans/Müller: ") == "HansMüller"
     assert clean_path_component("Max -- Mustermann") == "Max - Mustermann"
-    assert clean_path_component("") == "UNBEKANNT"
+    assert clean_path_component("") == "UNKNOWN"
 
 def test_is_missing_value():
     assert is_missing_value("NONE") is True
     assert is_missing_value("N/A") is True
-    assert is_missing_value("[FEHLT]") is True
+    assert is_missing_value("[MISSING]") is True
     assert is_missing_value("Hans") is False
     assert is_missing_value("") is True
 
@@ -51,7 +51,7 @@ def test_format_date_robust():
     assert format_date_robust(future_date.strftime("%Y-%m-%d")) == "----"
 
     # Unbekannter String
-    assert format_date_robust("[FEHLT]") == "----"
+    assert format_date_robust("[MISSING]") == "----"
 
 
 def test_central_routing_module():
@@ -92,7 +92,7 @@ def test_correct_name_with_ocr():
     # Bad OCR (no close match) -> keep as is
     assert correct_name_with_ocr("Meller", "Anna 01.02.1951 ... [Krankenkasse] ... Allgemeine Daten") == "Meller"
     # Null or FEHLT values
-    assert correct_name_with_ocr("[FEHLT]", "Anna / Müller") == "[FEHLT]"
+    assert correct_name_with_ocr("[MISSING]", "Anna / Müller") == "[MISSING]"
     assert correct_name_with_ocr("----", "Anna / Müller") == "----"
     assert correct_name_with_ocr("", "Anna / Müller") == ""
     # Short name (length 3) correction
