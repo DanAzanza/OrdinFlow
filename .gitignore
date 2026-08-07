@@ -1,0 +1,43 @@
+# Python cache files
+__pycache__/
+*.py[cod]
+*$py.class
+.coverage
+htmlcov/
+
+# Virtual Environment
+venv/
+.venv/
+env/
+ENV/
+
+# Model binaries (Do not commit >100MB files to GitHub)
+models/*.gguf
+models/*.bin
+models/*.pt
+models/*.onnx
+
+# Project directories containing sensitive or test documents
+Eingang/
+Vorgaenge/
+scratch/
+temp/
+
+# Local logs, configs & secrets
+settings/skills/*.yaml
+!settings/skills/*.example.yaml
+*.log
+main.log
+crash.log
+.env
+
+.idea/
+.vscode/
+.pytest_cache/
+.ruff_cache/
+
+# Local OS files
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
