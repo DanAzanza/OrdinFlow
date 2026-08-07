@@ -120,6 +120,8 @@ class AppConfig:
         skill_file = os.path.join(skills_dir, f"{import_skill_id}.yaml")
         if not os.path.exists(skill_file):
             skill_file = os.path.join(skills_dir, f"{import_skill_id}.yml")
+        if not os.path.exists(skill_file):
+            skill_file = os.path.join(skills_dir, f"{import_skill_id}.example.yaml")
 
         loaded_doc_types: dict[str, dict[str, Any]] = {}
 
