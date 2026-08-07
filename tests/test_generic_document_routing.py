@@ -1,5 +1,3 @@
-from typing import Any, cast
-
 from core.config import AppConfig
 from core.routing import render_filename, render_folder_name
 
@@ -19,17 +17,11 @@ def test_generic_document_naming_and_routing():
         "Kategorie": "Software",
     }
 
-    # Get config for Rechnung
-    doc_info = config.document_types.get("Rechnung")
-    if not doc_info:
-        doc_info = {
-            "routing": {"filename_template": "Rechnung__{Kategorie}__{RechnungsDatum}"},
-            "validation": {"optional_fields": ["Titel"]}
-        }
-
-    routing_cfg = cast(dict[str, Any], doc_info.get("routing", {}))
-    validation_cfg = cast(dict[str, Any], doc_info.get("validation", {}))
-    optional_fields = set(validation_cfg.get("optional_fields", []))
+    routing_cfg = {
+        "archive": True,
+        "filename_template": "Rechnung__{Kategorie}__{RechnungsDatum}"
+    }
+    optional_fields = {"Titel"}
 
     # 2. Render folder name
     # The folder template relies on {Produkt}, which is missing from doc_data
