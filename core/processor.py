@@ -2,6 +2,7 @@
 OrdinFlow — Document Processor Orchestrator Module
 Lean main orchestrator for classification, extraction, routing, and thread lifecycle control.
 """
+
 import logging
 import os
 import threading
@@ -30,7 +31,6 @@ from core.vision import LLMExtractor
 
 class AllPagesEmptyError(Exception):
     """Raised when a document consists entirely of empty/blank pages."""
-
 
 
 class DocumentProcessor:
@@ -113,7 +113,7 @@ class DocumentProcessor:
                         for f in files
                         if os.path.splitext(f.lower())[1] in valid_exts
                     )
-            except Exception as e:
+            except (OSError, ValueError) as e:
                 logger.debug("Error retrieving queue size: %s", e)
 
             return {
@@ -126,17 +126,16 @@ class DocumentProcessor:
                 "queue_size": queue_count,
             }
 
-
     def log_stats(self):
         """Logs processing statistics."""
         stats = self.get_stats()
-        logging.info("=" * 60)
-        logging.info(
+        logger.info("=" * 60)
+        logger.info(
             f"[*] STATS: {stats['total']} processed, "
             f"{stats['success']} successful, "
             f"Ø {stats['avg_duration']:.1f}s per file"
         )
-        logging.info("=" * 60)
+        logger.info("=" * 60)
 
     # --- Delegated helper methods for backward compatibility & tests ---
     def _classify_single_page(self, raw_img: Any, idx: int) -> dict[str, Any]:
@@ -212,7 +211,7 @@ class DocumentProcessor:
         # 1. Unified Tiered Extraction across ALL pages in one pool
         doc_res = self._process_document_pages(non_empty_pages)
         if not doc_res:
-            logging.warning(
+            logger.warning(
                 f"[-] No valid extraction results for '{os.path.basename(filepath)}'."
             )
             return None
@@ -223,7 +222,11 @@ class DocumentProcessor:
         current_type = None
         for p in non_empty_pages:
             t = p["matched_name"]
-            if getattr(self.config, "save_empty_pages", False) and t.upper() == "LEER" and current_type is not None:
+            if (
+                getattr(self.config, "save_empty_pages", False)
+                and t.upper() == "LEER"
+                and current_type is not None
+            ):
                 t = current_type
                 p = dict(p)
                 p["matched_name"] = current_type
@@ -252,11 +255,13 @@ class DocumentProcessor:
 
         final_doc = dict(doc_res)
         dok_arten = [g[0] for g in groups if not is_missing_value(g[0])]
-        final_doc["Dokument"] = "+".join(dok_arten) if dok_arten else MISSING_PLACEHOLDER
+        final_doc["Dokument"] = (
+            "+".join(dok_arten) if dok_arten else MISSING_PLACEHOLDER
+        )
         final_doc["page_results"] = page_results
 
-        logging.debug(f"[+] Consolidated final result: {format_result(final_doc)}")
-        logging.info(
+        logger.debug(f"[+] Consolidated final result: {format_result(final_doc)}")
+        logger.info(
             f"[+] Final extraction result for document: {format_result(final_doc)}"
         )
         return final_doc
@@ -267,16 +272,16 @@ class DocumentProcessor:
         start_time = time.time()
         filename = os.path.basename(filepath)
         if not os.path.exists(filepath):
-            logging.warning(f"[!] File '{filename}' no longer exists.")
+            logger.warning(f"[!] File '{filename}' no longer exists.")
             return False
 
         with self.processing_lock:
             self.processing_files.add(filepath)
 
         try:
-            logging.info(f"======== Processing: {filename} ========")
+            logger.info(f"======== Processing: {filename} ========")
             if not wait_until_unlocked(filepath, retries=5, delay=1.0):
-                logging.warning(
+                logger.warning(
                     f"[!] File '{filename}' remained locked after 5 attempts."
                 )
                 return False
@@ -306,7 +311,7 @@ class DocumentProcessor:
                     )
 
                 if not routing_cfg.get("archive", True):
-                    logging.warning(
+                    logger.warning(
                         f"[-] '{matched_type}' has archive=False and will not be archived."
                     )
                     self._mark_as_pruefen(
@@ -352,7 +357,9 @@ class DocumentProcessor:
                         ext=orig_ext,
                         optional_fields=optional_fields,
                         extraction_fields=extraction_fields,
-                        fallbacks={"Dokument": matched_type if matched_type else dok_art_raw},
+                        fallbacks={
+                            "Dokument": matched_type if matched_type else dok_art_raw
+                        },
                     )
                     return td, tf
 
@@ -383,18 +390,24 @@ class DocumentProcessor:
                     if self.can_split_pdf and os.path.exists(filepath):
                         try:
                             import fitz
+
                             doc = fitz.open(filepath)
                             doc_len = len(doc)
                             doc.close()
                             for pr in page_results:
-                                if pr.get("Dokument", "").upper() not in ("LEER", "BLANK"):
+                                if pr.get("Dokument", "").upper() not in (
+                                    "LEER",
+                                    "BLANK",
+                                ):
                                     kept_pages.extend(pr.get("pages", []))
-                            kept_pages = sorted(list(set(kept_pages)))
-                        except Exception:
-                            pass
+                            kept_pages = sorted(set(kept_pages))
+                        except (AttributeError, OSError, RuntimeError, ValueError):
+                            logger.debug(
+                                "Unable to determine PDF page list", exc_info=True
+                            )
 
                     if self.can_split_pdf and doc_len > 0 and len(kept_pages) < doc_len:
-                        logging.info(
+                        logger.info(
                             f"[*] Saving PDF without empty pages. Keeping pages {kept_pages} of {doc_len}."
                         )
                         self.file_service.save_filtered_pdf(
@@ -410,13 +423,13 @@ class DocumentProcessor:
                     self.stats_total += 1
                     self.stats_success += 1
                     self.stats_total_duration += duration
-                logging.info(
+                logger.info(
                     f"[+] Processing of '{filename}' completed successfully after {duration:.2f} seconds."
                 )
                 return True
             else:
                 if not os.path.exists(filepath):
-                    logging.warning(
+                    logger.warning(
                         f"[!] File '{filename}' no longer exists. Skipping sidecar creation."
                     )
                     return False
@@ -427,16 +440,14 @@ class DocumentProcessor:
                     self.stats_total += 1
                     self.stats_failed += 1
                     self.stats_total_duration += duration
-                logging.warning(
+                logger.warning(
                     f"[-] Processing of '{filename}' incomplete ({duration:.2f}s) — Reason: {reason}."
                 )
                 if extracted:
-                    logging.debug(
-                        f"[-] Raw extracted data: {format_result(extracted)}"
-                    )
+                    logger.debug(f"[-] Raw extracted data: {format_result(extracted)}")
                 return False
         except AllPagesEmptyError:
-            logging.info(
+            logger.info(
                 f"[-] '{filename}' consists only of empty pages and will be deleted."
             )
             _remove_source_with_meta(filepath)
@@ -445,16 +456,14 @@ class DocumentProcessor:
                 self.stats_skipped += 1
             return True
         except FileNotFoundError:
-            logging.warning(
-                f"[!] File '{filename}' was deleted during processing."
-            )
+            logger.warning(f"[!] File '{filename}' was deleted during processing.")
             with self._stats_lock:
                 self.stats_skipped += 1
             return False
         except Exception as e:
-            logging.error(f"[!] Error: {e}", exc_info=True)
+            logger.exception(f"[!] Error: {e}")
             duration = time.time() - start_time
-            logging.error(
+            logger.error(
                 f"[-] Processing of '{filename}' aborted due to error after {duration:.2f} seconds."
             )
             return False

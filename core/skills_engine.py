@@ -54,7 +54,6 @@ def set_block_input(enable: bool) -> bool:
 
 def _emergency_unblock() -> None:
     """Safety Net: Ensures keyboard/mouse is unblocked upon process termination."""
-    global _block_input_active
     if _block_input_active:
         set_block_input(False)
 
@@ -166,7 +165,7 @@ class SoMGrounder:
                                         int(max(ys)),
                                     )
                                 )
-            except Exception as e:
+            except (AttributeError, RuntimeError, OSError, ValueError) as e:
                 logger.debug("[SoMGrounder] RapidOCR box extraction skipped: %s", e)
 
         # 2. Contour detection via OpenCV (for textless buttons & icons)
@@ -191,7 +190,7 @@ class SoMGrounder:
                     x, y, w, h = cv2.boundingRect(cnt)
                     if 15 < w < img.width * 0.8 and 12 < h < img.height * 0.8:
                         boxes.append((x, y, x + w, y + h))
-            except Exception as e:
+            except (AttributeError, RuntimeError, OSError, ValueError) as e:
                 logger.debug("[SoMGrounder] Contour extraction skipped: %s", e)
 
         # Non-Maximum Suppression / Overlap Filtering
@@ -411,10 +410,17 @@ class SkillExecutor:
                     elem_id = int(match.group(1))
                     if elem_id in candidates:
                         target = candidates[elem_id]
-                        offset = locator.get("offset", [0, 0])
-                        return target["center_x"] + offset[0], target[
-                            "center_y"
-                        ] + offset[1]  # type: ignore[return-value]
+                        offset_raw = locator.get("offset")
+                        offset_x, offset_y = 0, 0
+                        if isinstance(offset_raw, (list, tuple)) and len(offset_raw) >= 2:
+                            ox, oy = offset_raw[0], offset_raw[1]
+                            if isinstance(ox, (int, float)):
+                                offset_x = int(ox)
+                            if isinstance(oy, (int, float)):
+                                offset_y = int(oy)
+                        cx = int(target["center_x"]) if isinstance(target.get("center_x"), (int, float)) else 0  # type: ignore[arg-type]
+                        cy = int(target["center_y"]) if isinstance(target.get("center_y"), (int, float)) else 0  # type: ignore[arg-type]
+                        return cx + offset_x, cy + offset_y
 
         logger.warning("[SkillExecutor] Locator could not be resolved: %s", locator)
         return None

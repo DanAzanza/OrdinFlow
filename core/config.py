@@ -128,7 +128,7 @@ class AppConfig:
                 with open(skill_file, encoding="utf-8") as f:
                     skill_data = yaml.safe_load(f) or {}
                 loaded_doc_types = skill_data.get("document_types") or {}
-            except Exception as e:
+            except (OSError, yaml.YAMLError) as e:
                 logger.error("Error loading skill file %s: %s", skill_file, e)
 
         return dict(loaded_doc_types)
@@ -180,7 +180,7 @@ class AppConfig:
             try:
                 with open(skill_file, encoding="utf-8") as f:
                     skill_data = yaml.safe_load(f) or {}
-            except Exception:
+            except (OSError, yaml.YAMLError):
                 skill_data = {}
 
         clean_doc_types: dict[str, dict[str, Any]] = {}

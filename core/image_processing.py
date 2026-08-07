@@ -132,10 +132,12 @@ class ImagePreprocessor:
                 new_h = int(img_h * scale)
                 img = cv2.resize(img, (new_w, new_h), interpolation=cv2.INTER_CUBIC)
 
-            _, buffer = cv2.imencode(".jpg", img, [int(cv2.IMWRITE_JPEG_QUALITY), _JPEG_QUALITY])
+            _, buffer = cv2.imencode(
+                ".jpg", img, [int(cv2.IMWRITE_JPEG_QUALITY), _JPEG_QUALITY]
+            )
             return base64.b64encode(buffer).decode("utf-8")
-        except Exception as e:
-            logger.exception("[!] Error during scaling and encoding: %s", e)
+        except Exception:
+            logger.exception("[!] Error during scaling and encoding")
             return _encode_pil_fallback(pil_image)
 
     def create_source_images(

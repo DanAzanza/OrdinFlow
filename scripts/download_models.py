@@ -1,8 +1,8 @@
-import os
 import sys
-import yaml
-from pathlib import Path
 import urllib.request
+from pathlib import Path
+
+import yaml
 
 MODEL_URLS = {
     "Qwen3-VL-8B-Instruct-UD-Q4_K_XL.gguf": "https://huggingface.co/Qwen/Qwen2-VL-7B-Instruct-GGUF/resolve/main/qwen2-vl-7b-instruct-q4_k_m.gguf",
@@ -12,7 +12,7 @@ MODEL_URLS = {
 def download_file(url: str, dest_path: Path):
     print(f"[*] Downloading {dest_path.name} from {url}...")
     dest_path.parent.mkdir(parents=True, exist_ok=True)
-    
+
     def report_progress(block_num, block_size, total_size):
         read_bytes = block_num * block_size
         if total_size > 0:
@@ -31,7 +31,7 @@ def download_file(url: str, dest_path: Path):
 def main():
     root_dir = Path(__file__).resolve().parent.parent
     config_path = root_dir / "config.yaml"
-    
+
     if config_path.exists():
         with open(config_path, "r", encoding="utf-8") as f:
             config = yaml.safe_load(f) or {}

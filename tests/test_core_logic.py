@@ -677,7 +677,7 @@ def test_stage2_target_fields_only():
 
 def test_substring_merging_and_ocr_priority():
     """Testet, dass Teilnamen ('Wannink') mit vollen Doppelnamen ('Bramkamp-Wannink') gemergt werden und der längste OCR-bestätigte Name gewinnt."""
-    from core.extraction_pipeline import _cluster_votes, _are_similar_or_substring
+    from core.extraction_pipeline import _are_similar_or_substring, _cluster_votes
 
     # 1. Test Substring Check
     assert _are_similar_or_substring("Wannink", "Bramkamp-Wannink") is True
