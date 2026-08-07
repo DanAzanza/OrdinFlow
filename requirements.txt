@@ -3,6 +3,7 @@ llama-cpp-python
 numpy
 opencv-python
 Pillow
+pydantic
 PyYAML
 rapidocr-onnxruntime
 pymupdf
