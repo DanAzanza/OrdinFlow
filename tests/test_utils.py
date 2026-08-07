@@ -66,7 +66,7 @@ def test_central_routing_module():
 
 def test_declarative_folder_structure_and_parsing():
     from core.routing import parse_folder_name, render_folder_name
-    data = {"Datum": "2026-07-09", "Produkt": "Einlagen", "Nachname": "Müller", "Vorname": "Max"}
+    data = {"Datum": "2026-07-09", "Produkt": "Software", "Nachname": "Müller", "Vorname": "Max"}
     folder_structure = [
         "{Datum}",
         "{Produkt}",
@@ -74,11 +74,11 @@ def test_declarative_folder_structure_and_parsing():
         "{Vorname}",
     ]
     rendered = render_folder_name(data, folder_structure=folder_structure, delimiter="--")
-    assert rendered == "2026-07-09--Einlagen--Müller--Max"
+    assert rendered == "2026-07-09--Software--Müller--Max"
 
     parsed = parse_folder_name(rendered, folder_structure=folder_structure, delimiter="--")
     assert parsed["Datum"] == "2026-07-09"
-    assert parsed["Produkt"] == "Einlagen"
+    assert parsed["Produkt"] == "Software"
     assert parsed["Nachname"] == "Müller"
     assert parsed["Vorname"] == "Max"
 

@@ -217,7 +217,7 @@ def test_extract_hybrid_voting_two_phase_grouping(processor):
     mock_images = ["img1", "img2", "img3"]
 
     def mock_classify(raw_img, idx, binarize=False):
-        types = ["Rezept", "Datenschutzerklärung", "Datenschutzerklärung"]
+        types = ["Vertrag", "Datenschutzerklärung", "Datenschutzerklärung"]
         return {
             "idx": idx,
             "page_num": idx + 1,
@@ -237,7 +237,7 @@ def test_extract_hybrid_voting_two_phase_grouping(processor):
             "Vorname": "Max",
             "Nachname": "Mustermann",
             "Datum": "2026-07-07",
-            "Produkt": "Einlagen",
+            "Produkt": "Software",
             "Signed": True,
             "_confidence": {"Vorname": 1.0, "Nachname": 1.0}
         }
@@ -249,7 +249,7 @@ def test_extract_hybrid_voting_two_phase_grouping(processor):
 
     assert len(doc_calls) == 1
     assert doc_calls[0] == [1, 2, 3]
-    assert final_doc["Dokument"] == "Rezept+Datenschutzerklärung"
+    assert final_doc["Dokument"] == "Vertrag+Datenschutzerklärung"
     assert len(final_doc["page_results"]) == 2
 
 
@@ -260,7 +260,7 @@ def test_optional_field_fehlt_is_cleared_to_empty_string():
 
     config = AppConfig()
     config.document_types = {
-        "Befundbogen": {
+        "Lieferschein": {
             "validation": {
                 "optional_fields": ["Titel"]
             }
@@ -276,10 +276,10 @@ def test_optional_field_fehlt_is_cleared_to_empty_string():
             "Vorname": "Max",
             "Titel": "[FEHLT]",
             "Datum": "10-07-2026",
-            "Produkt": "Einlagen",
+            "Produkt": "Software",
         },
     ):
-        res = extractor.extract_data_from_images_with_type("base64_img", "Befundbogen")
+        res = extractor.extract_data_from_images_with_type("base64_img", "Lieferschein")
 
     assert res["Titel"] == ""
     assert res["Nachname"] == "Mustermann"
@@ -291,7 +291,7 @@ def test_call_vision_api_json_repairs_truncated_json():
     from core.vision import LLMExtractor
 
     extractor = LLMExtractor(AppConfig())
-    truncated_raw = '{\n "Vorname": "Denise",\n "Nachname": "Wesselmann",\n "Signed": true,\n "Rechte_betroffener_Person": "Der Patient hat das Recht auf'
+    truncated_raw = '{\n "Vorname": "Denise",\n "Nachname": "Wesselmann",\n "Signed": true,\n "Rechte_betroffener_Person": "Der Kunde hat das Recht auf'
 
     with patch.object(extractor, "call_vision_api", return_value=truncated_raw):
         res = extractor.call_vision_api_json({"messages": []})

@@ -30,11 +30,11 @@ def test_api_vorgaenge(client, tmp_path):
     DashboardState.config.folder_structure = ["{Datum}", "{Produkt}", "{Person}"]
 
     # Erstelle Dummy-Ordner und PDF + .meta Datei
-    person_folder = tmp_path / "2026-03-13__Einlagen__Muster, Max"
+    person_folder = tmp_path / "2026-03-13__Software__Muster, Max"
     person_folder.mkdir()
-    dummy_file = person_folder / "Rezept__Einlagen__2026-03-13.pdf"
+    dummy_file = person_folder / "Vertrag__Software__2026-03-13.pdf"
     dummy_file.touch()
-    dummy_meta = person_folder / "Rezept__Einlagen__2026-03-13.pdf.meta"
+    dummy_meta = person_folder / "Vertrag__Software__2026-03-13.pdf.meta"
     dummy_meta.touch()
 
     # Teste /api/cases
@@ -47,12 +47,12 @@ def test_api_vorgaenge(client, tmp_path):
     assert data[0]["file_count"] == 1
 
     # Teste /api/cases/<folder_name> (Detail)
-    response_detail = client.get("/api/cases/2026-03-13__Einlagen__Muster%2C%20Max")
+    response_detail = client.get("/api/cases/2026-03-13__Software__Muster%2C%20Max")
     assert response_detail.status_code == 200
     data_detail = response_detail.get_json()
     # Nur das PDF darf gelistet werden
     assert len(data_detail["files"]) == 1
-    assert data_detail["files"][0]["name"] == "Rezept__Einlagen__2026-03-13.pdf"
+    assert data_detail["files"][0]["name"] == "Vertrag__Software__2026-03-13.pdf"
     assert "preview_url" in data_detail["files"][0]
     assert "Muster%2C%20Max" in data_detail["files"][0]["preview_url"]
 
@@ -208,7 +208,7 @@ def test_api_skills_crud_and_duplicate(client):
 
 def test_api_vorgaenge_approval_status(client, tmp_path):
     orig_target_base = DashboardState.config.target_base_dir
-    test_folder = tmp_path / "2026-07-29__Einlagen__Mustermann__Erika"
+    test_folder = tmp_path / "2026-07-29__Software__Mustermann__Erika"
     test_folder.mkdir(parents=True, exist_ok=True)
 
     DashboardState.config.target_base_dir = str(tmp_path)

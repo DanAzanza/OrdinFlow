@@ -16,14 +16,14 @@ def processor(tmp_path):
     os.makedirs(config.target_base_dir, exist_ok=True)
 
     config.document_types = {
-        "Rezept": {
-            "classification_desc": "Ein ärztliches Rezept oder eine Verordnung.",
+        "Vertrag": {
+            "classification_desc": "Ein rechtlicher Vertrag.",
             "extraction_fields": {
-                "Vorname": "Vorname des Personen",
-                "Nachname": "Nachname des Personen",
+                "Vorname": "Vorname des Unterzeichners",
+                "Nachname": "Nachname des Unterzeichners",
                 "Datum": "Ausstellungsdatum im Format YYYY-MM-DD",
-                "Produkt": "Welches Produkt (z.B. Einlagen, Maßschuhe, Bandagen)",
-                "Signed": "true, wenn eine handschriftliche Arztunterschrift/Tinte vorhanden ist, sonst false"
+                "Produkt": "Welches Produkt (z.B. Software, Hardware, Dienstleistung)",
+                "Signed": "true, wenn eine handschriftliche Unterschrift vorhanden ist, sonst false"
             },
             "validation": {
                 "signature_required": True
@@ -37,11 +37,11 @@ def processor(tmp_path):
                     "produkt": "Produkt"
                 },
                 "folder_date_fallback": "----",
-                "filename_template": "Rezept--{Produkt}--{Datum}"
+                "filename_template": "Vertrag--{Produkt}--{Datum}"
             }
         },
-        "Befundbogen": {
-            "classification_desc": "Ein Dokument mit dem Text 'Befundbogen' oder 'Risikogruppe' am Anfang.",
+        "Lieferschein": {
+            "classification_desc": "Ein Lieferschein oder Übergabeprotokoll.",
             "extraction_fields": {
                 "Vorname": "Vorname",
                 "Nachname": "Nachname",
@@ -59,7 +59,7 @@ def processor(tmp_path):
                     "datum": "Datum",
                     "produkt": "Produkt"
                 },
-                "filename_template": "Befundbogen--{Produkt}--{Datum}"
+                "filename_template": "Lieferschein--{Produkt}--{Datum}"
             }
         },
         "Datenschutzerklärung": {
@@ -178,15 +178,15 @@ def processor(tmp_path):
     return DocumentProcessor(config)
 
 
-def test_rezept_validation_requires_signature(processor):
-    # Rezept ohne Unterschrift -> Fehlschlag (Rezepte haben immer einen Stempel)
-    data_no_sign = {"Dokument": "Rezept", "Nachname": "Muster", "Vorname": "Max", "Datum": "2026-07-01", "Produkt": "Einlagen", "Signed": False}
+def test_vertrag_validation_requires_signature(processor):
+    # Vertrag ohne Unterschrift -> Fehlschlag
+    data_no_sign = {"Dokument": "Vertrag", "Nachname": "Muster", "Vorname": "Max", "Datum": "2026-07-01", "Produkt": "Software", "Signed": False}
     valid, reason = processor._validate_extracted_data(data_no_sign)
     assert not valid
     assert "Signature" in reason or "Unterschrift" in reason
 
-    # Rezept mit Unterschrift -> OK (Rezepte haben immer einen Stempel)
-    data_sign = {"Dokument": "Rezept", "Nachname": "Muster", "Vorname": "Max", "Datum": "2026-07-01", "Produkt": "Einlagen", "Signed": True}
+    # Vertrag mit Unterschrift -> OK
+    data_sign = {"Dokument": "Vertrag", "Nachname": "Muster", "Vorname": "Max", "Datum": "2026-07-01", "Produkt": "Software", "Signed": True}
     valid, reason = processor._validate_extracted_data(data_sign)
     assert valid
     assert reason == "OK"
@@ -195,20 +195,20 @@ def test_rezept_validation_requires_signature(processor):
 def test_other_docs_require_signature_only(processor):
     for doc_type in ["Datenschutzerklärung", "Kostenaufstellung", "Zuzahlungsaufstellung"]:
         # Ohne Unterschrift -> Fehlschlag
-        data_no_sign = {"Dokument": doc_type, "Nachname": "Muster", "Vorname": "Max", "Datum": "2026-07-01", "Produkt": "Einlagen", "Signed": False}
+        data_no_sign = {"Dokument": doc_type, "Nachname": "Muster", "Vorname": "Max", "Datum": "2026-07-01", "Produkt": "Software", "Signed": False}
         valid, reason = processor._validate_extracted_data(data_no_sign)
         assert not valid
         assert "Signature" in reason or "Unterschrift" in reason
 
         # Mit Unterschrift -> OK
-        data_sign = {"Dokument": doc_type, "Nachname": "Muster", "Vorname": "Max", "Datum": "2026-07-01", "Produkt": "Einlagen", "Signed": True}
+        data_sign = {"Dokument": doc_type, "Nachname": "Muster", "Vorname": "Max", "Datum": "2026-07-01", "Produkt": "Software", "Signed": True}
         valid, reason = processor._validate_extracted_data(data_sign)
         assert valid
         assert reason == "OK"
 
 
 def test_notiz_no_signature_required(processor):
-    data_notiz = {"Dokument": "Notiz", "Nachname": "Muster", "Vorname": "Max", "Datum": "2026-07-01", "Produkt": "Einlagen", "Signed": False}
+    data_notiz = {"Dokument": "Notiz", "Nachname": "Muster", "Vorname": "Max", "Datum": "2026-07-01", "Produkt": "Software", "Signed": False}
     valid, reason = processor._validate_extracted_data(data_notiz)
     assert valid
     assert reason == "OK"
@@ -216,18 +216,18 @@ def test_notiz_no_signature_required(processor):
 
 def test_person_memory_persists_even_on_validation_failure(processor, tmp_path):
     # Erstelle eine Dummy-Datei im watch_dir
-    dummy_file = tmp_path / "watch" / "test_rezept.pdf"
+    dummy_file = tmp_path / "watch" / "test_vertrag.pdf"
     dummy_file.write_text("dummy pdf content", encoding="utf-8")
 
-    # Mocke extract_hybrid_voting, dass ein Rezept OHNE Unterschrift für "Hans Müller" herauskommt
+    # Mocke extract_hybrid_voting, dass ein Vertrag OHNE Unterschrift für "Hans Müller" herauskommt
     mock_extracted = {
-        "Dokument": "Rezept",
+        "Dokument": "Vertrag",
         "Vorname": "Hans",
         "Nachname": "Müller",
         "Datum": "2026-07-01",
-        "Produkt": "Einlagen",
+        "Produkt": "Software",
         "Signed": False,
-        "ocr_text": "Rezept für Einlagen Hans Müller",
+        "ocr_text": "Vertrag für Software Hans Müller",
         "page_results": []
     }
 
@@ -241,30 +241,30 @@ def test_person_memory_persists_even_on_validation_failure(processor, tmp_path):
     # Aber das Personen-Gedächtnis MUSS trotzdem aktualisiert worden sein!
     assert processor.last_person_data["Nachname"] == "Müller"
     assert processor.last_person_data["Vorname"] == "Hans"
-    assert processor.last_person_data["Produkt"] == "Einlagen"
+    assert processor.last_person_data["Produkt"] == "Software"
 
 
-def test_notiz_routes_to_rejected_rezept_person(processor, tmp_path):
-    # 1. Rezept ohne Unterschrift im watch_dir verarbeiten -> schlägt fehl und bleibt im Eingang (.meta wird erstellt)
-    rezept_file = tmp_path / "watch" / "rezept_ohne_signatur.pdf"
+def test_notiz_routes_to_rejected_vertrag_person(processor, tmp_path):
+    # 1. Vertrag ohne Unterschrift im watch_dir verarbeiten -> schlägt fehl und bleibt im Eingang (.meta wird erstellt)
+    vertrag_file = tmp_path / "watch" / "vertrag_ohne_signatur.pdf"
     processor.config.folder_structure = ["{Datum}", "{Produkt}", "{Nachname}", "{Vorname}"]
-    rezept_file.write_text("dummy rezept", encoding="utf-8")
+    vertrag_file.write_text("dummy vertrag", encoding="utf-8")
 
-    mock_rezept = {
-        "Dokument": "Rezept",
+    mock_vertrag = {
+        "Dokument": "Vertrag",
         "Vorname": "Anna",
         "Nachname": "Schmidt",
         "Datum": "2026-07-02",
-        "Produkt": "Orthesen",
+        "Produkt": "Hardware",
         "Signed": False,
-        "ocr_text": "Rezept Anna Schmidt",
+        "ocr_text": "Vertrag Anna Schmidt",
         "page_results": []
     }
 
-    with patch.object(processor, "extract_hybrid_voting", return_value=mock_rezept):
-        processor.process_and_route_file(str(rezept_file))
+    with patch.object(processor, "extract_hybrid_voting", return_value=mock_vertrag):
+        processor.process_and_route_file(str(vertrag_file))
 
-    # Rezept ist nicht im target_dir gelandet
+    # Vertrag ist nicht im target_dir gelandet
     assert len(os.listdir(processor.config.target_base_dir)) == 0
 
     # 2. Jetzt kommt eine Notiz OHNE Personennamen an
@@ -299,7 +299,7 @@ def test_unbekannt_doc_type_fails_validation(processor):
         "Nachname": "Muster",
         "Vorname": "Max",
         "Datum": "2026-07-01",
-        "Produkt": "Einlagen",
+        "Produkt": "Software",
         "Signed": True
     }
     valid, reason = processor._validate_extracted_data(data_unbekannt)
@@ -308,14 +308,14 @@ def test_unbekannt_doc_type_fails_validation(processor):
 
     # Dokument mit UNBEKANNT auf einer Seite -> Fehlschlag
     data_multipage = {
-        "Dokument": "Rezept+UNBEKANNT",
+        "Dokument": "Vertrag+UNBEKANNT",
         "Nachname": "Muster",
         "Vorname": "Max",
         "Datum": "2026-07-01",
-        "Produkt": "Einlagen",
+        "Produkt": "Software",
         "Signed": True,
         "page_results": [
-            {"Dokument": "Rezept", "Signed": True},
+            {"Dokument": "Vertrag", "Signed": True},
             {"Dokument": "UNBEKANNT", "Signed": True}
         ]
     }
@@ -357,13 +357,13 @@ def test_multipage_datenschutz_only_requires_last_page_signature(processor):
 
 
 def test_dependent_document_inherits_parent_optional_fields(processor):
-    # Simuliere Eltern-Dokument (z.B. Befundbogen) ohne akademischen Titel (Titel ist optional)
+    # Simuliere Eltern-Dokument (z.B. Lieferschein) ohne akademischen Titel (Titel ist optional)
     parent_extracted = {
-        "Dokument": "Befundbogen",
+        "Dokument": "Lieferschein",
         "Nachname": "Schmidt",
         "Vorname": "Thomas",
         "Datum": "2026-07-15",
-        "Produkt": "Einlagen",
+        "Produkt": "Software",
         "Titel": "[FEHLT]"
     }
 
@@ -372,9 +372,9 @@ def test_dependent_document_inherits_parent_optional_fields(processor):
     processor.last_optional_fields = {"titel"}
     processor.last_extraction_fields = {"datum", "nachname", "vorname", "titel", "produkt"}
 
-    # Simuliere abhängiges Dokument (z.B. Einlagenumriss, dependent: true)
+    # Simuliere abhängiges Dokument (z.B. Anhang, dependent: true)
     dependent_extracted = {
-        "Dokument": "Einlagenumriss"
+        "Dokument": "Anhang"
     }
 
     # Simuliere Verarbeitungs-Kontext wie in process_and_route_file
@@ -382,7 +382,7 @@ def test_dependent_document_inherits_parent_optional_fields(processor):
         "dependent": True,
         "routing": {
             "archive": True,
-            "filename_template": "Einlagenumriss--{Nachname}_{Vorname}--{Datum}",
+            "filename_template": "Anhang--{Nachname}_{Vorname}--{Datum}",
             "match_folder_by": ["Nachname", "Titel", "Vorname"]
         }
     }
@@ -412,19 +412,18 @@ def test_dependent_document_inherits_parent_optional_fields(processor):
         extraction_fields=extraction_fields
     )
 
-    # Erwartet: "2026-07-15--Einlagen--Schmidt--Thomas"
-    # Wenn "Titel" fälschlicherweise nicht als optional eingestuft würde, stünde dort "Titel-MISSINGThomas"
+    # Erwartet: "2026-07-15--Software--Schmidt--Thomas"
     assert "----" not in target_dir
     assert "Thomas" in target_dir
 
 
 def test_validate_extracted_data_low_confidence(processor):
     extracted_low_conf = {
-        "Dokument": "Rezept",
+        "Dokument": "Vertrag",
         "Vorname": "Daniel-Timothy",
         "Nachname": "Peal",
         "Datum": "2026-05-13",
-        "Produkt": "Einlagen",
+        "Produkt": "Software",
         "Signed": True,
         "_confidence": {
             "Vorname": 1.0,
@@ -442,15 +441,15 @@ def test_validate_extracted_data_low_confidence(processor):
 
 def test_validate_multidoc_batch_low_confidence(processor):
     extracted_multidoc = {
-        "Dokument": "Rezept+Kostenaufstellung",
+        "Dokument": "Vertrag+Kostenaufstellung",
         "Vorname": "Denise",
         "Nachname": "Wesselmann",
         "Datum": "2026-04-08",
-        "Produkt": "Einlagen",
+        "Produkt": "Software",
         "Signed": True,
         "page_results": [
             {
-                "Dokument": "Rezept",
+                "Dokument": "Vertrag",
                 "Vorname": "Denise",
                 "Nachname": "Wesselmann",
                 "Datum": "2026-04-08",
@@ -462,12 +461,17 @@ def test_validate_multidoc_batch_low_confidence(processor):
                 "Vorname": "Andre",
                 "Nachname": "Haverigo",
                 "Datum": "2026-04-08",
-                "Produkt": "Einlagen",
+                "Produkt": "Software",
                 "Signed": True,
                 "_confidence": {"Datum": 1.0, "Vorname": 1.0, "Nachname": 1.0}
             }
         ]
     }
+
+    is_valid, reason = processor.extraction_pipeline.validate_extracted_data(extracted_multidoc)
+    assert not is_valid
+    assert "Low confidence for required field 'Datum'" in reason
+    assert "0.50" in reason
 
     is_valid, reason = processor.extraction_pipeline.validate_extracted_data(extracted_multidoc)
     assert not is_valid

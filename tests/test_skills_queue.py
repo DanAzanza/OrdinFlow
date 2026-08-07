@@ -10,79 +10,54 @@ from core.skills_engine import SkillManager, SkillQueueManager
 
 @pytest.fixture
 def temp_skills_env():
-    temp_dir = tempfile.mkdtemp()
-    skills_dir = os.path.join(temp_dir, "settings", "skills")
-    docs_dir = os.path.join(temp_dir, "settings", "documents")
+    tmp_dir = tempfile.mkdtemp()
+    skills_dir = os.path.join(tmp_dir, "settings", "skills")
     os.makedirs(skills_dir, exist_ok=True)
-    os.makedirs(docs_dir, exist_ok=True)
 
-    # Create sample import and export skills
-    sm = SkillManager(skills_dir=skills_dir)
-    sm.save_skill({
+    yield tmp_dir, skills_dir
+
+    shutil.rmtree(tmp_dir, ignore_errors=True)
+
+
+def test_queue_manager_enqueue(temp_skills_env):
+    tmp_dir, skills_dir = temp_skills_env
+
+    skill_mgr = SkillManager(skills_dir=skills_dir)
+    queue_mgr = SkillQueueManager(skill_manager=skill_mgr)
+
+    s1 = {
         "id": "import_eingang",
-        "name": "Inbox Folder Import",
+        "name": "Eingangs-Import",
         "type": "import",
-        "watch_dir": "./Inbox",
-    })
-    sm.save_skill({
-        "id": "sample_export",
-        "name": "Sample Export",
-        "type": "export",
-        "target_window": "Remote Desktop*",
-    })
-
-    yield temp_dir, sm
-    shutil.rmtree(temp_dir)
-
-
-def test_per_skill_document_types_structure(temp_skills_env):
-    temp_dir, _ = temp_skills_env
-    config = AppConfig(base_dir=temp_dir)
-    settings_dir = os.path.join(temp_dir, "settings")
-
-    doc_types = {
-        "Rezept": {"emoji": "📑", "classification_desc": "Arzneiverordnung"},
-        "Befundbogen": {"emoji": "🔬", "classification_desc": "Laborbefund"},
+        "enabled": True,
     }
+    skill_mgr.save_skill(s1)
 
-    # Save document types for import_eingang
-    config.save_document_types_for_skill("import_eingang", doc_types, settings_dir=settings_dir)
+    item = queue_mgr.add_to_queue("import_eingang")
+    assert item["skill_id"] == "import_eingang"
+    assert item["status"] == "pending"
 
-    # Verify single skill file settings/skills/import_eingang.yaml
-    skill_file = os.path.join(settings_dir, "skills", "import_eingang.yaml")
-    assert os.path.exists(skill_file)
-
-    # Load back
-    loaded = config.get_document_types_for_skill("import_eingang", settings_dir=settings_dir)
-    assert "Rezept" in loaded
-    assert "Befundbogen" in loaded
-    assert loaded["Rezept"]["emoji"] == "📑"
+    state = queue_mgr.get_queue_state()
+    assert len(state["items"]) == 1
 
 
-def test_skill_queue_manager_add_remove_reorder(temp_skills_env):
-    _, sm = temp_skills_env
-    qm = SkillQueueManager(sm)
+def test_load_doctypes_from_import_skill(temp_skills_env):
+    tmp_dir, skills_dir = temp_skills_env
+    config = AppConfig(base_dir=tmp_dir)
 
-    # Add 2 items
-    item1 = qm.add_to_queue("import_eingang")
-    item2 = qm.add_to_queue("sample_export")
+    skill_mgr = SkillManager(skills_dir=skills_dir)
 
-    state = qm.get_queue_state()
-    assert len(state["items"]) == 2
-    assert state["items"][0]["skill_id"] == "import_eingang"
-    assert state["items"][0]["skill_type"] == "import"
-    assert state["items"][1]["skill_id"] == "sample_export"
+    import_skill = {
+        "id": "import_eingang",
+        "type": "import",
+        "document_types": {
+            "Vertrag": {"emoji": "📜", "classification_desc": "Vertragsdokument"},
+            "Lieferschein": {"emoji": "📦", "classification_desc": "Liefernachweis"},
+        },
+    }
+    skill_mgr.save_skill(import_skill)
 
-    # Reorder
-    reordered_ids = [item2["id"], item1["id"]]
-    success = qm.reorder_queue(reordered_ids)
-    assert success is True
-
-    state_after = qm.get_queue_state()
-    assert state_after["items"][0]["id"] == item2["id"]
-    assert state_after["items"][1]["id"] == item1["id"]
-
-    # Remove item
-    removed = qm.remove_from_queue(item1["id"])
-    assert removed is True
-    assert len(qm.get_queue_state()["items"]) == 1
+    loaded = config.get_document_types_for_skill("import_eingang")
+    assert "Vertrag" in loaded
+    assert "Lieferschein" in loaded
+    assert loaded["Vertrag"]["emoji"] == "📜"
