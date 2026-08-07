@@ -251,8 +251,8 @@ def main() -> None:
         _cleanup_stale_instance(config.dashboard_port)
 
     logger.info("%s", "=" * 60)
-    logger.info("[*] Watch Directory (Eingang)      : %s", config.watch_dir)
-    logger.info("[*] Target Directory (Vorgänge)    : %s", config.target_base_dir)
+    logger.info("[*] Watch Directory (Inbox)        : %s", config.watch_dir)
+    logger.info("[*] Target Directory (Cases)       : %s", config.target_base_dir)
     logger.info("%s", "=" * 60)
 
     processor = DocumentProcessor(config)
