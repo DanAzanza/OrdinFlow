@@ -1,0 +1,697 @@
+"""Unit-Tests für Kernlogik: Produkt-Normalisierung, Voting und OCR-Fallback."""
+
+import os
+import tempfile
+
+from core.config import AppConfig
+from core.processor import DocumentProcessor
+
+# ──────────────────────────────────────────────────────────────
+# HIGH VALUE
+# ──────────────────────────────────────────────────────────────
+
+
+
+
+
+
+
+
+
+# ──────────────────────────────────────────────────────────────
+# MEDIUM VALUE
+# ──────────────────────────────────────────────────────────────
+
+
+def test_load_from_yaml_creates_default_when_missing(tmp_path):
+    """Fehlt die YAML-Datei, wird sie mit Default-Werten erzeugt."""
+    config = AppConfig(base_dir=str(tmp_path))
+    yaml_path = tmp_path / "settings" / "config.yaml"
+    assert not yaml_path.exists()
+
+    config.load_from_yaml()
+    assert yaml_path.exists()
+
+    import yaml as _yaml
+
+    data = _yaml.safe_load(yaml_path.read_text())
+    assert "llm_backend" in data
+
+
+def test_setup_paths_creates_directories():
+    """setup_paths erzeugt Eingang und Vorgänge automatisch."""
+    tmp_dir = tempfile.mkdtemp()
+    try:
+        config = AppConfig(base_dir=tmp_dir)
+        config.setup_paths()
+        assert os.path.isdir(config.watch_dir)
+        assert os.path.isdir(config.target_base_dir)
+    finally:
+        import shutil
+
+        shutil.rmtree(tmp_dir, ignore_errors=True)
+
+
+def test_api_vorgaenge_edit_file_path_traversal_protection(client, tmp_path):
+    """Versuch ausserhalb target_base_dir zu schreiben wird blockiert."""
+    from routes.state import DashboardState
+
+    # Sichere Basis-Verzeichnis setzen
+    safe_base = str(tmp_path / "safe_target")
+    os.makedirs(safe_base, exist_ok=True)
+    DashboardState.config.target_base_dir = safe_base
+
+    # Erstelle eine Datei DANN versuche ausserhalb zu verschieben
+    src_file = tmp_path / "out_of_bounds"  # liegt AUSSERHALB target_base_dir
+    src_file.mkdir()
+    pdf_src = src_file / "escape.pdf"
+    pdf_src.touch()
+
+    response = client.post(
+        f"/api/cases/{tmp_path.name}/escape/edit",
+        json={
+            "vorname": "Evil",
+            "nachname": "Traveller",
+            "datum": "2026-07-06",
+            "produkt": "Schuhe",
+            "dokument": "TestDoc",
+        },
+    )
+    # Sollte fehlschlagen, weil 'escape' kein valider Unterordner von safe_target ist
+    assert response.status_code in (404, 405, 500)
+
+
+def test_api_eingang_preview_missing_file_returns_404(client):
+    """Preview von nicht vorhandener Datei liefert 404."""
+    import shutil
+    import tempfile
+
+    tmp = tempfile.mkdtemp()
+    try:
+        from routes.state import DashboardState
+
+        DashboardState.config.watch_dir = tmp
+        response = client.get("/api/inbox/preview/nonexistent.pdf")
+        assert response.status_code == 404
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def test_universal_document_router_custom_schema(tmp_path):
+    """Testet, dass der Universal Document Router mit frei definierten Feldern (z.B. Kuchen-Rezept) funktioniert."""
+    from unittest.mock import patch
+    config = AppConfig(base_dir=str(tmp_path))
+    config.watch_dir = str(tmp_path / "watch")
+    config.target_base_dir = str(tmp_path / "target")
+    os.makedirs(config.watch_dir, exist_ok=True)
+    os.makedirs(config.target_base_dir, exist_ok=True)
+
+    config.folder_structure = ["Konditorei", "{Kategorie}"]
+    config.document_types = {
+        "Rezeptur": {
+            "classification_desc": "Ein Kuchenrezept.",
+            "extraction_fields": {
+                "Kategorie": "Welche Art Kuchen",
+                "Rezeptname": "Name des Rezepts",
+                "Backzeit": "Dauer in Minuten"
+            },
+            "routing": {
+                "archive": True,
+                "filename_template": "Kuchen__{Rezeptname}__{Backzeit}min"
+            }
+        }
+    }
+
+    processor = DocumentProcessor(config)
+    dummy_file = tmp_path / "watch" / "schoko.pdf"
+    dummy_file.write_text("Schokotorte", encoding="utf-8")
+
+    mock_extracted = {
+        "Dokument": "Rezeptur",
+        "Kategorie": "Torten",
+        "Rezeptname": "Schwarzwälder Kirsch",
+        "Backzeit": "45"
+    }
+
+    with patch.object(processor, "extract_hybrid_voting", return_value=mock_extracted):
+        success = processor.process_and_route_file(str(dummy_file))
+
+    assert success
+    expected_folder = tmp_path / "target" / "Konditorei__Torten"
+    assert expected_folder.exists()
+    files_in_folder = os.listdir(expected_folder)
+    assert len(files_in_folder) == 1
+    assert "Kuchen__Schwarzwälder Kirsch__45min.pdf" in files_in_folder[0]
+
+
+def test_universal_document_router_custom_schema_custom_delimiter(tmp_path):
+    """Testet Kuchen-Rezepte mit einem benutzerdefinierten Ordner-Delimiter ('++')."""
+    from unittest.mock import patch
+    config = AppConfig(base_dir=str(tmp_path))
+    config.watch_dir = str(tmp_path / "watch")
+    config.target_base_dir = str(tmp_path / "target")
+    os.makedirs(config.watch_dir, exist_ok=True)
+    os.makedirs(config.target_base_dir, exist_ok=True)
+
+    config.folder_delimiter = "++"
+    config.folder_structure = ["Konditorei", "{Kategorie}", "{Rezeptname}"]
+    config.document_types = {
+        "Rezeptur": {
+            "classification_desc": "Ein Kuchenrezept.",
+            "extraction_fields": {
+                "Kategorie": "Welche Art Kuchen",
+                "Rezeptname": "Name des Rezepts",
+                "Backzeit": "Dauer in Minuten"
+            },
+            "routing": {
+                "archive": True,
+                "filename_template": "Kuchen++{Rezeptname}++{Backzeit}min"
+            }
+        }
+    }
+
+    processor = DocumentProcessor(config)
+    dummy_file = tmp_path / "watch" / "marmor.pdf"
+    dummy_file.write_text("Marmorkuchen", encoding="utf-8")
+
+    mock_extracted = {
+        "Dokument": "Rezeptur",
+        "Kategorie": "Rührkuchen",
+        "Rezeptname": "Marmorkuchen",
+        "Backzeit": "50"
+    }
+
+    with patch.object(processor, "extract_hybrid_voting", return_value=mock_extracted):
+        success = processor.process_and_route_file(str(dummy_file))
+
+    assert success
+    expected_folder = tmp_path / "target" / "Konditorei++Rührkuchen++Marmorkuchen"
+    assert expected_folder.exists()
+    files_in_folder = os.listdir(expected_folder)
+    assert len(files_in_folder) == 1
+    assert "Kuchen++Marmorkuchen++50min.pdf" in files_in_folder[0]
+
+
+def test_optional_fields_in_folder_template(tmp_path):
+    """Prüft, dass optionale Felder wie 'Titel' bei fehlendem Wert nicht als FEHLT im Ordnernamen erscheinen."""
+    from unittest.mock import patch
+    config = AppConfig(base_dir=str(tmp_path))
+    config.watch_dir = str(tmp_path / "watch")
+    config.target_base_dir = str(tmp_path / "target")
+    os.makedirs(config.watch_dir, exist_ok=True)
+    os.makedirs(config.target_base_dir, exist_ok=True)
+    config.folder_structure = ["{Datum}", "{Produkt}", "{Nachname}, {Titel} {Vorname}"]
+    config.document_types = {
+        "Rezept": {
+            "classification_desc": "Arztrezept",
+            "extraction_fields": {
+                "Vorname": "Vorname",
+                "Nachname": "Nachname",
+                "Titel": "Titel",
+                "Datum": "Datum",
+                "Produkt": "Produkt"
+            },
+            "validation": {
+                "optional_fields": ["Titel"]
+            },
+            "routing": {
+                "archive": True,
+                "filename_template": "Rezept__{Produkt}__{Datum}"
+            }
+        }
+    }
+
+    processor = DocumentProcessor(config)
+    dummy_file = tmp_path / "watch" / "rezept.pdf"
+    dummy_file.write_text("Dummy Rezept", encoding="utf-8")
+
+    mock_extracted = {
+        "Dokument": "Rezept",
+        "Vorname": "Max",
+        "Nachname": "Müller",
+        "Titel": "[FEHLT]",
+        "Datum": "2026-07-08",
+        "Produkt": "Einlagen"
+    }
+
+    with patch.object(processor, "extract_hybrid_voting", return_value=mock_extracted):
+        success = processor.process_and_route_file(str(dummy_file))
+
+    assert success
+    # Sollte sauber "{Datum}__{Produkt}__{Nachname}, {Vorname}" ergeben ohne doppelte Leerzeichen
+    expected_folder = tmp_path / "target" / "2026-07-08__Einlagen__Müller, Max"
+    assert expected_folder.exists()
+
+
+def test_split_multi_documents(tmp_path):
+    """Prüft, ob ein Sammel-PDF mit mehreren Dokumenten bei erfolgreicher Validierung aufgeteilt wird."""
+    from unittest.mock import patch
+
+    import fitz
+
+    from core.config import AppConfig
+    from core.processor import DocumentProcessor
+
+    # Konfiguration vorbereiten
+    config = AppConfig()
+    config.watch_dir = str(tmp_path / "watch")
+    config.target_base_dir = str(tmp_path / "target")
+    config.folder_structure = ["{Datum}", "{Produkt}", "{Nachname}", "{Vorname}"]
+    config.split_multi_documents = True
+    config.document_types = {
+        "Rezept": {
+            "validation": {"signature_required": True},
+            "routing": {"archive": True, "filename_template": "{Dokument}__{Nachname}"}
+        },
+        "Befundbogen": {
+            "validation": {"signature_required": False},
+            "routing": {"archive": True, "filename_template": "{Dokument}__{Nachname}"}
+        }
+    }
+
+    os.makedirs(config.watch_dir, exist_ok=True)
+    os.makedirs(config.target_base_dir, exist_ok=True)
+
+    # Erstelle ein 2-seitiges PDF
+    pdf_path = os.path.join(config.watch_dir, "sammelscan.pdf")
+    doc = fitz.open()
+    doc.new_page() # Seite 1
+    doc.new_page() # Seite 2
+    doc.save(pdf_path)
+    doc.close()
+
+    processor = DocumentProcessor(config)
+
+    # Mocke die Extraktion, die 2 Dokumente zurückgibt
+    mock_extracted = {
+        "Dokument": "Rezept+Befundbogen",
+        "Vorname": "Max",
+        "Nachname": "Mustermann",
+        "Datum": "2026-07-10",
+        "Produkt": "Einlagen",
+        "Signed": True,
+        "page_results": [
+            {
+                "Dokument": "Rezept",
+                "pages": [1],
+                "Signed": True
+            },
+            {
+                "Dokument": "Befundbogen",
+                "pages": [2],
+                "Signed": False
+            }
+        ]
+    }
+
+    with patch.object(processor, "extract_hybrid_voting", return_value=mock_extracted):
+        success = processor.process_and_route_file(pdf_path)
+
+    assert success
+    assert not os.path.exists(pdf_path)
+
+    target_dir = os.path.join(config.target_base_dir, "2026-07-10__Einlagen__Mustermann__Max")
+    assert os.path.exists(target_dir)
+
+    rezept_path = os.path.join(target_dir, "Rezept__Mustermann.pdf")
+    befund_path = os.path.join(target_dir, "Befundbogen__Mustermann.pdf")
+
+    assert os.path.exists(rezept_path)
+    assert os.path.exists(befund_path)
+
+    doc_rep = fitz.open(rezept_path)
+    assert len(doc_rep) == 1
+    doc_rep.close()
+
+    doc_bef = fitz.open(befund_path)
+    assert len(doc_bef) == 1
+    doc_bef.close()
+
+
+def test_empty_pages_deleted(tmp_path):
+    """Testet, dass leere Seiten gelöscht werden, wenn save_empty_pages=False."""
+    from unittest.mock import patch
+
+    import fitz
+
+    from core.config import AppConfig
+    from core.processor import DocumentProcessor
+
+    config = AppConfig(base_dir=str(tmp_path))
+    config.watch_dir = str(tmp_path / "watch")
+    config.target_base_dir = str(tmp_path / "target")
+    os.makedirs(config.watch_dir, exist_ok=True)
+    os.makedirs(config.target_base_dir, exist_ok=True)
+
+    config.save_empty_pages = False
+    config.folder_structure = ["{Datum}", "{Produkt}", "{Nachname}", "{Vorname}"]
+    config.document_types = {
+        "Rezept": {
+            "extraction_fields": {
+                "Vorname": "Vorname des Personen",
+                "Nachname": "Nachname des Personen",
+                "Datum": "Ausstellungsdatum",
+                "Produkt": "Produkt"
+            },
+            "validation": {"signature_required": False},
+            "routing": {"archive": True, "filename_template": "{Dokument}__{Nachname}"}
+        }
+    }
+
+    # Erstelle ein 3-seitiges PDF
+    pdf_path = os.path.join(config.watch_dir, "input.pdf")
+    doc = fitz.open()
+    doc.new_page()  # Page 1
+    doc.new_page()  # Page 2 (will be classified as LEER)
+    doc.new_page()  # Page 3
+    doc.save(pdf_path)
+    doc.close()
+
+    processor = DocumentProcessor(config)
+
+    # Mock _classify_single_page
+    mock_classifications = [
+        {"idx": 0, "page_num": 1, "raw_img": None, "prep_img": None, "b64_img": "dummy1", "ocr_text": "Rezepttext", "doc_type": "Rezept", "matched_name": "Rezept", "matched_info": config.document_types["Rezept"]},
+        {"idx": 1, "page_num": 2, "raw_img": None, "prep_img": None, "b64_img": "dummy2", "ocr_text": "", "doc_type": "LEER", "matched_name": "LEER", "matched_info": {}},
+        {"idx": 2, "page_num": 3, "raw_img": None, "prep_img": None, "b64_img": "dummy3", "ocr_text": "Rezepttext 2", "doc_type": "Rezept", "matched_name": "Rezept", "matched_info": config.document_types["Rezept"]}
+    ]
+
+    mock_extracted_data = {
+        "Dokument": "Rezept",
+        "Vorname": "Max",
+        "Nachname": "Mustermann",
+        "Datum": "2026-07-10",
+        "Produkt": "Einlagen"
+    }
+
+    with patch.object(processor, "_classify_single_page", side_effect=mock_classifications), \
+         patch.object(processor.llm_extractor, "extract_data_from_images_with_type", return_value=mock_extracted_data):
+        success = processor.process_and_route_file(pdf_path)
+
+    assert success
+    assert not os.path.exists(pdf_path)
+
+    target_dir = os.path.join(config.target_base_dir, "2026-07-10__Einlagen__Mustermann__Max")
+    assert os.path.exists(target_dir)
+
+    reconstructed_pdf = os.path.join(target_dir, "Rezept__Mustermann.pdf")
+    assert os.path.exists(reconstructed_pdf)
+
+    # Das rekonstruierte PDF sollte nur 2 Seiten haben (Seite 2 LEER wurde gelöscht)
+    doc_check = fitz.open(reconstructed_pdf)
+    assert len(doc_check) == 2
+    doc_check.close()
+
+
+def test_all_pages_empty_deleted(tmp_path):
+    """Testet, dass das PDF komplett gelöscht wird, wenn alle Seiten leer sind und save_empty_pages=False."""
+    from unittest.mock import patch
+
+    import fitz
+
+    from core.config import AppConfig
+    from core.processor import DocumentProcessor
+
+    config = AppConfig(base_dir=str(tmp_path))
+    config.watch_dir = str(tmp_path / "watch")
+    config.target_base_dir = str(tmp_path / "target")
+    os.makedirs(config.watch_dir, exist_ok=True)
+    os.makedirs(config.target_base_dir, exist_ok=True)
+
+    config.save_empty_pages = False
+
+    # Erstelle ein 2-seitiges PDF
+    pdf_path = os.path.join(config.watch_dir, "empty.pdf")
+    doc = fitz.open()
+    doc.new_page()
+    doc.new_page()
+    doc.save(pdf_path)
+    doc.close()
+
+    processor = DocumentProcessor(config)
+
+    # Mock _classify_single_page to return LEER for all pages
+    mock_classifications = [
+        {"idx": 0, "page_num": 1, "raw_img": None, "prep_img": None, "b64_img": "d1", "ocr_text": "", "doc_type": "LEER", "matched_name": "LEER", "matched_info": {}},
+        {"idx": 1, "page_num": 2, "raw_img": None, "prep_img": None, "b64_img": "d2", "ocr_text": "", "doc_type": "LEER", "matched_name": "LEER", "matched_info": {}}
+    ]
+
+    with patch.object(processor, "_classify_single_page", side_effect=mock_classifications):
+        success = processor.process_and_route_file(pdf_path)
+
+    assert success
+    # Die Datei muss gelöscht sein!
+    assert not os.path.exists(pdf_path)
+
+
+def test_empty_pages_saved(tmp_path):
+    """Testet, dass leere Seiten behalten und dem umliegenden Typ zugeordnet werden, wenn save_empty_pages=True."""
+    from unittest.mock import patch
+
+    import fitz
+
+    from core.config import AppConfig
+    from core.processor import DocumentProcessor
+
+    config = AppConfig(base_dir=str(tmp_path))
+    config.watch_dir = str(tmp_path / "watch")
+    config.target_base_dir = str(tmp_path / "target")
+    os.makedirs(config.watch_dir, exist_ok=True)
+    os.makedirs(config.target_base_dir, exist_ok=True)
+
+    config.save_empty_pages = True
+    config.folder_structure = ["{Datum}", "{Produkt}", "{Nachname}", "{Vorname}"]
+    config.document_types = {
+        "Rezept": {
+            "extraction_fields": {
+                "Vorname": "Vorname des Personen",
+                "Nachname": "Nachname des Personen",
+                "Datum": "Ausstellungsdatum",
+                "Produkt": "Produkt"
+            },
+            "validation": {"signature_required": False},
+            "routing": {"archive": True, "filename_template": "{Dokument}__{Nachname}"}
+        }
+    }
+
+    # Erstelle ein 3-seitiges PDF
+    pdf_path = os.path.join(config.watch_dir, "input.pdf")
+    doc = fitz.open()
+    doc.new_page()
+    doc.new_page()
+    doc.new_page()
+    doc.save(pdf_path)
+    doc.close()
+
+    processor = DocumentProcessor(config)
+
+    # Mock _classify_single_page: Page 2 is LEER
+    mock_classifications = [
+        {"idx": 0, "page_num": 1, "raw_img": None, "prep_img": None, "b64_img": "dummy1", "ocr_text": "Rezepttext", "doc_type": "Rezept", "matched_name": "Rezept", "matched_info": config.document_types["Rezept"]},
+        {"idx": 1, "page_num": 2, "raw_img": None, "prep_img": None, "b64_img": "dummy2", "ocr_text": "", "doc_type": "LEER", "matched_name": "LEER", "matched_info": {}},
+        {"idx": 2, "page_num": 3, "raw_img": None, "prep_img": None, "b64_img": "dummy3", "ocr_text": "Rezepttext 2", "doc_type": "Rezept", "matched_name": "Rezept", "matched_info": config.document_types["Rezept"]}
+    ]
+
+    mock_extracted_data = {
+        "Dokument": "Rezept",
+        "Vorname": "Max",
+        "Nachname": "Mustermann",
+        "Datum": "2026-07-10",
+        "Produkt": "Einlagen"
+    }
+
+    with patch.object(processor, "_classify_single_page", side_effect=mock_classifications), \
+         patch.object(processor.llm_extractor, "extract_data_from_images_with_type", return_value=mock_extracted_data):
+        success = processor.process_and_route_file(pdf_path)
+
+    assert success
+    assert not os.path.exists(pdf_path)
+
+    target_dir = os.path.join(config.target_base_dir, "2026-07-10__Einlagen__Mustermann__Max")
+    assert os.path.exists(target_dir)
+
+    reconstructed_pdf = os.path.join(target_dir, "Rezept__Mustermann.pdf")
+    assert os.path.exists(reconstructed_pdf)
+
+    # Das rekonstruierte PDF sollte alle 3 Seiten behalten haben
+    doc_check = fitz.open(reconstructed_pdf)
+    assert len(doc_check) == 3
+    doc_check.close()
+
+
+def test_pure_majority_voting_multipage():
+    """Testet das gewichtete Fuzzy-Voting mit Konsens-Score K(f) über alle Seiten und Stufen."""
+    from unittest.mock import MagicMock
+
+    from core.config import AppConfig
+    from core.extraction_pipeline import ExtractionPipeline
+
+    config = AppConfig()
+    pipeline = ExtractionPipeline(config, MagicMock(), MagicMock())
+
+    # 2 Seiten Gruppe
+    group_pages = [
+        {"page_num": 1, "raw_img": None, "prep_img": None, "b64_img": "p1", "matched_info": {"extraction_fields": {"Datum": "...", "Nachname": "..."}}},
+        {"page_num": 2, "raw_img": None, "prep_img": None, "b64_img": "p2", "matched_info": {"extraction_fields": {"Datum": "...", "Nachname": "..."}}}
+    ]
+
+    pipeline.llm_extractor.extract_data_from_images_with_type = MagicMock(side_effect=[
+        {"Datum": "2026-04-10", "Nachname": "Gerbig"}, # Tier 1 Page 1
+        {"Datum": "2026-04-10", "Nachname": "Gerbig"}, # Tier 1 Page 2
+    ])
+
+    res = pipeline.process_page_group("Fußscan", group_pages)
+    assert res is not None
+    # Early-Stop löst nach Stufe 1 aus, da alle Felder K >= 0.85 haben
+    assert pipeline.llm_extractor.extract_data_from_images_with_type.call_count == 2
+    assert res.get("Datum") == "2026-04-10"
+    assert res.get("Nachname") == "Gerbig"
+    # Neues Feature: Confidence-Metriken sind vorhanden und voll
+    conf = res.get("_confidence", {})
+    assert "Datum" in conf
+    assert conf["Datum"] == 1.0
+
+
+def test_boolean_field_voting_consensus():
+    """Testet, dass True/False Stimmen korrekt mit Tier-Gewichten verrechnet werden und ein echter bool zurückgegeben wird."""
+    from core.extraction_pipeline import _evaluate_field_consensus
+
+    winner, k_score, counts = _evaluate_field_consensus(
+        "Signed",
+        [[{"Signed": True}], [{"Signed": False}], [{"Signed": False}]],
+        [1396, 1536, 1676]
+    )
+    assert winner is False
+    assert isinstance(winner, bool)
+    assert counts == {True: 1.0, False: 2.75}
+    assert round(k_score, 2) == 0.73
+
+
+def test_ocr_validation_dates_and_phrases():
+    """Testet den generischen OCR-Boost für Datumswerte und mehrzeilige/mehrwortige Namen."""
+    from core.extraction_pipeline import _evaluate_field_consensus
+
+    page_ocr = "Patientenname: Max Mustermann Geburtsdatum: 15.03.2026"
+
+    # Datum
+    winner_d, _, counts_d = _evaluate_field_consensus(
+        "Datum",
+        [[{"Datum": "15.03.2026"}]],
+        [1396],
+        ocr_texts_per_page=[page_ocr],
+        is_ocr_validated=True
+    )
+    assert winner_d == "15.03.2026"
+    assert counts_d.get("15.03.2026") == 1.5
+
+    # Mehrwortiger Name
+    winner_n, _, counts_n = _evaluate_field_consensus(
+        "Nachname",
+        [[{"Nachname": "Max Mustermann"}]],
+        [1396],
+        ocr_texts_per_page=[page_ocr],
+        is_ocr_validated=True
+    )
+    assert winner_n == "Max Mustermann"
+    assert counts_n.get("Max Mustermann") == 1.5
+
+
+def test_canonical_casing_clustering():
+    """Testet, dass bei Gruppenmitgliedern die sauberste Groß-/Kleinschreibung gewählt wird."""
+    from core.extraction_pipeline import _cluster_votes
+
+    clusters = _cluster_votes([("max mustermann", 1.0), ("Max Mustermann", 1.0)])
+    assert len(clusters) == 1
+    assert clusters[0]["representative"] == "Max Mustermann"
+
+
+def test_tiebreaker_target_fields_only():
+    """Testet, dass Stufe 3 Tiebreaker nur gezielt die Konfliktfelder an das VLM übergibt."""
+    from unittest.mock import MagicMock
+
+    from core.config import AppConfig
+    from core.vision import LLMExtractor
+
+    config = AppConfig()
+    config.document_types = {
+        "TestDoc": {
+            "extraction_fields": {
+                "Vorname": "Vorname",
+                "Nachname": "Nachname",
+                "Geburtsdatum": "Geburtsdatum"
+            }
+        }
+    }
+    extractor = LLMExtractor(config)
+    extractor.find_doc_type_config = MagicMock(return_value=("TestDoc", config.document_types["TestDoc"]))
+
+    mock_api = MagicMock(return_value={"Nachname": "Mustermann"})
+    extractor.call_vision_api_json = mock_api
+
+    extractor.extract_data_from_images_with_type("b64_dummy", "TestDoc", target_fields=["Nachname"])
+
+    assert mock_api.called
+    payload = mock_api.call_args[0][0]
+    messages = payload.get("messages", [])
+    user_msg = next((m for m in messages if m.get("role") == "user"), {})
+    content = user_msg.get("content", "")
+    assert '"Nachname"' in content
+    assert '"Vorname"' not in content
+def test_stage2_target_fields_only():
+    """Testet, dass Stufe 2 nur noch die unsicheren/fehlenden Felder aus Stufe 1 abfragt."""
+    from unittest.mock import MagicMock
+
+    from core.config import AppConfig
+    from core.extraction_pipeline import ExtractionPipeline
+
+    config = AppConfig()
+    config.document_types = {
+        "Rezept": {
+            "extraction_fields": {
+                "Vorname": "Vorname",
+                "Nachname": "Nachname",
+                "Geburtsdatum": "Geburtsdatum"
+            }
+        }
+    }
+    pipeline = ExtractionPipeline(config, MagicMock(), MagicMock())
+    group_pages = [{"page_num": 1, "prep_img": None, "b64_img": "dummy", "ocr_text": "Max Mustermann", "matched_info": config.document_types["Rezept"]}]
+
+    # Stufe 1 liefert Vorname & Nachname sicher, Geburtsdatum fehlt ("----")
+    # Stufe 2 wird mit target_fields=["Geburtsdatum"] aufgerufen
+    recorded_target_fields = []
+
+    def mock_run_tier(group_pages, doc_type, dimension, label, target_fields=None):
+        if dimension in (1536, 1750):  # Stufe 2
+            recorded_target_fields.append(target_fields)
+            return [{"Geburtsdatum": "15.03.1990"}]
+        return [{"Vorname": "Max", "Nachname": "Mustermann", "Geburtsdatum": "----"}]
+
+    pipeline.run_extraction_tier = MagicMock(side_effect=mock_run_tier)
+    res = pipeline.process_page_group("Rezept", group_pages)
+
+    assert res is not None
+    assert recorded_target_fields == [["Geburtsdatum"]]
+    assert res.get("Geburtsdatum") == "15.03.1990"
+
+
+def test_substring_merging_and_ocr_priority():
+    """Testet, dass Teilnamen ('Wannink') mit vollen Doppelnamen ('Bramkamp-Wannink') gemergt werden und der längste OCR-bestätigte Name gewinnt."""
+    from core.extraction_pipeline import _cluster_votes, _are_similar_or_substring
+
+    # 1. Test Substring Check
+    assert _are_similar_or_substring("Wannink", "Bramkamp-Wannink") is True
+    assert _are_similar_or_substring("Henning", "Henning Bjarne") is True
+
+    # 2. Test Voting Cluster Selection mit OCR
+    votes = [
+        ("Bramkamp-Wannink", 1.0),
+        ("Bramkamp-Wannink", 1.0),
+        ("Wannink", 1.0),
+    ]
+    ocr_texts = ["Kopfzeile: Sylke Bramkamp-Wannink 16.11.1968"]
+
+    clusters = _cluster_votes(votes, threshold=0.85, ocr_texts=ocr_texts)
+    assert len(clusters) == 1
+    assert clusters[0]["representative"] == "Bramkamp-Wannink"
+

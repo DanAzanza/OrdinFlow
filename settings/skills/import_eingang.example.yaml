@@ -1,0 +1,98 @@
+id: import_eingang_beispiel
+name: Eingangsordner Import (Beispiel)
+type: import
+description: Beispiel-Konfiguration für automatischen Datei-Import und KI-Dokumentenklassifizierung.
+enabled: true
+allowed_extensions:
+- .pdf
+- .png
+- .jpg
+- .jpeg
+- .tif
+- .tiff
+split_multi_documents: true
+save_empty_pages: false
+trigger: on_queue
+
+document_types:
+  Rechnung:
+    classification_desc: Ein offizielles Rechnungsdokument oder eine Gutschrift mit Beträgen, Rechnungsnummer und Rechnungsdatum.
+    emoji: 🧾
+    extraction_fields:
+      RechnungsDatum: Ausstellungsdatum der Rechnung im Format DD-MM-YYYY (z.B. aus 07.04.26 wird 07-04-2026).
+      RechnungsNummer: Die eindeutige Rechnungsnummer (z.B. RE-2026-1049).
+      Empfaenger: Der Name des Rechnungsempfängers oder der Kunde (Nachname, Vorname oder Firmenname).
+      GesamtBetrag: Der Gesamtrechnungsbetrag inklusive Währung (z.B. 149.50 EUR).
+    routing:
+      archive: true
+      filename_template: Rechnung__{Empfaenger}__{RechnungsDatum}
+    validation:
+      optional_fields:
+      - RechnungsNummer
+      signature_required: false
+
+  Vertrag:
+    classification_desc: Ein rechtlicher Vertrag, Vereinbarung oder Dienstleistungsvertrag zwischen zwei Parteien.
+    emoji: 📜
+    extraction_fields:
+      VertragsDatum: Datum des Vertragsabschlusses im Format DD-MM-YYYY.
+      VertragsTyp: Die Art des Vertrags (z.B. Mietvertrag, Arbeitsvertrag, Kaufvertrag, Dienstleistung).
+      PartnerName: Name des Vertragspartners oder der Firma.
+    routing:
+      archive: true
+      filename_template: Vertrag__{VertragsTyp}__{PartnerName}
+    validation:
+      signature_location: Unten auf der letzten Seite über dem Unterschriftenfeld.
+      signature_required: true
+
+  Kuchenrezept:
+    classification_desc: Ein Koch- oder Backrezept für Kuchen, Gebäck oder Speisen mit Zutatenliste und Zubereitungsschritten.
+    emoji: 🍰
+    extraction_fields:
+      RezeptTitel: Name des Kuchens oder Gebäcks (z.B. Apfelkuchen, Marmorkuchen, Käsekuchen).
+      ZutatenHauptbestandteil: Hauptzutat oder Kategorie (z.B. Äpfel, Schokolade, Quark).
+      Zubereitungszeit: Die angegebene Backzeit oder Zubereitungsdauer (z.B. 45 Min).
+    routing:
+      archive: true
+      filename_template: Rezept__{RezeptTitel}
+    validation:
+      optional_fields:
+      - Zubereitungszeit
+      signature_required: false
+
+  Datenschutzerklärung:
+    classification_desc: Ein Dokument oder Formular zur Information und Einwilligung bezüglich Datenschutzbestimmungen (DSGVO).
+    emoji: 🔒
+    dependent: true
+    routing:
+      archive: true
+      filename_template: Datenschutzerklärung
+    validation:
+      signature_location: Unten rechts über dem Schriftzug Ort, Datum, Unterschrift.
+      signature_required: true
+
+  Notizblatt:
+    classification_desc: Eine handschriftliche oder gedruckte Notiz, Werkstattzettel oder kurze Mitteilung ohne festes Formular.
+    emoji: 📝
+    extraction_fields:
+      Thema: Kurze Zusammenfassung des Themas der Notiz in 1-3 Wörtern.
+      Datum: Datum der Notiz falls vorhanden (Format DD-MM-YYYY oder '----').
+    routing:
+      archive: true
+      filename_template: Notiz__{Thema}
+    validation:
+      optional_fields:
+      - Datum
+      signature_required: false
+
+  Foto:
+    classification_desc: Ein Bild oder Foto ohne strukturierten Dokumententext.
+    emoji: 📷
+    dependent: true
+    extraction_fields:
+      Beschreibung: Kurze Beschreibung des abgebildeten Gegenstands oder Motivs.
+    routing:
+      archive: true
+      filename_template: Foto__{Beschreibung}
+    validation:
+      signature_required: false

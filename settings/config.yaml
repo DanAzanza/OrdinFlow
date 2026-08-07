@@ -1,0 +1,45 @@
+llm_backend: llama_cpp
+server_url: http://127.0.0.1:8080/v1
+server_api_key: not-needed
+llm_model_path: C:\Users\danie\Desktop\Motioncheck_DMS\models\Qwen3-VL-8B-Instruct-UD-Q4_K_XL.gguf
+mmproj_path: C:\Users\danie\Desktop\Motioncheck_DMS\models\mmproj-BF16.gguf
+max_dimension: 2048
+crop_padding: 5
+white_border: 8
+contrast_limit: 1
+delay_seconds: 6
+folder_match_threshold: 0.9
+dashboard_port: 8080
+crop_edge_threshold: 45
+min_contour_area: 10
+classify_dimension: 1280
+vision_api_timeout: 120
+vision_api_retries: 3
+base_dir: .
+watch_dir: C:\Users\danie\Desktop\Motioncheck_DMS\Inbox
+target_base_dir: C:\Users\danie\Desktop\Motioncheck_DMS\Cases
+vision_base_rules: ''
+signature_base_rules: 'UNTERSCHRIFT / SIGNATUR REGELN:
+
+  - Suche extrem tolerant auf den eingereichten Seiten nach handschriftlichen Signaturen,
+  Unterschriften, Paraphen, Stift-Kringeln, Handzeichen, Wellenlinien, Kreuzen, Haken,
+  Kugelschreiber-Gekritzel, handgeschriebenen Namenszügen oder Umrandungen.
+
+  - Auf Dokumenten und Verordnungen wird die Unterschrift sehr häufig direkt auf oder
+  quer über/um den gedruckten Namen des Arztes oder den Praxisstempel gezeichnet.
+  Jede solche handschriftliche Tinte auf dem Dokument muss zwingend als vorhanden
+  gewertet werden.
+
+  - Ein leeres Unterschriftenfeld oder ausschließlich gedruckter Text ohne handschriftliche
+  Tinte gilt als false.'
+folder_delimiter: __
+folder_structure:
+- '{Datum}'
+- '{Produkt}'
+- '{Nachname}'
+- '{Vorname}'
+- '{Titel}'
+match_folder_by:
+- Nachname
+- Vorname
+- Titel
