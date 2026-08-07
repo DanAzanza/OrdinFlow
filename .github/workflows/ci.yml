@@ -36,4 +36,4 @@ jobs:
         run: pyright core/
 
       - name: Run pytest suite
-        run: pytest -v --tb=short
+        run: python -m pytest -v --tb=short

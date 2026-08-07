@@ -5,3 +5,7 @@ line-length = 120
 [tool.ruff.lint]
 select = ["E", "F", "W"]
 ignore = ["E501", "E402"]  # E501: line length, E402: imports after logger init
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
