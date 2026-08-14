@@ -65,6 +65,22 @@ def test_skill_manager_crud_and_duplicate(temp_skills_dir):
     assert len(mgr.list_skills()) == 1
 
 
+def test_skill_manager_auto_slugify_id(temp_skills_dir):
+    mgr = SkillManager(skills_dir=temp_skills_dir)
+
+    # 1. Save without ID -> should auto-slugify name
+    skill_1 = {"name": "Export in RDP Patienten-Datenbank", "enabled": True, "steps": []}
+    id_1 = mgr.save_skill(skill_1)
+    assert id_1 == "export_in_rdp_patienten_datenbank"
+    assert os.path.exists(os.path.join(temp_skills_dir, f"{id_1}.yaml"))
+
+    # 2. Save another skill with same name -> should resolve collision cleanly
+    skill_2 = {"name": "Export in RDP Patienten-Datenbank", "enabled": True, "steps": []}
+    id_2 = mgr.save_skill(skill_2)
+    assert id_2 == "export_in_rdp_patienten_datenbank_2"
+    assert os.path.exists(os.path.join(temp_skills_dir, f"{id_2}.yaml"))
+
+
 def test_input_shield_crash_safety():
     """Verifies that InputShield reliably unlocks input even when exceptions occur."""
     with pytest.raises(ValueError):
