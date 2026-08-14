@@ -1,7 +1,6 @@
 import base64
 import logging
 import os
-import threading
 import time
 from io import BytesIO
 from typing import Any
@@ -80,19 +79,50 @@ def _handle_queue_export(item: dict[str, Any]) -> bool:
     )
     context = item.get("context", {})
     folder_name = context.get("folder_name")
-    if folder_name and DashboardState.config:
+    target_base = (
+        DashboardState.config.target_base_dir
+        if DashboardState.config
+        else "./Cases"
+    )
+
+    if folder_name:
         folder_path = os.path.abspath(
-            os.path.join(
-                DashboardState.config.target_base_dir, folder_name
-            )
+            os.path.join(target_base, folder_name)
         )
         return executor.execute_skill_for_folder(
             item["skill_id"], folder_path, context
         )
     else:
-        return executor.execute_skill(
-            item["skill_id"], context
+        # Batch execution: find and process all pending approved folders
+        pending = executor.find_pending_cases_for_skill(
+            item["skill_id"], target_base
         )
+        if not pending:
+            logger.info(
+                "[SkillQueueManager] No pending cases for export skill %s",
+                item["skill_id"],
+            )
+            return True
+
+        all_ok = True
+        for c in pending:
+            parsed = _parse_folder_name(c["folder_name"])
+            c_ctx = dict(parsed)
+            c_ctx["folder_name"] = c["folder_name"]
+            c_ctx["folder_path"] = c["folder_path"]
+            person = parsed.get("Person", "") or parsed.get("person", "")
+            if person and "," in person:
+                parts = person.split(",", 1)
+                c_ctx.setdefault("Nachname", parts[0].strip())
+                c_ctx.setdefault("Vorname", parts[1].strip())
+            elif person:
+                c_ctx.setdefault("Nachname", person.strip())
+
+            if not executor.execute_skill_for_folder(
+                item["skill_id"], c["folder_path"], c_ctx
+            ):
+                all_ok = False
+        return all_ok
 
 
 def _get_configured_queue_manager():
@@ -145,17 +175,63 @@ def run_skill():
     if not skill_id:
         return jsonify({"error": "skill_id required"}), 400
 
-    extractor = (
-        DashboardState.processor.llm_extractor if DashboardState.processor else None
+    qm = _get_configured_queue_manager()
+    item = qm.add_to_queue(skill_id, context)
+    qm.start_queue()
+    return jsonify({"status": "queued_and_started", "skill_id": skill_id, "item": item})
+
+
+@skills_api_bp.route("/api/skills/<skill_id>/pending_cases", methods=["GET"])
+def get_skill_pending_cases(skill_id: str):
+    target_base = (
+        DashboardState.config.target_base_dir
+        if DashboardState.config
+        else "./Cases"
     )
-
+    extractor = (
+        DashboardState.processor.llm_extractor
+        if DashboardState.processor
+        else None
+    )
     executor = SkillExecutor(_get_skill_manager(), vision_extractor=extractor)
+    pending = executor.find_pending_cases_for_skill(skill_id, target_base)
+    return jsonify({"skill_id": skill_id, "count": len(pending), "cases": pending})
 
-    def _run():
-        executor.execute_skill(skill_id, context)
 
-    threading.Thread(target=_run, daemon=True).start()
-    return jsonify({"status": "started", "skill_id": skill_id})
+@skills_api_bp.route("/api/skills/<skill_id>/run_batch", methods=["POST"])
+def run_skill_batch(skill_id: str):
+    target_base = (
+        DashboardState.config.target_base_dir
+        if DashboardState.config
+        else "./Cases"
+    )
+    extractor = (
+        DashboardState.processor.llm_extractor
+        if DashboardState.processor
+        else None
+    )
+    executor = SkillExecutor(_get_skill_manager(), vision_extractor=extractor)
+    pending = executor.find_pending_cases_for_skill(skill_id, target_base)
+
+    if not pending:
+        return jsonify({"status": "no_pending_cases", "queued_count": 0, "cases": []})
+
+    qm = _get_configured_queue_manager()
+    queued_items = []
+    for c in pending:
+        item = qm.add_to_queue(
+            skill_id,
+            {"folder_name": c["folder_name"], "folder_path": c["folder_path"]},
+        )
+        queued_items.append(item)
+    qm.start_queue()
+    return jsonify(
+        {
+            "status": "queued_and_started",
+            "queued_count": len(pending),
+            "cases": [c["folder_name"] for c in pending],
+        }
+    )
 
 
 @skills_api_bp.route("/api/skills/approve_and_run", methods=["POST"])
@@ -168,7 +244,9 @@ def approve_and_run_skill():
         return jsonify({"error": "skill_id and folder_name required"}), 400
 
     target_base = (
-        DashboardState.config.target_base_dir if DashboardState.config else "./Cases"
+        DashboardState.config.target_base_dir
+        if DashboardState.config
+        else "./Cases"
     )
     folder_path = os.path.abspath(os.path.join(target_base, folder_name))
 
@@ -184,6 +262,8 @@ def approve_and_run_skill():
 
     parsed_meta = _parse_folder_name(folder_name)
     context = dict(parsed_meta)
+    context["folder_name"] = folder_name
+    context["folder_path"] = folder_path
     person = parsed_meta.get("Person", "") or parsed_meta.get("person", "")
     if person and "," in person:
         parts = person.split(",", 1)
@@ -192,21 +272,16 @@ def approve_and_run_skill():
     elif person:
         context.setdefault("Nachname", person.strip())
 
-    extractor = (
-        DashboardState.processor.llm_extractor if DashboardState.processor else None
-    )
+    qm = _get_configured_queue_manager()
+    item = qm.add_to_queue(skill_id, context)
+    qm.start_queue()
 
-    executor = SkillExecutor(_get_skill_manager(), vision_extractor=extractor)
-
-    def _run():
-        executor.execute_skill_for_folder(skill_id, folder_path, context)
-
-    threading.Thread(target=_run, daemon=True).start()
     return jsonify(
         {
             "status": "approved_and_started",
             "skill_id": skill_id,
             "folder_name": folder_name,
+            "queue_item": item,
         }
     )
 
@@ -340,7 +415,6 @@ def save_skill_document_types(import_skill_id: str):
         return jsonify({"error": "document_types dict required"}), 400
 
     DashboardState.config.save_document_types_for_skill(import_skill_id, doc_types)
-    # Also update in-memory config if it's the active import skill
     DashboardState.config.document_types = (
         DashboardState.config.get_document_types_for_skill(import_skill_id)
     )

@@ -1,6 +1,7 @@
 /* ═══════════════════════════════════════════════════════════
-   CASES
+   CASES MANAGEMENT & EXPORT STATUS TRACKING
    ═══════════════════════════════════════════════════════════ */
+
 function docEmoji(type) {
 	if (!type || typeof type !== "string") return "📄";
 	if (!state.config || !state.config.document_types) return "📄";
@@ -16,6 +17,7 @@ function docEmoji(type) {
 	}
 	return "📄";
 }
+
 function docLabel(type) {
 	if (!type || typeof type !== "string") return type || "";
 	if (!state.config || !state.config.document_types) return type;
@@ -98,6 +100,29 @@ function parseDateToTimestamp(str) {
 	return null;
 }
 
+async function triggerApproveFolder(folderName, currentApproved) {
+	try {
+		const targetApproved = !currentApproved;
+		const res = await api("/api/cases/approve", {
+			method: "POST",
+			body: JSON.stringify({ folder: folderName, approved: targetApproved }),
+		});
+
+		if (res.status === "ok") {
+			toast(
+				targetApproved
+					? "✅ Case approved! Ready for export skills."
+					: "Case approval revoked.",
+				"success"
+			);
+			await fetchCases();
+		}
+	} catch (e) {
+		console.error("Error approving folder:", e);
+		toast("Error updating approval: " + e.message, "error");
+	}
+}
+
 function renderCases() {
 	const struct = (state.config && state.config.folder_structure) || [];
 
@@ -120,8 +145,8 @@ function renderCases() {
 		headerRow.innerHTML = headerHtml;
 	}
 
-	const q = document.getElementById("searchCases").value.toLowerCase();
-	const data = state.cases.filter(
+	const q = (document.getElementById("searchCases")?.value || "").toLowerCase();
+	const data = (state.cases || []).filter(
 		(a) =>
 			!q ||
 			(a.folder || "").toLowerCase().includes(q) ||
@@ -146,9 +171,10 @@ function renderCases() {
 	});
 
 	const tbody = document.getElementById("casesBody");
-	document.getElementById("emptyCases").style.display = data.length
-		? "none"
-		: "block";
+	if (!tbody) return;
+
+	const emptyEl = document.getElementById("emptyCases");
+	if (emptyEl) emptyEl.style.display = data.length ? "none" : "block";
 	const casesWrap = document.querySelector("#tab-cases .table-wrap");
 	if (casesWrap) casesWrap.style.display = data.length ? "" : "none";
 
@@ -185,29 +211,41 @@ function renderCases() {
 			}
 
 			if (idx === 1 && struct.length > 2) {
-				// Render second column as badge (typically Produkt/Kategorie)
 				cellsHtml += `<td class="cases-table-td"><span class="badge cases-badge-col">${escapeHtml(val)}</span></td>`;
 			} else {
 				cellsHtml += `<td class="cases-table-td"><div class="cases-text-col">${escapeHtml(val)}</div></td>`;
 			}
 		});
 
-		html += `<tr class="${isExpanded ? "expanded" : ""}" data-folder="${escapeHtml(a.folder)}">
+		// Dynamic Status Badge
+		let statusBadgeHtml = "";
+		let rowStatusClass = "case-row-pending";
+
+		if (a.export_status === "completed") {
+			rowStatusClass = "case-row-completed";
+			statusBadgeHtml = `<span class="badge cases-badge-completed" title="All files have been processed by all export skills">🟢 Completed</span>`;
+		} else if (a.export_status === "partially_exported") {
+			rowStatusClass = "case-row-partial";
+			const taskInfo = a.total_applicable_tasks ? ` (${a.completed_applicable_tasks}/${a.total_applicable_tasks})` : "";
+			statusBadgeHtml = `<span class="badge cases-badge-partial" title="${a.completed_applicable_tasks} of ${a.total_applicable_tasks} skills executed">🟡 In Progress${taskInfo}</span>`;
+		} else if (a.is_approved) {
+			rowStatusClass = "case-row-approved";
+			statusBadgeHtml = `<button type="button" class="btn btn-sm cases-badge-approved clickable" onclick="event.stopPropagation(); triggerApproveFolder('${escapeHtml(a.folder)}', true)" title="Click to revoke approval">🔵 Approved</button>`;
+		} else {
+			rowStatusClass = "case-row-pending";
+			statusBadgeHtml = `<button type="button" class="btn btn-sm cases-btn-approve" onclick="event.stopPropagation(); triggerApproveFolder('${escapeHtml(a.folder)}', false)" title="Approve case for export skills">🚀 Approve</button>`;
+		}
+
+		html += `<tr class="${isExpanded ? "expanded" : ""} ${rowStatusClass}" data-folder="${escapeHtml(a.folder)}">
                         ${cellsHtml}
                         <td>
                             <div class="cases-actions-wrapper">
                                 <div class="doc-dots">${dots}</div>
                                 <div class="cases-actions-btn-group">
-                                    ${
-                                        a.is_approved
-                                            ? `<span class="badge cases-badge-approved" title="This folder has already been approved">✅ Approved</span>`
-                                            : `<button type="button" class="btn btn-sm cases-btn-approve" onclick="event.stopPropagation(); triggerApproveAndRunSkill('${escapeHtml(a.folder)}')" title="Approve & Run Skill">🚀 Approve</button>`
-                                    }
-                                    <button type="button" class="btn btn-sm btn-accent" onclick="event.stopPropagation(); openFolderEdit('${escapeHtml(a.folder)}')" title="Edit">✏️</button>
-                                    <button type="button" class="btn btn-sm btn-danger" onclick="event.stopPropagation(); deleteFolder('${escapeHtml(a.folder)}')" title="Delete Case Folder">🗑️</button>
+                                    ${statusBadgeHtml}
+                                    <button type="button" class="btn btn-sm btn-accent" onclick="event.stopPropagation(); openFolderEdit('${escapeHtml(a.folder)}')" title="Edit folder">✏️</button>
+                                    <button type="button" class="btn btn-sm btn-danger" onclick="event.stopPropagation(); deleteFolder('${escapeHtml(a.folder)}')" title="Delete case folder">🗑️</button>
                                 </div>
-
-
                             </div>
                         </td>
                     </tr>`;
@@ -239,7 +277,16 @@ function renderDetailFiles() {
 		'<div class="file-grid">' +
 		state.expandedFiles
 			.map((f) => {
-				return `<div class="file-card">
+				let skillBadgesHtml = "";
+				if (f.executed_skills && f.executed_skills.length > 0) {
+					skillBadgesHtml = f.executed_skills
+						.map((s) => `<span class="badge file-skill-executed-badge" title="Executed by: ${escapeHtml(s)}">⚡ ${escapeHtml(s)} ✅</span>`)
+						.join(" ");
+				} else {
+					skillBadgesHtml = `<span class="badge file-skill-pending-badge" title="No export skill executed on this file yet">⏳ Ready</span>`;
+				}
+
+				return `<div class="file-card ${f.executed_skills && f.executed_skills.length > 0 ? "file-card-exported" : ""}">
       <div class="preview clickable" data-inspectvorgang="${encodeURIComponent(f.name)}" style="cursor:pointer">
         ${
 					f.has_preview
@@ -250,6 +297,10 @@ function renderDetailFiles() {
       <div class="file-info" data-inspectvorgang="${encodeURIComponent(f.name)}" style="cursor:pointer">
         <div class="file-name clickable">${escapeHtml(f.name)}</div>
         <div class="file-meta">${formatSize(f.size)} · ${escapeHtml(f.modified || "")}</div>
+        <div class="file-skill-badges" style="margin-top: 6px; display: flex; flex-wrap: wrap; gap: 4px;">
+            <span class="badge file-doctype-badge">${docEmoji(f.doc_type)} ${escapeHtml(docLabel(f.doc_type || "Document"))}</span>
+            ${skillBadgesHtml}
+        </div>
       </div>
       <div class="file-actions" style="gap: 4px;">
         <button class="btn btn-sm btn-danger" data-delfile="${encodeURIComponent(f.name)}" title="Delete">
@@ -299,41 +350,94 @@ async function toggleDetail(folder) {
 	try {
 		const d = await api("/api/cases/" + encodeURIComponent(folder));
 		state.expandedFiles = d.files || [];
-	} catch (_) {
+	} catch (e) {
+		console.error("Error loading case files:", e);
 		state.expandedFiles = [];
 	}
 	renderCases();
 	bindDetailEvents();
 }
 
-/* ═══════════════════════════════════════════════════════════
-   FOLDER EDITING
-   ═══════════════════════════════════════════════════════════ */
-function openFolderEdit(folder) {
-	openSplitInspector("folder_edit", folder, null);
+async function deleteFolder(folder) {
+	openConfirm(
+		`Are you sure you want to delete case "${folder}" and all its documents?`,
+		folder,
+		async () => {
+			try {
+				await api("/api/cases/" + encodeURIComponent(folder), {
+					method: "DELETE",
+				});
+				toast("Case deleted");
+				if (state.expandedFolder === folder) {
+					state.expandedFolder = null;
+					state.expandedFiles = [];
+				}
+				fetchCases();
+			} catch (e) {
+				toast("Error deleting case: " + e.message, "error");
+			}
+		},
+	);
 }
 
-/* ═══════════════════════════════════════════════════════════
-   INIT & POLLING
-   ═══════════════════════════════════════════════════════════ */
-function renderLegend() {
-	const container = document.getElementById("legendContainer");
-	if (!container) return;
+function openFolderEdit(folderName) {
+	const c = (state.cases || []).find((x) => x.folder === folderName);
+	if (!c) return;
 
-	if (!state.config || !state.config.document_types) {
-		container.style.display = "none";
-		return;
+	document.getElementById("editFolderOldName").value = folderName;
+	const struct = (state.config && state.config.folder_structure) || [];
+	const formContainer = document.getElementById("editFolderFields");
+	formContainer.innerHTML = "";
+
+	struct.forEach((comp, idx) => {
+		const label = cleanHeaderLabel(comp);
+		const val = c.parts && c.parts[idx] ? c.parts[idx] : "";
+
+		const group = document.createElement("div");
+		group.className = "form-group";
+		group.innerHTML = `
+			<label class="doc-editor-label">${escapeHtml(label)}</label>
+			<input type="text" class="doc-editor-input" name="part_${idx}" data-idx="${idx}" value="${escapeHtml(val)}" />
+		`;
+		formContainer.appendChild(group);
+	});
+
+	document.getElementById("editFolderModal").classList.add("open");
+}
+
+function closeFolderEdit() {
+	document.getElementById("editFolderModal").classList.remove("open");
+}
+
+async function submitFolderEdit() {
+	const oldName = document.getElementById("editFolderOldName").value;
+	const struct = (state.config && state.config.folder_structure) || [];
+	const inputs = document.querySelectorAll("#editFolderFields input");
+
+	const payload = {};
+	inputs.forEach((input) => {
+		const idx = parseInt(input.dataset.idx, 10);
+		const comp = struct[idx];
+		if (comp) {
+			payload[comp] = input.value.trim();
+		}
+	});
+
+	try {
+		const res = await api("/api/cases/" + encodeURIComponent(oldName), {
+			method: "PUT",
+			body: JSON.stringify(payload),
+		});
+
+		if (res.status === "ok") {
+			toast("Case folder updated!");
+			closeFolderEdit();
+			if (state.expandedFolder === oldName) {
+				state.expandedFolder = res.folder;
+			}
+			fetchCases();
+		}
+	} catch (e) {
+		toast("Error updating case folder: " + e.message, "error");
 	}
-
-	container.style.display = "flex";
-	let html = '<span class="legend-title">Legend:</span>';
-
-	const docTypes = state.config.document_types;
-	for (const [name, info] of Object.entries(docTypes)) {
-		if (name.toUpperCase() === "UNKNOWN") continue;
-		if (info.routing && info.routing.archive === false) continue;
-		const emoji = info.emoji || "📄";
-		html += `<span class="legend-item"><span class="doc-emoji">${emoji}</span>${name}</span>`;
-	}
-	container.innerHTML = html;
 }

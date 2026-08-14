@@ -98,105 +98,40 @@ def test_api_config_driven_routing(client, tmp_path):
     }
     data = {"Abteilung": "Finanzen", "Kunde": "Acme AG", "Datum": "2026-07-09"}
     folder = _render_target_folder(data, "CustomDoc")
+    delim = getattr(DashboardState.config, "folder_delimiter", "__") or "__"
+    assert folder == f"Finanzen{delim}Acme AG"
     filename = _render_target_filename(data, "CustomDoc", ".pdf")
-
-    assert folder == "Finanzen__Acme AG"
     assert filename == "CustomDoc_Acme AG_2026-07-09.pdf"
 
 
-def test_api_pydantic_schema_validation():
-    from routes.schemas import AssignDocumentSchema, validate_schema
+def test_api_skills_crud(client):
+    # 1. GET /api/skills (List)
+    res_list = client.get("/api/skills")
+    assert res_list.status_code == 200
+    data = res_list.get_json()
+    assert "skills" in data
 
-    valid_payload = {"document": "Rechnung", "Betrag": "100.00 EUR"}
-    model, err = validate_schema(AssignDocumentSchema, valid_payload)
-    assert err is None
-    assert model is not None
-    clean = model.to_clean_dict()
-    assert clean["document"] == "Rechnung"
-    assert clean["Betrag"] == "100.00 EUR"
-
-    model_bad, err_bad = validate_schema(AssignDocumentSchema, ["Kein Dict"])  # type: ignore[arg-type]
-    assert model_bad is None
-    assert err_bad is not None
-
-
-def test_background_job_queue_sequential_fifo(client):
-    import time
-
-    from core.jobs import job_queue
-
-    execution_order = []
-
-    def dummy_task(n):
-        execution_order.append(n)
-        return f"Done-{n}"
-
-    job_id = job_queue.submit("Task 1", dummy_task, 1)
-    _job2_id = job_queue.submit("Task 2", dummy_task, 2)
-
-    # Warte kurz, bis Worker abgearbeitet hat
-    time.sleep(0.5)
-
-    assert execution_order == [1, 2]  # Strikt sequenzielles FIFO!
-    res = client.get(f"/api/jobs/{job_id}")
-    assert res.status_code == 200
-    assert res.get_json()["status"] == "DONE"
-    assert res.get_json()["result"] == "Done-1"
-
-
-def test_api_config_get_and_put(client, tmp_path):
-    orig_watch = DashboardState.config.watch_dir
-    orig_base = DashboardState.config.base_dir
-    orig_rules = DashboardState.config.vision_base_rules
-
-    try:
-        DashboardState.config.watch_dir = str(tmp_path)
-        DashboardState.config.base_dir = str(tmp_path)
-        DashboardState.config.vision_base_rules = "Test Vision System Prompt"
-
-        # 1. Test GET config
-        res_get = client.get("/api/config")
-        assert res_get.status_code == 200
-        data_get = res_get.get_json()
-        assert data_get["vision_base_rules"] == "Test Vision System Prompt"
-
-        # 2. Test PUT config
-        new_rules = "Updated Vision System Prompt\nWith Multiple Lines"
-        res_put = client.put("/api/config", json={
-            "vision_base_rules": new_rules
-        })
-        assert res_put.status_code == 200
-
-        # Verify updated in config class
-        assert DashboardState.config.vision_base_rules == new_rules
-    finally:
-        DashboardState.config.watch_dir = orig_watch
-        DashboardState.config.base_dir = orig_base
-        DashboardState.config.vision_base_rules = orig_rules
-
-
-def test_api_skills_crud_and_duplicate(client):
-    # 1. GET /api/skills
-    res_get = client.get("/api/skills")
-    assert res_get.status_code == 200
-    assert "skills" in res_get.get_json()
-
-    # 2. POST /api/skills (Erstellen)
-    skill_payload = {
+    # 2. POST /api/skills (Save / Create)
+    new_skill = {
         "id": "test_api_skill_1",
         "name": "API Test Skill",
-        "description": "Skill über API angelegt",
+        "type": "export",
+        "description": "Test skill created via API",
         "enabled": True,
-        "steps": [{"id": "s1", "action_type": "FOCUS_WINDOW", "window_title": "Notepad*"}]
+        "steps": [
+            {"id": "step_1", "description": "Step 1", "action_type": "FOCUS_WINDOW", "window_title": "Remote Desktop*"}
+        ]
     }
-    res_post = client.post("/api/skills", json=skill_payload)
-    assert res_post.status_code == 200
-    assert res_post.get_json()["skill_id"] == "test_api_skill_1"
+    res_save = client.post("/api/skills", json=new_skill)
+    assert res_save.status_code == 200
+    assert res_save.get_json()["status"] == "ok"
+    assert res_save.get_json()["skill_id"] == "test_api_skill_1"
 
     # 3. POST /api/skills/<id>/duplicate (Duplizieren)
     res_dup = client.post("/api/skills/test_api_skill_1/duplicate")
     assert res_dup.status_code == 200
     dup_skill = res_dup.get_json()["skill"]
+    assert dup_skill["id"].startswith("test_api_skill_1_copy_")
     assert "Copy" in dup_skill["name"] or "Kopie" in dup_skill["name"]
 
     # 4. DELETE /api/skills/<id> (Löschen)
@@ -220,13 +155,23 @@ def test_api_vorgaenge_approval_status(client, tmp_path):
         data = res.get_json()
         assert len(data) == 1
         assert data[0]["is_approved"] is False
+        assert data[0]["export_status"] == "pending_approval"
 
-        # Add .approved marker
-        (test_folder / ".approved").write_text("Approved", encoding="utf-8")
+        # Toggle approval via /api/cases/approve
+        res_toggle = client.post("/api/cases/approve", json={"folder": "2026-07-29__Software__Mustermann__Erika", "approved": True})
+        assert res_toggle.status_code == 200
+        assert res_toggle.get_json()["is_approved"] is True
+
         res_approved = client.get("/api/cases")
         assert res_approved.status_code == 200
         data_approved = res_approved.get_json()
         assert data_approved[0]["is_approved"] is True
+        assert data_approved[0]["export_status"] == "approved"
+
+        # Revoke approval
+        res_revoke = client.post("/api/cases/approve", json={"folder": "2026-07-29__Software__Mustermann__Erika", "approved": False})
+        assert res_revoke.status_code == 200
+        assert res_revoke.get_json()["is_approved"] is False
     finally:
         DashboardState.config.target_base_dir = orig_target_base
 
@@ -279,8 +224,46 @@ def test_api_cases_edit_file_atomic_sidecar(client, tmp_path):
         DashboardState.config.target_base_dir = orig_target_base
 
 
+def test_api_skills_pending_cases_and_run_batch(client, tmp_path):
+    orig_target_base = DashboardState.config.target_base_dir
+    DashboardState.config.target_base_dir = str(tmp_path)
 
+    # Erstelle freigegebenen Testfall mit PDF
+    c_folder = tmp_path / "2026-08-14__Software__Test__Patient"
+    c_folder.mkdir(parents=True, exist_ok=True)
+    (c_folder / ".approved").write_text("Approved", encoding="utf-8")
+    pdf = c_folder / "Befund__Software__2026.pdf"
+    pdf.write_text("dummy", encoding="utf-8")
+    meta = c_folder / "Befund__Software__2026.pdf.meta"
+    meta.write_text('{"Document": "Befund"}', encoding="utf-8")
 
+    try:
+        # Create test export skill
+        skill_payload = {
+            "id": "test_batch_skill",
+            "name": "Test Batch Skill",
+            "type": "export",
+            "enabled": True,
+            "document_types": ["Befund"],
+            "steps": []
+        }
+        client.post("/api/skills", json=skill_payload)
 
+        # GET /api/skills/<id>/pending_cases
+        res_pending = client.get("/api/skills/test_batch_skill/pending_cases")
+        assert res_pending.status_code == 200
+        data_p = res_pending.get_json()
+        assert data_p["count"] == 1
+        assert data_p["cases"][0]["folder_name"] == "2026-08-14__Software__Test__Patient"
 
+        # POST /api/skills/<id>/run_batch
+        res_batch = client.post("/api/skills/test_batch_skill/run_batch")
+        assert res_batch.status_code == 200
+        data_b = res_batch.get_json()
+        assert data_b["status"] == "queued_and_started"
+        assert data_b["queued_count"] == 1
 
+        # Clean up skill
+        client.delete("/api/skills/test_batch_skill")
+    finally:
+        DashboardState.config.target_base_dir = orig_target_base

@@ -6,9 +6,7 @@ let selectedSkillId = null;
 let currentEditingSkill = null;
 let currentEditingSteps = [];
 let activeInputField = null;
-let pendingApproveFolder = null;
-let draggedQueueItemId = null;
-let queuePollInterval = null;
+let skillsTabPollInterval = null;
 
 document.addEventListener("focusin", (e) => {
 	if (
@@ -40,7 +38,7 @@ async function loadSkills() {
 		}
 	} catch (e) {
 		console.error("Error loading skills:", e);
-		toast("Fehler beim Laden der Skills: " + e.message, "error");
+		toast("Error loading skills: " + e.message, "error");
 	}
 }
 
@@ -75,7 +73,7 @@ function renderSkillsSidebar(skills, searchQuery = "") {
 	if (skills.length === 0) {
 		container.innerHTML = `
 			<div style="padding: 16px; text-align: center; color: var(--text-dim); font-size: 0.82rem;">
-				${searchQuery ? "Keine Treffer" : "Keine Skills vorhanden"}
+				${searchQuery ? "No matches" : "No skills found"}
 			</div>
 		`;
 		return;
@@ -88,7 +86,7 @@ function renderSkillsSidebar(skills, searchQuery = "") {
 			const stepCount = (skill.steps || []).length;
 			const icon = isImport ? "📥" : "⚡";
 			const badgeClass = isImport ? "badge-import-skill" : "badge-export-skill";
-			const badgeText = isImport ? "Import" : `${stepCount} Schritte`;
+			const badgeText = isImport ? "Import" : `${stepCount} ${stepCount === 1 ? "step" : "steps"}`;
 
 			return `
 				<div class="doc-type-item ${isSelected ? "active" : ""}" onclick="selectSkill('${escapeHtml(skill.id)}')">
@@ -139,7 +137,7 @@ async function selectSkill(skillId) {
 
 	document.getElementById("skillHeaderTitle").textContent = skillObj.name || skillObj.id;
 	const isImport = skillObj.type === "import";
-	document.getElementById("skillHeaderBadge").textContent = isImport ? "Import-Skill" : `${currentEditingSteps.length} Schritte`;
+	document.getElementById("skillHeaderBadge").textContent = isImport ? "Import Skill" : `${currentEditingSteps.length} ${currentEditingSteps.length === 1 ? "step" : "steps"}`;
 
 	document.getElementById("editorSkillId").value = skillObj.id || "";
 	document.getElementById("editorSkillName").value = skillObj.name || "";
@@ -172,18 +170,82 @@ async function selectSkill(skillId) {
 
 	onSkillTypeChange(skillObj.type || "export");
 	renderEditorSteps();
+	renderVariableBadges();
 
-	// Render Queue Inspector (Inspector is 100% dedicated to Skill Queue in Skills Tab)
+	// Update Batch Run Button text with pending count
+	if (!isImport) {
+		updateBatchRunBadge(skillId);
+	}
+
 	renderQueueInspector();
 
-	if (!queuePollInterval) {
-		queuePollInterval = setInterval(() => {
+	if (!skillsTabPollInterval) {
+		skillsTabPollInterval = setInterval(() => {
 			const activeTab = document.querySelector(".nav-item.active")?.dataset?.tab;
 			if (activeTab === "skills") {
 				renderQueueInspector();
 			}
 		}, 3000);
 	}
+}
+
+async function updateBatchRunBadge(skillId) {
+	try {
+		const res = await api(`/api/skills/${encodeURIComponent(skillId)}/pending_cases`);
+		const btn = document.getElementById("btnRunSkillBatch");
+		if (btn) {
+			const count = res.count || 0;
+			btn.innerHTML = `▶ Batch Run (${count} ${count === 1 ? "case" : "cases"})`;
+			btn.title = `${count} approved case folder(s) pending for this export skill`;
+		}
+	} catch (e) {
+		console.debug("Could not fetch pending count for skill:", e);
+	}
+}
+
+function renderVariableBadges() {
+	const container = document.getElementById("variableBadges");
+	if (!container) return;
+
+	const dynamicVars = new Set();
+	dynamicVars.add("{document_fullpath}");
+
+	// Extract variables from configured folder structure (e.g. {Datum}, {Produkt}, {Person})
+	if (state.config && Array.isArray(state.config.folder_structure)) {
+		state.config.folder_structure.forEach((part) => {
+			const cleaned = String(part).trim();
+			if (cleaned) {
+				const formatted = cleaned.startsWith("{") && cleaned.endsWith("}") ? cleaned : `{${cleaned}}`;
+				dynamicVars.add(formatted);
+			}
+		});
+	}
+
+	// Extract variables from configured document extraction fields
+	if (state.config && state.config.document_types) {
+		Object.values(state.config.document_types).forEach((doc) => {
+			if (doc && doc.extraction_fields) {
+				Object.keys(doc.extraction_fields).forEach((f) => {
+					dynamicVars.add(`{${f}}`);
+				});
+			}
+		});
+	}
+
+	if (dynamicVars.size === 0) {
+		container.innerHTML = `<span style="font-size:0.75rem; color:var(--text-dim);">No variables configured.</span>`;
+		return;
+	}
+
+	container.innerHTML = Array.from(dynamicVars)
+		.map(
+			(v) => `
+			<span class="badge variable-badge" onclick="insertVariable('${escapeHtml(v)}')" title="Click to insert into active input field">
+				${escapeHtml(v)}
+			</span>
+		`
+		)
+		.join("");
 }
 
 function onSkillTypeChange(type) {
@@ -257,7 +319,7 @@ function renderDocTypesSidebar() {
 						</span>
 					</div>
 					<span class="doc-type-item-count">
-						${fieldCount} Felder
+						${fieldCount} ${fieldCount === 1 ? "field" : "fields"}
 					</span>
 				</div>
 			`;
@@ -293,7 +355,7 @@ function createNewDocType() {
 		emoji: "📄",
 		classification_desc: "",
 		extraction_fields: {
-			Dokument: { description: "Category of the document", required: true }
+			Document: { description: "Category of the document", required: true }
 		}
 	};
 
@@ -508,6 +570,7 @@ function createNewSkill() {
 
 	onSkillTypeChange("export");
 	renderEditorSteps();
+	renderVariableBadges();
 	renderQueueInspector();
 }
 
@@ -520,7 +583,7 @@ function insertVariable(varName) {
 		activeInputField.focus();
 		activeInputField.dispatchEvent(new Event("change"));
 	} else {
-		toast("Click inside an input field first to insert variables.", "error");
+		toast("Click into an input field first to insert a variable.", "info");
 	}
 }
 
@@ -563,7 +626,7 @@ function updateHeaderStepBadge() {
 	const stepCount = currentEditingSteps.length;
 	const badge = document.getElementById("skillHeaderBadge");
 	if (badge && currentEditingSkill && currentEditingSkill.type !== "import") {
-		badge.textContent = `${stepCount} ${stepCount === 1 ? "Step" : "Steps"}`;
+		badge.textContent = `${stepCount} ${stepCount === 1 ? "step" : "steps"}`;
 	}
 }
 
@@ -595,7 +658,7 @@ function renderEditorSteps() {
 	if (currentEditingSteps.length === 0) {
 		container.innerHTML = `
 			<div style="text-align: center; padding: 24px; color: var(--text-dim); background: rgba(0,0,0,0.2); border: 1px dashed var(--border); border-radius: 10px; font-style: italic; font-size: 0.85rem;">
-				No steps defined for this skill. Click "+ Add Step" above.
+				No steps defined for this skill. Click "+ Add step" above.
 			</div>
 		`;
 		return;
@@ -611,7 +674,7 @@ function renderEditorSteps() {
 
 			return `
 				<div class="doc-editor-section" style="background: rgba(10, 13, 20, 0.6); border: 1px solid rgba(255, 255, 255, 0.08); padding: 14px 16px; margin-bottom: 8px;">
-					<!-- Header des Schritts -->
+					<!-- Step Header -->
 					<div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.06); padding-bottom: 10px; margin-bottom: 12px;">
 						<div style="display: flex; align-items: center; gap: 10px;">
 							<span style="font-size: 0.8rem; font-weight: 700; color: var(--text-dim);">#${idx + 1}</span>
@@ -623,11 +686,11 @@ function renderEditorSteps() {
 						<div style="display: flex; align-items: center; gap: 6px;">
 							<button type="button" class="btn btn-sm btn-icon" onclick="moveStepUp(${idx})" ${isFirst ? "disabled style='opacity:0.3'" : ""} title="Move up">⬆️</button>
 							<button type="button" class="btn btn-sm btn-icon" onclick="moveStepDown(${idx})" ${isLast ? "disabled style='opacity:0.3'" : ""} title="Move down">⬇️</button>
-							<button type="button" class="btn btn-sm btn-danger" onclick="removeEditorStep(${idx})" style="padding: 3px 8px; font-size: 0.75rem;" title="Remove step">🗑️ Remove</button>
+							<button type="button" class="btn btn-sm btn-danger" onclick="removeEditorStep(${idx})" style="padding: 3px 8px; font-size: 0.75rem;" title="Remove step">🗑️</button>
 						</div>
 					</div>
 
-					<!-- Formularfelder des Schritts -->
+					<!-- Step Fields -->
 					<div class="grid-3col" style="display: grid; grid-template-columns: 1fr 1.5fr 1fr; gap: 10px;">
 						<div class="form-group" style="margin:0;">
 							<label class="doc-editor-label">Step ID</label>
@@ -655,7 +718,7 @@ function renderEditorSteps() {
 						step.action_type === "FOCUS_WINDOW"
 							? `
 						<div class="form-group" style="margin:0; margin-top:10px;">
-							<label class="doc-editor-label">Window Title Pattern</label>
+							<label class="doc-editor-label">Window Title Pattern (Regex/Wildcard)</label>
 							<input type="text" class="doc-editor-input" value="${escapeHtml(step.window_title || "")}" placeholder="e.g. Remote Desktop*" onchange="currentEditingSteps[${idx}].window_title = this.value" />
 						</div>
 					`
@@ -677,8 +740,8 @@ function renderEditorSteps() {
 						step.action_type === "TYPE_TEXT"
 							? `
 						<div class="form-group" style="margin:0; margin-top:10px;">
-							<label class="doc-editor-label">Input Text / Placeholder</label>
-							<input type="text" class="doc-editor-input" value="${escapeHtml(step.text || "")}" placeholder="e.g. {LastName}, {FirstName}" onchange="currentEditingSteps[${idx}].text = this.value" />
+							<label class="doc-editor-label">Text / Placeholders (e.g. {Person}, {Date})</label>
+							<input type="text" class="doc-editor-input" value="${escapeHtml(step.text || "")}" placeholder="e.g. {Person}, {Date}" onchange="currentEditingSteps[${idx}].text = this.value" />
 						</div>
 					`
 							: ""
@@ -693,12 +756,12 @@ function renderEditorSteps() {
 								<select class="doc-editor-input" onchange="if(!currentEditingSteps[${idx}].locator) currentEditingSteps[${idx}].locator={}; currentEditingSteps[${idx}].locator.type = this.value;">
 									<option value="som_vlm" ${(step.locator && step.locator.type) === "som_vlm" ? "selected" : ""}>Set-of-Mark (Qwen3-VL)</option>
 									<option value="ocr_exact" ${(step.locator && step.locator.type) === "ocr_exact" ? "selected" : ""}>OCR Exact Text</option>
-									<option value="ocr_contains" ${(step.locator && step.locator.type) === "ocr_contains" ? "selected" : ""}>OCR Partial Text</option>
+									<option value="ocr_contains" ${(step.locator && step.locator.type) === "ocr_contains" ? "selected" : ""}>OCR Contains Text</option>
 								</select>
 							</div>
 							<div class="form-group" style="margin:0;">
-								<label class="doc-editor-label">Search Prompt / Value</label>
-								<input type="text" class="doc-editor-input" value="${escapeHtml((step.locator && (step.locator.prompt || step.locator.value)) || "")}" placeholder="e.g. Button 'Search' or {LastName}" onchange="if(!currentEditingSteps[${idx}].locator) currentEditingSteps[${idx}].locator={}; currentEditingSteps[${idx}].locator.prompt = this.value; currentEditingSteps[${idx}].locator.value = this.value;" />
+								<label class="doc-editor-label">Search Prompt / Text / Placeholder</label>
+								<input type="text" class="doc-editor-input" value="${escapeHtml((step.locator && (step.locator.prompt || step.locator.value)) || "")}" placeholder="e.g. 'Search' button or {Person}" onchange="if(!currentEditingSteps[${idx}].locator) currentEditingSteps[${idx}].locator={}; currentEditingSteps[${idx}].locator.prompt = this.value; currentEditingSteps[${idx}].locator.value = this.value;" />
 							</div>
 						</div>
 					`
@@ -710,16 +773,16 @@ function renderEditorSteps() {
 							? `
 						<div class="grid-2col" style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px; background: rgba(245, 158, 11, 0.08); padding: 10px; border-radius: 6px; border: 1px solid rgba(245, 158, 11, 0.2);">
 							<div class="form-group" style="margin:0;">
-								<label class="doc-editor-label" style="color: #fbbf24;">On Success (Jump Target)</label>
+								<label class="doc-editor-label" style="color: #fbbf24;">If Found (Jump target)</label>
 								<select class="doc-editor-input" onchange="currentEditingSteps[${idx}].on_success = this.value;">
-									<option value="">Next Step (Default)</option>
+									<option value="">Next step (Default)</option>
 									${allStepIds.map((sId) => `<option value="${escapeHtml(sId)}" ${step.on_success === sId ? "selected" : ""}>Jump to ${escapeHtml(sId)}</option>`).join("")}
 								</select>
 							</div>
 							<div class="form-group" style="margin:0;">
-								<label class="doc-editor-label" style="color: #f87171;">On Failure (Jump Target)</label>
+								<label class="doc-editor-label" style="color: #f87171;">If Not Found (Jump target)</label>
 								<select class="doc-editor-input" onchange="currentEditingSteps[${idx}].on_failure = this.value;">
-									<option value="">Next Step (Default)</option>
+									<option value="">Next step (Default)</option>
 									${allStepIds.map((sId) => `<option value="${escapeHtml(sId)}" ${step.on_failure === sId ? "selected" : ""}>Jump to ${escapeHtml(sId)}</option>`).join("")}
 								</select>
 							</div>
@@ -759,7 +822,7 @@ async function saveSkillFromEditor() {
 	const uploadMode = document.getElementById("editorSkillUploadMode").value;
 
 	if (!skill_id || !name) {
-		toast("Please provide Skill ID and Name.", "error");
+		toast("Please enter Skill ID and Name.", "error");
 		return;
 	}
 
@@ -796,7 +859,7 @@ async function saveSkillFromEditor() {
 			});
 		}
 
-		toast("Skill '" + name + "' successfully saved!");
+		toast("Skill '" + name + "' saved successfully!");
 		selectedSkillId = skill_id;
 		await loadSkills();
 	} catch (e) {
@@ -833,16 +896,51 @@ async function deleteCurrentSkill() {
 	}
 }
 
-async function runCurrentSkillManual() {
+async function runCurrentSkillBatch() {
 	if (!selectedSkillId) return;
 	try {
-		await api("/api/skills/queue/add", {
+		const res = await api(`/api/skills/${encodeURIComponent(selectedSkillId)}/run_batch`, {
 			method: "POST",
-			body: JSON.stringify({ skill_id: selectedSkillId, context: {} }),
 		});
-		toast("Skill added to queue!");
+
+		if (res.status === "no_pending_cases" || res.queued_count === 0) {
+			toast("No pending approved cases found for this skill.", "info");
+		} else {
+			toast(`🚀 ${res.queued_count} approved cases added to queue!`, "success");
+		}
 		renderQueueInspector();
+		updateBatchRunBadge(selectedSkillId);
 	} catch (e) {
-		toast("Error adding to queue: " + e.message, "error");
+		toast("Error during batch run: " + e.message, "error");
+	}
+}
+
+async function previewSkillWindow() {
+	const winTitle = document.getElementById("editorSkillTargetWindow")?.value || "Remote Desktop*";
+	try {
+		toast("📷 Capturing screenshot of: " + winTitle, "info");
+		const res = await api("/api/skills/screenshot_preview", {
+			method: "POST",
+			body: JSON.stringify({ window_title: winTitle }),
+		});
+
+		if (res.image) {
+			const w = window.open("", "_blank");
+			if (w) {
+				w.document.write(`
+					<html>
+						<head><title>Screenshot Preview - ${escapeHtml(winTitle)}</title></head>
+						<body style="margin:0; background:#0b0f19; display:flex; flex-direction:column; align-items:center; justify-content:center; min-height:100vh; font-family:sans-serif; color:#fff;">
+							<div style="padding:12px 20px; background:rgba(255,255,255,0.08); border-radius:8px; margin-bottom:12px;">
+								<strong>Target window:</strong> ${escapeHtml(winTitle)}
+							</div>
+							<img src="${res.image}" style="max-width:95vw; max-height:85vh; border:2px solid #6366f1; border-radius:8px; box-shadow:0 10px 30px rgba(0,0,0,0.8);" />
+						</body>
+					</html>
+				`);
+			}
+		}
+	} catch (e) {
+		toast("Screenshot capture failed: " + e.message, "error");
 	}
 }

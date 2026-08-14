@@ -2497,17 +2497,103 @@
                 gap: 4px;
                 align-items: center;
             }
-            .cases-badge-approved {
+            .case-row-completed {
+                background: rgba(16, 185, 129, 0.08) !important;
+                border-left: 3px solid #10b981 !important;
+            }
+            .case-row-completed:hover {
+                background: rgba(16, 185, 129, 0.14) !important;
+            }
+            .case-row-partial {
+                background: rgba(245, 158, 11, 0.07) !important;
+                border-left: 3px solid #f59e0b !important;
+            }
+            .case-row-partial:hover {
+                background: rgba(245, 158, 11, 0.12) !important;
+            }
+            .case-row-approved {
+                background: rgba(6, 182, 212, 0.05) !important;
+                border-left: 3px solid #06b6d4 !important;
+            }
+            .case-row-approved:hover {
+                background: rgba(6, 182, 212, 0.10) !important;
+            }
+            .case-row-pending {
+                border-left: 3px solid transparent;
+            }
+            .cases-badge-completed {
                 background: rgba(16, 185, 129, 0.2);
                 border: 1px solid rgba(16, 185, 129, 0.4);
                 color: #34d399;
-                padding: 4px 8px;
+                padding: 4px 9px;
                 font-size: 0.75rem;
+                font-weight: 700;
+                border-radius: 12px;
+            }
+            .cases-badge-partial {
+                background: rgba(245, 158, 11, 0.2);
+                border: 1px solid rgba(245, 158, 11, 0.4);
+                color: #fbbf24;
+                padding: 4px 9px;
+                font-size: 0.75rem;
+                font-weight: 700;
+                border-radius: 12px;
+            }
+            .cases-badge-approved {
+                background: rgba(6, 182, 212, 0.2);
+                border: 1px solid rgba(6, 182, 212, 0.4);
+                color: #38bdf8;
+                padding: 4px 9px;
+                font-size: 0.75rem;
+                font-weight: 700;
+                border-radius: 12px;
+                cursor: pointer;
             }
             .cases-btn-approve {
-                background: rgba(99, 102, 241, 0.2);
+                background: linear-gradient(135deg, rgba(99, 102, 241, 0.25), rgba(168, 85, 247, 0.25));
+                color: #c7d2fe;
+                border: 1px solid rgba(99, 102, 241, 0.45);
+                padding: 4px 9px;
+                font-size: 0.75rem;
+                font-weight: 700;
+                border-radius: 12px;
+                cursor: pointer;
+                transition: var(--transition);
+            }
+            .cases-btn-approve:hover {
+                transform: translateY(-1px);
+                border-color: rgba(99, 102, 241, 0.8);
+                box-shadow: 0 2px 8px rgba(99, 102, 241, 0.3);
+            }
+            .file-card-exported {
+                border-color: rgba(16, 185, 129, 0.4) !important;
+                background: rgba(16, 185, 129, 0.04) !important;
+            }
+            .file-skill-executed-badge {
+                background: rgba(16, 185, 129, 0.2);
+                color: #34d399;
+                border: 1px solid rgba(16, 185, 129, 0.4);
+                font-size: 0.72rem;
+                padding: 2px 6px;
+                border-radius: 6px;
+                font-weight: 600;
+            }
+            .file-skill-pending-badge {
+                background: rgba(255, 255, 255, 0.08);
+                color: var(--text-dim);
+                border: 1px solid rgba(255, 255, 255, 0.15);
+                font-size: 0.72rem;
+                padding: 2px 6px;
+                border-radius: 6px;
+            }
+            .file-doctype-badge {
+                background: rgba(99, 102, 241, 0.15);
                 color: #a5b4fc;
-                border: 1px solid rgba(99, 102, 241, 0.4);
+                border: 1px solid rgba(99, 102, 241, 0.3);
+                font-size: 0.72rem;
+                padding: 2px 6px;
+                border-radius: 6px;
+                font-weight: 600;
             }
             .cases-loading-state {
                 text-align: center;
