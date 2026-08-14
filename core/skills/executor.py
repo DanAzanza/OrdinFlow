@@ -69,10 +69,11 @@ class SkillExecutor:
     def _locate_target(
         self, locator: dict[str, object], window_title: str | None = None
     ) -> tuple[int, int] | None:
-        """Determines the (x, y) pixel coordinates for a locator."""
-        loc_type = str(locator.get("type", "ocr_exact"))
-        loc_val = str(locator.get("value", ""))
-        prompt = str(locator.get("prompt", ""))
+        """Determines the (x, y) pixel coordinates for a locator with auto-adaptive OCR & VLM fallback."""
+        loc_type = str(locator.get("type", "auto"))
+        loc_val = str(locator.get("value", "") or locator.get("prompt", "") or locator.get("target", ""))
+        prompt = str(locator.get("prompt", "") or locator.get("value", "") or locator.get("target", ""))
+        search_term = prompt or loc_val
 
         screen = SoMGrounder.capture_screen(window_title)
         if not screen:
@@ -80,7 +81,7 @@ class SkillExecutor:
             return None
 
         # 1. Fast OCR Exact/Contains Match (RapidOCR)
-        if loc_type in ("ocr_exact", "ocr_contains"):
+        if loc_type in ("auto", "smart", "ocr_exact", "ocr_contains") and search_term:
             from core.extraction_pipeline import _get_rapid_ocr
 
             engine = _get_rapid_ocr()
@@ -90,17 +91,29 @@ class SkillExecutor:
                     if img_np is not None:
                         res, _ = engine(img_np)
                         if res:
+                            # Pass 1: Exact match
                             for line in res:
                                 box, text, _ = line
                                 t = text.strip()
                                 if not t:
                                     continue
-                                matched = (
-                                    (loc_val.lower() == t.lower())
-                                    if loc_type == "ocr_exact"
-                                    else (loc_val.lower() in t.lower())
-                                )
-                                if matched:
+                                if search_term.lower() == t.lower():
+                                    xs = [float(p[0]) for p in box]
+                                    ys = [float(p[1]) for p in box]
+                                    cx = int(sum(xs) / len(xs))
+                                    cy = int(sum(ys) / len(ys))
+                                    offset = cast(
+                                        list[int], locator.get("offset", [0, 0])
+                                    )
+                                    return cx + offset[0], cy + offset[1]
+
+                            # Pass 2: Contains match
+                            for line in res:
+                                box, text, _ = line
+                                t = text.strip()
+                                if not t:
+                                    continue
+                                if search_term.lower() in t.lower() or t.lower() in search_term.lower():
                                     xs = [float(p[0]) for p in box]
                                     ys = [float(p[1]) for p in box]
                                     cx = int(sum(xs) / len(xs))
@@ -113,7 +126,7 @@ class SkillExecutor:
                     logger.warning("[SkillExecutor] RapidOCR Locator error: %s", e)
 
         # 2. Set-of-Mark (SoM) Grounding via VLM
-        if loc_type == "som_vlm" and self.vision_extractor:
+        if (loc_type in ("auto", "smart", "som_vlm")) and self.vision_extractor and search_term:
             som_img, candidates = SoMGrounder.generate_som_overlay(screen)
             buf = BytesIO()
             som_img.save(buf, format="JPEG", quality=85)
@@ -121,7 +134,7 @@ class SkillExecutor:
 
             ground_prompt = (
                 f"Interactive UI elements are marked with red badges `[1]`, `[2]`, ... in this image.\n"
-                f"Which element number best matches: '{prompt if prompt else loc_val}'?\n"
+                f"Which element number best matches: '{search_term}'?\n"
                 f"Reply ONLY with the exact number in square brackets, e.g. `[14]`."
             )
             payload = {
