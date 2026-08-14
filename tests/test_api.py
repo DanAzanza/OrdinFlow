@@ -299,3 +299,14 @@ def test_api_skills_refine_step(client):
     step3 = res3.get_json()["step"]
     assert step3["action_type"] == "CLICK"
     assert "Suchen" in str(step3.get("locator", {}).get("prompt", ""))
+
+    # Test conditional fallback routine
+    res4 = client.post("/api/skills/refine_step", json={
+        "instruction": "Prüfe ob {Nachname} sichtbar ist, wenn nicht führe routine patient_anlegen aus",
+        "step": {"id": "step_4"}
+    })
+    assert res4.status_code == 200
+    step4 = res4.get_json()["step"]
+    assert step4["action_type"] == "VERIFY_SCREEN"
+    assert step4["on_failure_action"] == "run_skill"
+    assert "patient_anlegen" in step4["on_failure_skill"]
