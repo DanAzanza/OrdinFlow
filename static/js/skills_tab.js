@@ -674,19 +674,19 @@ function updateHeaderStepBadge() {
 function getActionBadgeStyle(actionType) {
 	switch (actionType) {
 		case "FOCUS_WINDOW":
-			return { label: "FOCUS WINDOW", bg: "rgba(99, 102, 241, 0.2)", color: "#a5b4fc", border: "rgba(99, 102, 241, 0.4)" };
+			return { label: "🪟 FOCUS WINDOW", bg: "rgba(99, 102, 241, 0.2)", color: "#a5b4fc", border: "rgba(99, 102, 241, 0.4)" };
 		case "CLICK":
-			return { label: "CLICK", bg: "rgba(16, 185, 129, 0.2)", color: "#34d399", border: "rgba(16, 185, 129, 0.4)" };
+			return { label: "🎯 CLICK", bg: "rgba(16, 185, 129, 0.2)", color: "#34d399", border: "rgba(16, 185, 129, 0.4)" };
 		case "DOUBLE_CLICK":
-			return { label: "DOUBLE CLICK", bg: "rgba(16, 185, 129, 0.3)", color: "#6ee7b7", border: "rgba(16, 185, 129, 0.5)" };
+			return { label: "🖱️ DOUBLE CLICK", bg: "rgba(16, 185, 129, 0.3)", color: "#6ee7b7", border: "rgba(16, 185, 129, 0.5)" };
 		case "TYPE_TEXT":
-			return { label: "TYPE TEXT", bg: "rgba(245, 158, 11, 0.2)", color: "#fbbf24", border: "rgba(245, 158, 11, 0.4)" };
+			return { label: "⌨️ TYPE TEXT", bg: "rgba(245, 158, 11, 0.2)", color: "#fbbf24", border: "rgba(245, 158, 11, 0.4)" };
 		case "TYPE_FILE_PATH":
-			return { label: "TYPE PATH", bg: "rgba(236, 72, 153, 0.2)", color: "#f472b6", border: "rgba(236, 72, 153, 0.4)" };
+			return { label: "📄 FILE PATH", bg: "rgba(236, 72, 153, 0.2)", color: "#f472b6", border: "rgba(236, 72, 153, 0.4)" };
 		case "VERIFY_SCREEN":
-			return { label: "VERIFY SCREEN", bg: "rgba(168, 85, 247, 0.2)", color: "#c084fc", border: "rgba(168, 85, 247, 0.4)" };
+			return { label: "👁️ VERIFY SCREEN", bg: "rgba(168, 85, 247, 0.2)", color: "#c084fc", border: "rgba(168, 85, 247, 0.4)" };
 		case "CALL_SKILL":
-			return { label: "SUB SKILL", bg: "rgba(14, 165, 233, 0.2)", color: "#38bdf8", border: "rgba(14, 165, 233, 0.4)" };
+			return { label: "⚡ SUB SKILL", bg: "rgba(14, 165, 233, 0.2)", color: "#38bdf8", border: "rgba(14, 165, 233, 0.4)" };
 		default:
 			return { label: actionType || "STEP", bg: "rgba(255,255,255,0.1)", color: "var(--text)", border: "rgba(255,255,255,0.2)" };
 	}
@@ -705,24 +705,81 @@ function renderEditorSteps() {
 		return;
 	}
 
-	const allStepIds = currentEditingSteps.map((s) => s.id).filter(Boolean);
-
 	container.innerHTML = currentEditingSteps
 		.map((step, idx) => {
 			const badgeStyle = getActionBadgeStyle(step.action_type);
 			const isFirst = idx === 0;
 			const isLast = idx === currentEditingSteps.length - 1;
+			const targetVal = (step.locator && (step.locator.prompt || step.locator.value || step.locator.target)) || "";
+
+			let actionSpecificHtml = "";
+
+			if (["CLICK", "DOUBLE_CLICK"].includes(step.action_type)) {
+				actionSpecificHtml = `
+					<div class="form-group" style="margin-top: 10px;">
+						<label class="doc-editor-label">🎯 Target Element / Button Text (or {Variable})</label>
+						<input type="text" class="doc-editor-input" value="${escapeHtml(targetVal)}" placeholder="e.g. 'Search' button or {LastName}" onchange="if(!currentEditingSteps[${idx}].locator) currentEditingSteps[${idx}].locator={}; currentEditingSteps[${idx}].locator.prompt = this.value; currentEditingSteps[${idx}].locator.value = this.value; currentEditingSteps[${idx}].locator.type = 'auto';" />
+					</div>
+				`;
+			} else if (step.action_type === "TYPE_TEXT") {
+				actionSpecificHtml = `
+					<div style="display: grid; grid-template-columns: 1fr auto; gap: 14px; align-items: end; margin-top: 10px;">
+						<div class="form-group" style="margin: 0;">
+							<label class="doc-editor-label">⌨️ Text or Variables to type</label>
+							<input type="text" class="doc-editor-input" value="${escapeHtml(step.text || "")}" placeholder="e.g. {LastName}, {BirthDate}" onchange="currentEditingSteps[${idx}].text = this.value" />
+						</div>
+						<label style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px; cursor: pointer; font-size: 0.82rem; color: var(--text-dim); user-select: none;">
+							<input type="checkbox" ${step.press_enter ? "checked" : ""} onchange="currentEditingSteps[${idx}].press_enter = this.checked;" style="width: 16px; height: 16px; accent-color: #6366f1; cursor: pointer;" />
+							Press Enter after typing
+						</label>
+					</div>
+				`;
+			} else if (step.action_type === "TYPE_FILE_PATH") {
+				actionSpecificHtml = `
+					<div style="display: grid; grid-template-columns: 1fr auto; gap: 14px; align-items: end; margin-top: 10px;">
+						<div class="form-group" style="margin: 0;">
+							<label class="doc-editor-label">📄 File Path Placeholder</label>
+							<input type="text" class="doc-editor-input" value="${escapeHtml(step.file_path || "{document_fullpath}")}" placeholder="{document_fullpath}" onchange="currentEditingSteps[${idx}].file_path = this.value" />
+						</div>
+						<label style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px; cursor: pointer; font-size: 0.82rem; color: var(--text-dim); user-select: none;">
+							<input type="checkbox" ${step.press_enter !== false ? "checked" : ""} onchange="currentEditingSteps[${idx}].press_enter = this.checked;" style="width: 16px; height: 16px; accent-color: #6366f1; cursor: pointer;" />
+							Press Enter after path
+						</label>
+					</div>
+				`;
+			} else if (step.action_type === "VERIFY_SCREEN") {
+				actionSpecificHtml = `
+					<div class="form-group" style="margin-top: 10px;">
+						<label class="doc-editor-label" style="color: #c084fc;">👁️ Element or Text that must appear on screen</label>
+						<input type="text" class="doc-editor-input" value="${escapeHtml(targetVal)}" placeholder="e.g. 'Patient Profile' or 'Saved successfully'" onchange="if(!currentEditingSteps[${idx}].locator) currentEditingSteps[${idx}].locator={}; currentEditingSteps[${idx}].locator.prompt = this.value; currentEditingSteps[${idx}].locator.value = this.value; currentEditingSteps[${idx}].locator.type = 'auto';" />
+					</div>
+				`;
+			} else if (step.action_type === "FOCUS_WINDOW") {
+				actionSpecificHtml = `
+					<div class="form-group" style="margin-top: 10px;">
+						<label class="doc-editor-label">🪟 Target Window Title (Regex or Wildcard)</label>
+						<input type="text" class="doc-editor-input" value="${escapeHtml(step.window_title || "Remote Desktop*")}" placeholder="e.g. Remote Desktop*" onchange="currentEditingSteps[${idx}].window_title = this.value" />
+					</div>
+				`;
+			} else if (step.action_type === "CALL_SKILL") {
+				actionSpecificHtml = `
+					<div class="form-group" style="margin-top: 10px;">
+						<label class="doc-editor-label">⚡ Sub-Skill ID to run</label>
+						<input type="text" class="doc-editor-input" value="${escapeHtml(step.skill_id || "")}" placeholder="e.g. rdp_login" onchange="currentEditingSteps[${idx}].skill_id = this.value" />
+					</div>
+				`;
+			}
 
 			return `
-				<div class="doc-editor-section" style="background: rgba(10, 13, 20, 0.6); border: 1px solid rgba(255, 255, 255, 0.08); padding: 14px 16px; margin-bottom: 8px;">
+				<div class="doc-editor-section" style="background: rgba(10, 13, 20, 0.6); border: 1px solid rgba(255, 255, 255, 0.08); padding: 14px 16px; margin-bottom: 10px; border-radius: 10px;">
 					<!-- Step Header -->
 					<div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.06); padding-bottom: 10px; margin-bottom: 12px;">
 						<div style="display: flex; align-items: center; gap: 10px;">
-							<span style="font-size: 0.8rem; font-weight: 700; color: var(--text-dim);">#${idx + 1}</span>
+							<span style="font-size: 0.82rem; font-weight: 700; color: var(--text-dim);">#${idx + 1}</span>
 							<span class="badge" style="background: ${badgeStyle.bg}; color: ${badgeStyle.color}; border: 1px solid ${badgeStyle.border}; font-weight: 700; font-size: 0.72rem;">
 								${badgeStyle.label}
 							</span>
-							<code style="font-size: 0.8rem; color: #a5b4fc;">${escapeHtml(step.id)}</code>
+							<code style="font-size: 0.75rem; color: var(--text-dim); opacity: 0.7;">${escapeHtml(step.id)}</code>
 						</div>
 						<div style="display: flex; align-items: center; gap: 6px;">
 							<button type="button" class="btn btn-sm btn-icon" onclick="moveStepUp(${idx})" ${isFirst ? "disabled style='opacity:0.3'" : ""} title="Move up">⬆️</button>
@@ -731,110 +788,66 @@ function renderEditorSteps() {
 						</div>
 					</div>
 
-					<!-- Step Fields -->
-					<div class="grid-3col" style="display: grid; grid-template-columns: 1fr 1.5fr 1fr; gap: 10px;">
-						<div class="form-group" style="margin:0;">
-							<label class="doc-editor-label">Step ID</label>
-							<input type="text" class="doc-editor-input" value="${escapeHtml(step.id || "")}" onchange="currentEditingSteps[${idx}].id = this.value; renderEditorSteps();" />
-						</div>
-						<div class="form-group" style="margin:0;">
-							<label class="doc-editor-label">Description</label>
-							<input type="text" class="doc-editor-input" value="${escapeHtml(step.description || "")}" placeholder="e.g. Click search field" onchange="currentEditingSteps[${idx}].description = this.value" />
-						</div>
+					<!-- Primary Action & Description -->
+					<div class="grid-2col" style="display: grid; grid-template-columns: 1.1fr 2fr; gap: 12px;">
 						<div class="form-group" style="margin:0;">
 							<label class="doc-editor-label">Action Type</label>
 							<select class="doc-editor-input" onchange="currentEditingSteps[${idx}].action_type = this.value; renderEditorSteps();">
-								<option value="CLICK" ${step.action_type === "CLICK" ? "selected" : ""}>CLICK</option>
-								<option value="DOUBLE_CLICK" ${step.action_type === "DOUBLE_CLICK" ? "selected" : ""}>DOUBLE_CLICK</option>
-								<option value="TYPE_TEXT" ${step.action_type === "TYPE_TEXT" ? "selected" : ""}>TYPE_TEXT</option>
-								<option value="TYPE_FILE_PATH" ${step.action_type === "TYPE_FILE_PATH" ? "selected" : ""}>TYPE_FILE_PATH</option>
-								<option value="VERIFY_SCREEN" ${step.action_type === "VERIFY_SCREEN" ? "selected" : ""}>VERIFY_SCREEN</option>
-								<option value="FOCUS_WINDOW" ${step.action_type === "FOCUS_WINDOW" ? "selected" : ""}>FOCUS_WINDOW</option>
-								<option value="CALL_SKILL" ${step.action_type === "CALL_SKILL" ? "selected" : ""}>CALL_SKILL</option>
+								<option value="CLICK" ${step.action_type === "CLICK" ? "selected" : ""}>🎯 Click Element</option>
+								<option value="DOUBLE_CLICK" ${step.action_type === "DOUBLE_CLICK" ? "selected" : ""}>🖱️ Double-Click Element</option>
+								<option value="TYPE_TEXT" ${step.action_type === "TYPE_TEXT" ? "selected" : ""}>⌨️ Type Text / Variables</option>
+								<option value="TYPE_FILE_PATH" ${step.action_type === "TYPE_FILE_PATH" ? "selected" : ""}>📄 Enter File Path</option>
+								<option value="VERIFY_SCREEN" ${step.action_type === "VERIFY_SCREEN" ? "selected" : ""}>👁️ Wait / Verify Screen</option>
+								<option value="FOCUS_WINDOW" ${step.action_type === "FOCUS_WINDOW" ? "selected" : ""}>🪟 Focus Window</option>
+								<option value="CALL_SKILL" ${step.action_type === "CALL_SKILL" ? "selected" : ""}>⚡ Call Sub-Skill</option>
 							</select>
+						</div>
+						<div class="form-group" style="margin:0;">
+							<label class="doc-editor-label">Description (Optional)</label>
+							<input type="text" class="doc-editor-input" value="${escapeHtml(step.description || "")}" placeholder="e.g. Click search field" onchange="currentEditingSteps[${idx}].description = this.value" />
 						</div>
 					</div>
 
-					${
-						step.action_type === "FOCUS_WINDOW"
-							? `
-						<div class="form-group" style="margin:0; margin-top:10px;">
-							<label class="doc-editor-label">Window Title Pattern (Regex/Wildcard)</label>
-							<input type="text" class="doc-editor-input" value="${escapeHtml(step.window_title || "")}" placeholder="e.g. Remote Desktop*" onchange="currentEditingSteps[${idx}].window_title = this.value" />
-						</div>
-					`
-							: ""
-					}
+					<!-- Action Specific Fields -->
+					${actionSpecificHtml}
 
-					${
-						step.action_type === "CALL_SKILL"
-							? `
-						<div class="form-group" style="margin:0; margin-top:10px;">
-							<label class="doc-editor-label">Sub-Skill ID</label>
-							<input type="text" class="doc-editor-input" value="${escapeHtml(step.skill_id || "")}" placeholder="e.g. rdp_login" onchange="currentEditingSteps[${idx}].skill_id = this.value" />
-						</div>
-					`
-							: ""
-					}
-
-					${
-						step.action_type === "TYPE_TEXT"
-							? `
-						<div class="form-group" style="margin:0; margin-top:10px;">
-							<label class="doc-editor-label">Text / Placeholders (e.g. {Person}, {Date})</label>
-							<input type="text" class="doc-editor-input" value="${escapeHtml(step.text || "")}" placeholder="e.g. {Person}, {Date}" onchange="currentEditingSteps[${idx}].text = this.value" />
-						</div>
-					`
-							: ""
-					}
-
-					${
-						["CLICK", "DOUBLE_CLICK", "VERIFY_SCREEN"].includes(step.action_type)
-							? `
-						<div class="grid-2col" style="display: grid; grid-template-columns: 1fr 2fr; gap: 10px; margin-top: 10px; background: rgba(0,0,0,0.2); padding: 10px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.04);">
-							<div class="form-group" style="margin:0;">
-								<label class="doc-editor-label">Locator Type</label>
-								<select class="doc-editor-input" onchange="if(!currentEditingSteps[${idx}].locator) currentEditingSteps[${idx}].locator={}; currentEditingSteps[${idx}].locator.type = this.value;">
-									<option value="som_vlm" ${(step.locator && step.locator.type) === "som_vlm" ? "selected" : ""}>Set-of-Mark (Qwen3-VL)</option>
-									<option value="ocr_exact" ${(step.locator && step.locator.type) === "ocr_exact" ? "selected" : ""}>OCR Exact Text</option>
-									<option value="ocr_contains" ${(step.locator && step.locator.type) === "ocr_contains" ? "selected" : ""}>OCR Contains Text</option>
-								</select>
-							</div>
-							<div class="form-group" style="margin:0;">
-								<label class="doc-editor-label">Search Prompt / Text / Placeholder</label>
-								<input type="text" class="doc-editor-input" value="${escapeHtml((step.locator && (step.locator.prompt || step.locator.value)) || "")}" placeholder="e.g. 'Search' button or {Person}" onchange="if(!currentEditingSteps[${idx}].locator) currentEditingSteps[${idx}].locator={}; currentEditingSteps[${idx}].locator.prompt = this.value; currentEditingSteps[${idx}].locator.value = this.value;" />
-							</div>
-						</div>
-					`
-							: ""
-					}
-
-					${
-						step.action_type === "VERIFY_SCREEN"
-							? `
-						<div class="grid-2col" style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px; background: rgba(245, 158, 11, 0.08); padding: 10px; border-radius: 6px; border: 1px solid rgba(245, 158, 11, 0.2);">
-							<div class="form-group" style="margin:0;">
-								<label class="doc-editor-label" style="color: #fbbf24;">If Found (Jump target)</label>
-								<select class="doc-editor-input" onchange="currentEditingSteps[${idx}].on_success = this.value;">
-									<option value="">Next step (Default)</option>
-									${allStepIds.map((sId) => `<option value="${escapeHtml(sId)}" ${step.on_success === sId ? "selected" : ""}>Jump to ${escapeHtml(sId)}</option>`).join("")}
-								</select>
-							</div>
-							<div class="form-group" style="margin:0;">
-								<label class="doc-editor-label" style="color: #f87171;">If Not Found (Jump target)</label>
-								<select class="doc-editor-input" onchange="currentEditingSteps[${idx}].on_failure = this.value;">
-									<option value="">Next step (Default)</option>
-									${allStepIds.map((sId) => `<option value="${escapeHtml(sId)}" ${step.on_failure === sId ? "selected" : ""}>Jump to ${escapeHtml(sId)}</option>`).join("")}
-								</select>
-							</div>
-						</div>
-					`
-							: ""
-					}
+					<!-- Inline AI Step Refinement -->
+					<div style="margin-top: 12px; display: flex; gap: 8px; align-items: center; background: rgba(99,102,241,0.06); border: 1px dashed rgba(99,102,241,0.25); border-radius: 8px; padding: 6px 10px;">
+						<span style="font-size: 0.85rem; user-select: none;" title="AI Step Assistant">✨</span>
+						<input type="text" id="aiRefineInput_${idx}" class="doc-editor-input" style="flex: 1; height: 30px; font-size: 0.8rem; background: transparent; border: none; padding: 0 4px;" placeholder="Adjust step with AI: e.g. 'Type {LastName} and press Enter' or 'Click search button'" onkeydown="if(event.key==='Enter') refineStepWithAI(${idx})" />
+						<button type="button" class="btn btn-sm btn-accent" style="padding: 3px 10px; font-size: 0.75rem; white-space: nowrap;" onclick="refineStepWithAI(${idx})">✨ Refine</button>
+					</div>
 				</div>
 			`;
 		})
 		.join("");
+}
+
+async function refineStepWithAI(idx) {
+	const inputEl = document.getElementById(`aiRefineInput_${idx}`);
+	if (!inputEl) return;
+	const instruction = inputEl.value.trim();
+	if (!instruction) {
+		toast("Please enter an instruction for the AI.", "info");
+		return;
+	}
+
+	const currentStep = currentEditingSteps[idx];
+	try {
+		toast("✨ Refining step with AI...", "info");
+		const res = await api("/api/skills/refine_step", {
+			method: "POST",
+			body: JSON.stringify({ instruction: instruction, step: currentStep }),
+		});
+
+		if (res.status === "ok" && res.step) {
+			currentEditingSteps[idx] = res.step;
+			renderEditorSteps();
+			toast("Step updated by AI!", "success");
+		}
+	} catch (e) {
+		toast("Error refining step: " + e.message, "error");
+	}
 }
 
 async function saveSkillFromEditor() {

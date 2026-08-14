@@ -1,6 +1,8 @@
 import base64
+import json
 import logging
 import os
+import re
 import time
 from io import BytesIO
 from typing import Any
@@ -232,6 +234,88 @@ def run_skill_batch(skill_id: str):
             "cases": [c["folder_name"] for c in pending],
         }
     )
+
+
+@skills_api_bp.route("/api/skills/refine_step", methods=["POST"])
+def refine_step():
+    data = request.json or {}
+    instruction = str(data.get("instruction", "")).strip()
+    existing_step = data.get("step")
+    if not isinstance(existing_step, dict):
+        existing_step = {}
+
+    if not instruction:
+        return jsonify({"error": "Instruction is required"}), 400
+
+    step_id = str(existing_step.get("id") or "step_1")
+    refined: dict[str, Any] = dict(existing_step)
+    refined["id"] = step_id
+
+    # 1. Try LLM parsing if available
+    llm_success = False
+    if DashboardState.processor and DashboardState.processor.llm_extractor:
+        try:
+            prompt = (
+                f"You configure robotic UI automation steps. Convert this user instruction into a step JSON.\n"
+                f"Instruction: \"{instruction}\"\n"
+                f"Current step: {json.dumps(existing_step)}\n\n"
+                f"Schema:\n"
+                f"- description: string (summary in English)\n"
+                f"- action_type: \"CLICK\" | \"DOUBLE_CLICK\" | \"TYPE_TEXT\" | \"TYPE_FILE_PATH\" | \"VERIFY_SCREEN\" | \"FOCUS_WINDOW\" | \"CALL_SKILL\"\n"
+                f"- target: string (element name to locate on screen if click/verify)\n"
+                f"- text: string (text or placeholder if typing)\n"
+                f"- press_enter: boolean (true if enter should be pressed)\n"
+                f"- window_title: string (if FOCUS_WINDOW)\n"
+                f"- skill_id: string (if CALL_SKILL)\n"
+                f"Return ONLY valid JSON matching this schema."
+            )
+            extracted = DashboardState.processor.llm_extractor.extract_fields_from_text(prompt, {})
+            if isinstance(extracted, dict) and extracted.get("action_type"):
+                refined.update(extracted)
+                if extracted.get("target"):
+                    refined["locator"] = {"type": "auto", "prompt": str(extracted["target"])}
+                llm_success = True
+        except Exception as e:
+            logger.debug("[refine_step] LLM extraction fallback: %s", e)
+
+    if not llm_success:
+        lower = instruction.lower()
+        refined["description"] = instruction[:60]
+        press_enter = any(k in lower for k in ["enter", "drücke enter", "press enter", "bestätig", "submit"])
+        refined["press_enter"] = press_enter
+
+        if any(k in lower for k in ["datei", "file", "pfad", "path", "upload", "hochladen", "pdf"]):
+            refined["action_type"] = "TYPE_FILE_PATH"
+            refined["file_path"] = "{document_fullpath}"
+        elif any(k in lower for k in ["tipp", "type", "schreib", "eingeben", "enter text", "text"]):
+            refined["action_type"] = "TYPE_TEXT"
+            m = re.search(r"\{[^{}]+\}", instruction)
+            if m:
+                refined["text"] = m.group(0)
+            else:
+                quotes = re.findall(r"['\"]([^'\"]+)['\"]", instruction)
+                refined["text"] = quotes[0] if quotes else instruction
+        elif any(k in lower for k in ["doppelklick", "double click"]):
+            refined["action_type"] = "DOUBLE_CLICK"
+            target = re.sub(r"(?i)^(doppelklick auf|double click on|klicke doppelt auf)\s*", "", instruction).strip("\"' ")
+            refined["locator"] = {"type": "auto", "prompt": target or instruction}
+        elif any(k in lower for k in ["prüf", "warten", "verify", "check", "erscheint", "sichtbar"]):
+            refined["action_type"] = "VERIFY_SCREEN"
+            target = re.sub(r"(?i)^(prüfe ob|warten auf|verify|check if)\s*", "", instruction).strip("\"' ")
+            refined["locator"] = {"type": "auto", "prompt": target or instruction}
+        elif any(k in lower for k in ["fenster", "window", "fokus", "focus"]):
+            refined["action_type"] = "FOCUS_WINDOW"
+            refined["window_title"] = "Remote Desktop*"
+        elif any(k in lower for k in ["subskill", "sub-skill", "sub skill"]):
+            refined["action_type"] = "CALL_SKILL"
+            m = re.search(r"[\w_]+", instruction)
+            refined["skill_id"] = m.group(0) if m else "sub_skill"
+        else:
+            refined["action_type"] = "CLICK"
+            target = re.sub(r"(?i)^(klicke auf|klick auf|click on|klicke|click)\s*", "", instruction).strip("\"' ")
+            refined["locator"] = {"type": "auto", "prompt": target or instruction}
+
+    return jsonify({"status": "ok", "step": refined})
 
 
 @skills_api_bp.route("/api/skills/approve_and_run", methods=["POST"])

@@ -267,3 +267,35 @@ def test_api_skills_pending_cases_and_run_batch(client, tmp_path):
         client.delete("/api/skills/test_batch_skill")
     finally:
         DashboardState.config.target_base_dir = orig_target_base
+
+
+def test_api_skills_refine_step(client):
+    # Test typing text with enter
+    res1 = client.post("/api/skills/refine_step", json={
+        "instruction": "Tippe {Nachname} ein und drücke Enter",
+        "step": {"id": "step_1"}
+    })
+    assert res1.status_code == 200
+    step1 = res1.get_json()["step"]
+    assert step1["action_type"] == "TYPE_TEXT"
+    assert step1["text"] == "{Nachname}"
+    assert step1["press_enter"] is True
+
+    # Test file upload
+    res2 = client.post("/api/skills/refine_step", json={
+        "instruction": "Lade die Datei PDF hoch",
+        "step": {"id": "step_2"}
+    })
+    assert res2.status_code == 200
+    step2 = res2.get_json()["step"]
+    assert step2["action_type"] == "TYPE_FILE_PATH"
+
+    # Test clicking button
+    res3 = client.post("/api/skills/refine_step", json={
+        "instruction": "Klicke auf Suchen",
+        "step": {"id": "step_3"}
+    })
+    assert res3.status_code == 200
+    step3 = res3.get_json()["step"]
+    assert step3["action_type"] == "CLICK"
+    assert "Suchen" in str(step3.get("locator", {}).get("prompt", ""))
