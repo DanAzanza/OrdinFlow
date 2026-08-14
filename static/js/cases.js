@@ -112,7 +112,7 @@ function renderCases() {
 			const label = cleanHeaderLabel(comp);
 			const isSorted = sortIdx === idx;
 			const arrow = isSorted ? (state.sortAsc ? "▲" : "▼") : "▲";
-			headerHtml += `<th onclick="sortCases(${idx})" class="${isSorted ? "sorted" : ""}" style="cursor: pointer; white-space: nowrap; width: 1%; padding-right: 100px;">
+			headerHtml += `<th onclick="sortCases(${idx})" class="${isSorted ? "sorted" : ""} cases-table-th">
                             <span>${escapeHtml(label)}</span> <span class="sort-arrow">${isSorted ? arrow : ""}</span>
                         </th>`;
 		});
@@ -186,25 +186,25 @@ function renderCases() {
 
 			if (idx === 1 && struct.length > 2) {
 				// Render second column as badge (typically Produkt/Kategorie)
-				cellsHtml += `<td style="white-space: nowrap; width: 1%; padding-right: 100px;"><span class="badge" style="background:rgba(99,102,241,0.15); border:1px solid rgba(99,102,241,0.3); color:#e2e8f0;">${escapeHtml(val)}</span></td>`;
+				cellsHtml += `<td class="cases-table-td"><span class="badge cases-badge-col">${escapeHtml(val)}</span></td>`;
 			} else {
-				cellsHtml += `<td style="white-space: nowrap; width: 1%; padding-right: 100px;"><div style="font-weight: 600; color: #f8fafc;">${escapeHtml(val)}</div></td>`;
+				cellsHtml += `<td class="cases-table-td"><div class="cases-text-col">${escapeHtml(val)}</div></td>`;
 			}
 		});
 
 		html += `<tr class="${isExpanded ? "expanded" : ""}" data-folder="${escapeHtml(a.folder)}">
                         ${cellsHtml}
                         <td>
-                            <div style="display: flex; align-items: center; justify-content: space-between; gap: 10px;">
+                            <div class="cases-actions-wrapper">
                                 <div class="doc-dots">${dots}</div>
-                                <div style="display: flex; gap: 4px; align-items: center;">
+                                <div class="cases-actions-btn-group">
                                     ${
                                         a.is_approved
-                                            ? `<span class="badge" style="background: rgba(16, 185, 129, 0.2); border: 1px solid rgba(16, 185, 129, 0.4); color: #34d399; padding: 4px 8px; font-size: 0.75rem;" title="This folder has already been approved">✅ Approved</span>`
-                                            : `<button class="btn btn-sm" style="background: rgba(99, 102, 241, 0.2); color: #a5b4fc; border: 1px solid rgba(99, 102, 241, 0.4);" onclick="event.stopPropagation(); triggerApproveAndRunSkill('${escapeHtml(a.folder)}')" title="Approve & Run Skill">🚀 Approve</button>`
+                                            ? `<span class="badge cases-badge-approved" title="This folder has already been approved">✅ Approved</span>`
+                                            : `<button type="button" class="btn btn-sm cases-btn-approve" onclick="event.stopPropagation(); triggerApproveAndRunSkill('${escapeHtml(a.folder)}')" title="Approve & Run Skill">🚀 Approve</button>`
                                     }
-                                    <button class="btn btn-sm btn-accent" onclick="event.stopPropagation(); openFolderEdit('${escapeHtml(a.folder)}')" title="Edit">✏️</button>
-                                    <button class="btn btn-sm btn-danger" onclick="event.stopPropagation(); deleteFolder('${escapeHtml(a.folder)}')" title="Delete Case Folder">🗑️</button>
+                                    <button type="button" class="btn btn-sm btn-accent" onclick="event.stopPropagation(); openFolderEdit('${escapeHtml(a.folder)}')" title="Edit">✏️</button>
+                                    <button type="button" class="btn btn-sm btn-danger" onclick="event.stopPropagation(); deleteFolder('${escapeHtml(a.folder)}')" title="Delete Case Folder">🗑️</button>
                                 </div>
 
 
@@ -232,7 +232,7 @@ function renderCases() {
 
 function renderDetailFiles() {
 	if (!state.expandedFiles.length) {
-		return '<div style="text-align:center;padding:20px;color:var(--text-dim)"><div style="animation:spin 1s linear infinite;display:inline-block">⏳</div> Loading files...</div>';
+		return '<div class="cases-loading-state"><div class="cases-loading-spinner">⏳</div> Loading files...</div>';
 	}
 
 	const html =

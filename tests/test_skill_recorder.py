@@ -1,5 +1,4 @@
 from core.skill_recorder import SkillRecorder
-from dashboard import app
 
 
 def test_skill_recorder_singleton_and_status():
@@ -15,8 +14,8 @@ def test_skill_recorder_synthesis():
     recorder.skill_name = "Test Workflow"
     recorder.target_window = "Test Window*"
     recorder.steps = [
-        {"id": "step_1", "description": "Fenster fokussieren", "action_type": "FOCUS_WINDOW", "window_title": "Test Window*"},
-        {"id": "step_2", "description": "Klick auf Suchen", "action_type": "CLICK", "locator": {"type": "ocr_contains", "prompt": "Suchen"}}
+        {"id": "step_1", "description": "Focus window", "action_type": "FOCUS_WINDOW", "window_title": "Test Window*"},
+        {"id": "step_2", "description": "Click search", "action_type": "CLICK", "locator": {"type": "ocr_contains", "prompt": "Search"}}
     ]
 
     skill_obj = recorder._synthesize_skill()
@@ -26,16 +25,15 @@ def test_skill_recorder_synthesis():
     assert skill_obj["steps"][1]["action_type"] == "CLICK"
 
 
-def test_recorder_api_endpoints():
-    with app.test_client() as client:
-        # Check status
-        resp = client.get("/api/skills/recorder/status")
-        assert resp.status_code == 200
-        data = resp.get_json()
-        assert "is_recording" in data
+def test_recorder_api_endpoints(client):
+    # Check status
+    resp = client.get("/api/skills/recorder/status")
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert "is_recording" in data
 
-        # Stop when not recording
-        resp_stop = client.post("/api/skills/recorder/stop")
-        assert resp_stop.status_code == 200
-        data_stop = resp_stop.get_json()
-        assert data_stop.get("status") == "stopped"
+    # Stop when not recording
+    resp_stop = client.post("/api/skills/recorder/stop")
+    assert resp_stop.status_code == 200
+    data_stop = resp_stop.get_json()
+    assert data_stop.get("status") == "stopped"

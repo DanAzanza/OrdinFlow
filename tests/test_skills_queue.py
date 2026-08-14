@@ -61,3 +61,60 @@ def test_load_doctypes_from_import_skill(temp_skills_env):
     assert "Vertrag" in loaded
     assert "Lieferschein" in loaded
     assert loaded["Vertrag"]["emoji"] == "📜"
+
+
+def test_queue_manager_reorder_and_remove(temp_skills_env):
+    _tmp_dir, skills_dir = temp_skills_env
+    skill_mgr = SkillManager(skills_dir=skills_dir)
+    queue_mgr = SkillQueueManager(skill_manager=skill_mgr)
+
+    s1 = {"id": "skill_1", "name": "Skill 1", "type": "export"}
+    s2 = {"id": "skill_2", "name": "Skill 2", "type": "export"}
+    skill_mgr.save_skill(s1)
+    skill_mgr.save_skill(s2)
+
+    item1 = queue_mgr.add_to_queue("skill_1")
+    item2 = queue_mgr.add_to_queue("skill_2")
+
+    # Reorder
+    queue_mgr.reorder_queue([item2["id"], item1["id"]])
+    state = queue_mgr.get_queue_state()
+    assert state["items"][0]["id"] == item2["id"]
+    assert state["items"][1]["id"] == item1["id"]
+
+    # Remove
+    success = queue_mgr.remove_from_queue(item1["id"])
+    assert success is True
+    state_after = queue_mgr.get_queue_state()
+    assert len(state_after["items"]) == 1
+    assert state_after["items"][0]["id"] == item2["id"]
+
+
+def test_queue_manager_execution_with_handlers(temp_skills_env):
+    import time
+    _tmp_dir, skills_dir = temp_skills_env
+    skill_mgr = SkillManager(skills_dir=skills_dir)
+    queue_mgr = SkillQueueManager(skill_manager=skill_mgr)
+
+    s1 = {"id": "import_s1", "name": "Import 1", "type": "import"}
+    skill_mgr.save_skill(s1)
+
+    executed_items = []
+    def dummy_import_handler(item):
+        executed_items.append(item["id"])
+        return True
+
+    queue_mgr.set_handlers(import_handler=dummy_import_handler)
+    item = queue_mgr.add_to_queue("import_s1")
+    queue_mgr.start_queue()
+
+    # Wait for completion
+    for _ in range(20):
+        if not queue_mgr.is_running:
+            break
+        time.sleep(0.1)
+
+    state = queue_mgr.get_queue_state()
+    assert state["items"][0]["status"] == "completed"
+    assert item["id"] in executed_items
+

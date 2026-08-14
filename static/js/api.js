@@ -67,8 +67,7 @@ function renderValidationBadges(ext) {
 
 	if (hasSign === null) return "";
 
-	let html =
-		'<div style="margin-top:6px; display:flex; gap:6px; flex-wrap:wrap;">';
+	let html = '<div class="validation-badges-container">';
 	html += `<span class="val-badge ${hasSign ? "success" : "danger"}">${hasSign ? "✍️ Signed" : "❌ Not Signed"}</span>`;
 	html += "</div>";
 	return html;
@@ -81,8 +80,7 @@ function toast(message, type = "success") {
 	el.innerHTML = `${type === "success" ? "✅" : "❌"} ${escapeHtml(message)}`;
 	container.appendChild(el);
 	setTimeout(() => {
-		el.style.opacity = "0";
-		el.style.transform = "translateY(10px)";
+		el.classList.add("toast-fade-out");
 		setTimeout(() => el.remove(), 300);
 	}, 3500);
 }

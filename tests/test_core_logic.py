@@ -68,7 +68,7 @@ def test_api_vorgaenge_edit_file_path_traversal_protection(client, tmp_path):
     pdf_src.touch()
 
     response = client.post(
-        f"/api/cases/{tmp_path.name}/escape/edit",
+        f"/api/cases/{tmp_path.name}/escape.pdf/edit",
         json={
             "vorname": "Evil",
             "nachname": "Traveller",
@@ -77,8 +77,8 @@ def test_api_vorgaenge_edit_file_path_traversal_protection(client, tmp_path):
             "document": "TestDoc",
         },
     )
-    # Sollte fehlschlagen, weil 'escape' kein valider Unterordner von safe_target ist
-    assert response.status_code in (404, 405, 500)
+    # Must be safely blocked as not found or access denied (never a 500 crash)
+    assert response.status_code in (403, 404)
 
 
 def test_api_eingang_preview_missing_file_returns_404(client):

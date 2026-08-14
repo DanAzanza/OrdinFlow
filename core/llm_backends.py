@@ -98,7 +98,7 @@ class _LlamaCppBackend(LLMBackend):
 
         if sys.platform == "win32":
             dll_dirs = []
-            sys32 = r"C:\Windows\System32"
+            sys32 = os.path.join(os.environ.get("SystemRoot", r"C:\Windows"), "System32")
             if os.path.exists(sys32):
                 dll_dirs.append(sys32)
                 try:

@@ -111,7 +111,7 @@ class BackgroundJobQueue:
             self._jobs[job_id] = task
         self.start()
         self._queue.put(task)
-        logger.info(f"[JobQueue] Job eingereiht: {job_id} ({name})")
+        logger.info(f"[JobQueue] Job queued: {job_id} ({name})")
         return job_id
 
     def get_job(self, job_id: str) -> dict[str, Any] | None:

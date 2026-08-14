@@ -172,7 +172,8 @@ class ImagePreprocessor:
                 finally:
                     doc.close()
             else:
-                pil_images = [Image.open(pdf_path)]
+                with Image.open(pdf_path) as img:
+                    pil_images = [img.convert("RGB")]
 
             if return_raw:
                 return pil_images

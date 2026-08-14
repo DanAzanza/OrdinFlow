@@ -1,7 +1,7 @@
-id: import_eingang_beispiel
-name: Eingangsordner Import (Beispiel)
+id: import_inbox_example
+name: Inbox Folder Import (Example)
 type: import
-description: Beispiel-Konfiguration für automatischen Datei-Import und KI-Dokumentenklassifizierung.
+description: Example configuration for automatic file import and AI document classification.
 enabled: true
 allowed_extensions:
 - .pdf
@@ -15,84 +15,84 @@ save_empty_pages: false
 trigger: on_queue
 
 document_types:
-  Rechnung:
-    classification_desc: Ein offizielles Rechnungsdokument oder eine Gutschrift mit Beträgen, Rechnungsnummer und Rechnungsdatum.
+  Invoice:
+    classification_desc: An official invoice document or credit note containing amounts, invoice number, and invoice date.
     emoji: 🧾
     extraction_fields:
-      RechnungsDatum: Ausstellungsdatum der Rechnung im Format DD-MM-YYYY (z.B. aus 07.04.26 wird 07-04-2026).
-      RechnungsNummer: Die eindeutige Rechnungsnummer (z.B. RE-2026-1049).
-      Empfaenger: Der Name des Rechnungsempfängers oder der Kunde (Nachname, Vorname oder Firmenname).
-      GesamtBetrag: Der Gesamtrechnungsbetrag inklusive Währung (z.B. 149.50 EUR).
+      InvoiceDate: Issue date of the invoice in DD-MM-YYYY format (e.g. 07.04.26 becomes 07-04-2026).
+      InvoiceNumber: The unique invoice number (e.g. INV-2026-1049).
+      Recipient: The name of the invoice recipient or client (last name, first name, or company name).
+      TotalAmount: The total invoice amount including currency (e.g. 149.50 EUR).
     routing:
       archive: true
-      filename_template: Rechnung__{Empfaenger}__{RechnungsDatum}
+      filename_template: Invoice__{Recipient}__{InvoiceDate}
     validation:
       optional_fields:
-      - RechnungsNummer
+      - InvoiceNumber
       signature_required: false
 
-  Vertrag:
-    classification_desc: Ein rechtlicher Vertrag, Vereinbarung oder Dienstleistungsvertrag zwischen zwei Parteien.
+  Contract:
+    classification_desc: A legal contract, agreement, or service contract between two parties.
     emoji: 📜
     extraction_fields:
-      VertragsDatum: Datum des Vertragsabschlusses im Format DD-MM-YYYY.
-      VertragsTyp: Die Art des Vertrags (z.B. Mietvertrag, Arbeitsvertrag, Kaufvertrag, Dienstleistung).
-      PartnerName: Name des Vertragspartners oder der Firma.
+      ContractDate: Date of contract conclusion in DD-MM-YYYY format.
+      ContractType: The type of contract (e.g. lease agreement, employment contract, sales contract, service).
+      PartnerName: Name of the contracting partner or company.
     routing:
       archive: true
-      filename_template: Vertrag__{VertragsTyp}__{PartnerName}
+      filename_template: Contract__{ContractType}__{PartnerName}
     validation:
-      signature_location: Unten auf der letzten Seite über dem Unterschriftenfeld.
+      signature_location: At the bottom of the last page above the signature field.
       signature_required: true
 
-  Kuchenrezept:
-    classification_desc: Ein Koch- oder Backrezept für Kuchen, Gebäck oder Speisen mit Zutatenliste und Zubereitungsschritten.
+  Recipe:
+    classification_desc: A cooking or baking recipe for cakes, pastries, or meals with ingredients list and preparation steps.
     emoji: 🍰
     extraction_fields:
-      RezeptTitel: Name des Kuchens oder Gebäcks (z.B. Apfelkuchen, Marmorkuchen, Käsekuchen).
-      ZutatenHauptbestandteil: Hauptzutat oder Kategorie (z.B. Äpfel, Schokolade, Quark).
-      Zubereitungszeit: Die angegebene Backzeit oder Zubereitungsdauer (z.B. 45 Min).
+      RecipeTitle: Name of the cake or pastry (e.g. Apple Pie, Marble Cake, Cheesecake).
+      MainIngredient: Main ingredient or category (e.g. Apples, Chocolate, Curd).
+      PreparationTime: The indicated baking time or preparation duration (e.g. 45 Min).
     routing:
       archive: true
-      filename_template: Rezept__{RezeptTitel}
+      filename_template: Recipe__{RecipeTitle}
     validation:
       optional_fields:
-      - Zubereitungszeit
+      - PreparationTime
       signature_required: false
 
-  Datenschutzerklärung:
-    classification_desc: Ein Dokument oder Formular zur Information und Einwilligung bezüglich Datenschutzbestimmungen (DSGVO).
+  PrivacyPolicy:
+    classification_desc: A document or form providing information and consent regarding data privacy regulations (GDPR).
     emoji: 🔒
     dependent: true
     routing:
       archive: true
-      filename_template: Datenschutzerklärung
+      filename_template: PrivacyPolicy
     validation:
-      signature_location: Unten rechts über dem Schriftzug Ort, Datum, Unterschrift.
+      signature_location: Bottom right above the location, date, signature markings.
       signature_required: true
 
-  Notizblatt:
-    classification_desc: Eine handschriftliche oder gedruckte Notiz, Werkstattzettel oder kurze Mitteilung ohne festes Formular.
+  Note:
+    classification_desc: A handwritten or printed note, workshop memo, or brief message without a fixed form.
     emoji: 📝
     extraction_fields:
-      Thema: Kurze Zusammenfassung des Themas der Notiz in 1-3 Wörtern.
-      Datum: Datum der Notiz falls vorhanden (Format DD-MM-YYYY oder '----').
+      Subject: Brief summary of the note topic in 1-3 words.
+      Date: Date of the note if available (format DD-MM-YYYY or '----').
     routing:
       archive: true
-      filename_template: Notiz__{Thema}
+      filename_template: Note__{Subject}
     validation:
       optional_fields:
-      - Datum
+      - Date
       signature_required: false
 
-  Foto:
-    classification_desc: Ein Bild oder Foto ohne strukturierten Dokumententext.
+  Photo:
+    classification_desc: An image or photo without structured document text.
     emoji: 📷
     dependent: true
     extraction_fields:
-      Beschreibung: Kurze Beschreibung des abgebildeten Gegenstands oder Motivs.
+      Description: Short description of the depicted object or subject.
     routing:
       archive: true
-      filename_template: Foto__{Beschreibung}
+      filename_template: Photo__{Description}
     validation:
       signature_required: false
