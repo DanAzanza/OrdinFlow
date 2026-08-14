@@ -1,6 +1,7 @@
 """
-Unit Tests für OrdinFlow Skills Engine (core/skills_engine.py)
+Unit tests for OrdinFlow Skills Engine (core/skills_engine.py).
 """
+import json
 import os
 import shutil
 import tempfile
@@ -26,16 +27,16 @@ def test_skill_manager_crud_and_duplicate(temp_skills_dir):
     mgr = SkillManager(skills_dir=temp_skills_dir)
     assert len(mgr.list_skills()) == 0
 
-    # 1. Create / Save Skill
+    # 1. Create and save skill
     skill_data = {
         "id": "test_skill_1",
         "name": "Test Skill 1",
-        "description": "Erster Test Skill",
+        "description": "First test skill",
         "enabled": True,
         "steps": [
             {
                 "id": "step_1",
-                "description": "Fokussiere Fenster",
+                "description": "Focus Window",
                 "action_type": "FOCUS_WINDOW",
                 "window_title": "Notepad*"
             }
@@ -45,32 +46,32 @@ def test_skill_manager_crud_and_duplicate(temp_skills_dir):
     assert saved_id == "test_skill_1"
     assert os.path.exists(os.path.join(temp_skills_dir, "test_skill_1.yaml"))
 
-    # 2. Get Skill
+    # 2. Get skill
     loaded = mgr.get_skill("test_skill_1")
     assert loaded is not None
     assert loaded["name"] == "Test Skill 1"
     assert len(loaded["steps"]) == 1
 
-    # 3. Duplicate Skill
+    # 3. Duplicate skill
     dup = mgr.duplicate_skill("test_skill_1")
     assert dup is not None
     assert dup["id"].startswith("test_skill_1_copy_")
-    assert "Copy" in dup["name"] or "Kopie" in dup["name"]
+    assert "Copy" in dup["name"]
     assert len(mgr.list_skills()) == 2
 
-    # 4. Delete Skill
+    # 4. Delete skill
     deleted = mgr.delete_skill("test_skill_1")
     assert deleted is True
     assert len(mgr.list_skills()) == 1
 
 
 def test_input_shield_crash_safety():
-    """Stellt sicher, dass InputShield auch bei Exceptions zuverlässig freigibt."""
+    """Verifies that InputShield reliably unlocks input even when exceptions occur."""
     with pytest.raises(ValueError):
-        with input_shield(enabled=False):  # In Tests ohne Win32 UI
-            raise ValueError("Test-Fehler innerhalb der Sperre")
+        with input_shield(enabled=False):
+            raise ValueError("Test error inside input lock block")
 
-    # Prüfe manuellen Call
+    # Verify manual unlock call
     set_block_input(False)
 
 
@@ -78,15 +79,19 @@ def test_substitute_placeholders(temp_skills_dir):
     mgr = SkillManager(skills_dir=temp_skills_dir)
     executor = SkillExecutor(mgr)
 
-    ctx = {"Nachname": "Mustermann", "Vorname": "Erika", "document_fullpath": "C:/docs/file.pdf"}
-    res = executor._substitute_placeholders("Hallo {Vorname} {Nachname}, Datei: {document_fullpath}", ctx)
-    assert res == "Hallo Erika Mustermann, Datei: C:/docs/file.pdf"
+    ctx = {"LastName": "Mustermann", "FirstName": "Erika", "document_fullpath": "C:/docs/file.pdf", "BirthDate": "1985-05-12"}
+    res = executor._substitute_placeholders("Hello {FirstName} {LastName}, Born: {BirthDate}, File: {document_fullpath}", ctx)
+    assert res == "Hello Erika Mustermann, Born: 1985-05-12, File: C:/docs/file.pdf"
+
+    # Test unknown key safety (unpopulated keys safely resolve to empty string)
+    res_unknown = executor._substitute_placeholders("Name: {LastName} {FirstName}, Unknown: {NotPresent}", ctx)
+    assert res_unknown == "Name: Mustermann Erika, Unknown: "
 
 
 def test_sub_skill_execution(temp_skills_dir):
     mgr = SkillManager(skills_dir=temp_skills_dir)
 
-    # Sub-Skill anlegen
+    # Create sub-skill
     sub_skill = {
         "id": "sub_skill_1",
         "name": "Sub Skill 1",
@@ -97,7 +102,7 @@ def test_sub_skill_execution(temp_skills_dir):
     }
     mgr.save_skill(sub_skill)
 
-    # Haupt-Skill anlegen
+    # Create main skill
     main_skill = {
         "id": "main_skill",
         "name": "Main Skill",
@@ -117,20 +122,20 @@ def test_document_type_filtering(temp_skills_dir):
     mgr = SkillManager(skills_dir=temp_skills_dir)
     executor = SkillExecutor(mgr)
 
-    # Erstelle temporäre Test-Dateien
+    # Create temporary test files
     folder = tempfile.mkdtemp()
     try:
-        f1 = os.path.join(folder, "Lieferschein__Software__2026.pdf")
-        f2 = os.path.join(folder, "Vertrag__Software__2026.pdf")
+        f1 = os.path.join(folder, "DeliveryNote__Software__2026.pdf")
+        f2 = os.path.join(folder, "Contract__Software__2026.pdf")
         open(f1, "w").close()
         open(f2, "w").close()
 
-        # 1. Filter mit spezifischem Typ
-        matched = executor.filter_matching_files(folder, allowed_types=["Lieferschein"])
+        # 1. Filter with specific type
+        matched = executor.filter_matching_files(folder, allowed_types=["DeliveryNote"])
         assert len(matched) == 1
-        assert matched[0]["filename"] == "Lieferschein__Software__2026.pdf"
+        assert matched[0]["filename"] == "DeliveryNote__Software__2026.pdf"
 
-        # 2. Filter mit '*' (alle)
+        # 2. Filter with '*' (all)
         matched_all = executor.filter_matching_files(folder, allowed_types=["*"])
         assert len(matched_all) == 2
     finally:
@@ -159,7 +164,7 @@ def test_skill_executor_retry_logic(temp_skills_dir, monkeypatch):
             {
                 "id": "click_retry",
                 "action_type": "CLICK",
-                "locator": {"type": "ocr_exact", "value": "Suchen"},
+                "locator": {"type": "ocr_exact", "value": "Search"},
                 "max_retries": 3,
                 "retry_delay_s": 0.01,
             }
@@ -172,3 +177,76 @@ def test_skill_executor_retry_logic(temp_skills_dir, monkeypatch):
     assert len(attempts) == 3
 
 
+def test_mark_file_skill_executed_and_metadata_merge(temp_skills_dir):
+    mgr = SkillManager(skills_dir=temp_skills_dir)
+    executor = SkillExecutor(mgr)
+
+    folder = tempfile.mkdtemp()
+    try:
+        pdf_path = os.path.join(folder, "Report.pdf")
+        meta_path = pdf_path + ".meta"
+        open(pdf_path, "w").close()
+        with open(meta_path, "w", encoding="utf-8") as f:
+            json.dump({"Document": "Report", "Diagnosis": "Flu", "Patient": "Max"}, f)
+
+        # Mark as executed by skill 1
+        res = executor.mark_file_skill_executed(pdf_path, "export_skill_1")
+        assert res is True
+
+        with open(meta_path, encoding="utf-8") as f:
+            data = json.load(f)
+        assert data["executed_skills"] == ["export_skill_1"]
+        assert "export_skill_1" in data["skill_execution_history"]
+
+        # Mark as executed by skill 2 (multi-skill execution)
+        executor.mark_file_skill_executed(pdf_path, "export_skill_2")
+        with open(meta_path, encoding="utf-8") as f:
+            data2 = json.load(f)
+        assert data2["executed_skills"] == ["export_skill_1", "export_skill_2"]
+    finally:
+        shutil.rmtree(folder, ignore_errors=True)
+
+
+def test_find_pending_cases_for_skill(temp_skills_dir):
+    mgr = SkillManager(skills_dir=temp_skills_dir)
+    skill_data = {
+        "id": "rdp_export",
+        "name": "RDP Export",
+        "enabled": True,
+        "document_types": ["Report", "Prescription"],
+        "steps": [],
+    }
+    mgr.save_skill(skill_data)
+    executor = SkillExecutor(mgr)
+
+    cases_dir = tempfile.mkdtemp()
+    try:
+        # Folder 1: Not approved -> Should be ignored
+        c1 = os.path.join(cases_dir, "Case1")
+        os.makedirs(c1)
+        open(os.path.join(c1, "Report.pdf"), "w").close()
+
+        # Folder 2: Approved, with matching Report.pdf -> Should be found
+        c2 = os.path.join(cases_dir, "Case2")
+        os.makedirs(c2)
+        open(os.path.join(c2, ".approved"), "w").close()
+        p2 = os.path.join(c2, "Report.pdf")
+        open(p2, "w").close()
+        with open(p2 + ".meta", "w", encoding="utf-8") as f:
+            json.dump({"Document": "Report"}, f)
+
+        # Folder 3: Approved, but Report.pdf already exported with rdp_export -> Should be ignored
+        c3 = os.path.join(cases_dir, "Case3")
+        os.makedirs(c3)
+        open(os.path.join(c3, ".approved"), "w").close()
+        p3 = os.path.join(c3, "Report.pdf")
+        open(p3, "w").close()
+        with open(p3 + ".meta", "w", encoding="utf-8") as f:
+            json.dump({"Document": "Report", "executed_skills": ["rdp_export"]}, f)
+
+        pending = executor.find_pending_cases_for_skill("rdp_export", cases_dir)
+        assert len(pending) == 1
+        assert pending[0]["folder_name"] == "Case2"
+        assert pending[0]["unprocessed_count"] == 1
+    finally:
+        shutil.rmtree(cases_dir, ignore_errors=True)

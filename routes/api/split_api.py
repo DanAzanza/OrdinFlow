@@ -54,6 +54,9 @@ def _resolve_split_source(
     context: str, folder: str | None, filename: str
 ) -> tuple[str | None, tuple[Any, int] | None]:
     """Validates and resolves the source document path for split inspection."""
+    if not DashboardState.config:
+        return None, (jsonify({"error": "Config not available"}), 503)
+
     if context == "cases":
         if not folder:
             return None, (jsonify({"error": "Folder is required for cases context"}), 400)
@@ -100,7 +103,7 @@ def _slice_or_move_document(
         is_multi_doc or len(pages_to_extract) < total_pages
     )
 
-    if should_slice:
+    if should_slice and fitz is not None and pdf_doc is not None:
         new_doc = fitz.open()
         for p_idx in pages_to_extract:
             if 1 <= p_idx <= total_pages:
@@ -159,8 +162,10 @@ def api_split_inspector_submit():
         documents_input = [single_doc]
 
     src_path, err_resp = _resolve_split_source(context, folder, filename)
-    if err_resp or not src_path:
-        return err_resp
+    if err_resp is not None:
+        return err_resp[0], err_resp[1]
+    if not src_path:
+        return jsonify({"error": "Failed to resolve file"}), 400
 
     ext = os.path.splitext(src_path)[1]
     is_pdf = ext.lower() == ".pdf"

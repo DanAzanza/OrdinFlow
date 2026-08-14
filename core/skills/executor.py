@@ -24,6 +24,27 @@ except ImportError:
     np = None  # type: ignore[assignment]
 
 
+def _type_unicode_text(text: str, press_enter: bool = False) -> None:
+    """Types unicode characters reliably on Windows using KEYEVENTF_UNICODE without layout or shift bugs."""
+    if sys.platform != "win32":
+        return
+
+    keybd_event = ctypes.windll.user32.keybd_event  # type: ignore[union-attr]
+    KEYEVENTF_KEYUP = 0x0002
+    KEYEVENTF_UNICODE = 0x0004
+
+    for char in text:
+        code = ord(char)
+        keybd_event(0, code, KEYEVENTF_UNICODE, 0)
+        keybd_event(0, code, KEYEVENTF_UNICODE | KEYEVENTF_KEYUP, 0)
+        time.sleep(0.008)
+
+    if press_enter:
+        time.sleep(0.05)
+        keybd_event(0x0D, 0, 0, 0)
+        keybd_event(0x0D, 0, KEYEVENTF_KEYUP, 0)
+
+
 class SkillExecutor:
     """Executes a skill step-by-step in a domain-agnostic manner."""
 
@@ -34,13 +55,13 @@ class SkillExecutor:
         self.vision_extractor = vision_extractor
 
     def _substitute_placeholders(self, text: str, context: Mapping[str, object]) -> str:
-        """Dynamically substitutes placeholders such as {Nachname} or {document_fullpath}."""
+        """Dynamically substitutes placeholders such as {FieldName} from context without synthetic fallbacks."""
         if not isinstance(text, str) or "{" not in text:
             return text
 
         def replace_match(match: re.Match) -> str:
             key = match.group(1).strip()
-            val = context.get(key, match.group(0))
+            val = context.get(key)
             return str(val) if val is not None else ""
 
         return re.sub(r"\{([^{}]+)\}", replace_match, text)
@@ -269,16 +290,9 @@ class SkillExecutor:
                     )
 
                 with input_shield(enabled=True):
-                    for char in text_to_type:
-                        if sys.platform == "win32":
-                            vk = ctypes.windll.user32.VkKeyScanW(ord(char))  # type: ignore[union-attr]
-                            ctypes.windll.user32.keybd_event(vk & 0xFF, 0, 0, 0)  # type: ignore[union-attr]
-                            ctypes.windll.user32.keybd_event(vk & 0xFF, 0, 2, 0)  # type: ignore[union-attr]
-                            time.sleep(0.01)
-
-                    if step.get("press_enter", False) and sys.platform == "win32":
-                        ctypes.windll.user32.keybd_event(0x0D, 0, 0, 0)  # type: ignore[union-attr]
-                        ctypes.windll.user32.keybd_event(0x0D, 0, 2, 0)  # type: ignore[union-attr]
+                    _type_unicode_text(
+                        text_to_type, press_enter=bool(step.get("press_enter", False))
+                    )
 
             # 5. VERIFY_SCREEN (Conditional Branching)
             elif action_type == "VERIFY_SCREEN":
@@ -326,11 +340,47 @@ class SkillExecutor:
         )
         return True
 
+    def mark_file_skill_executed(self, filepath: str, skill_id: str) -> bool:
+        """Records the successful execution of a skill in the document's .meta sidecar file."""
+        meta_path = filepath + ".meta"
+        data: dict[str, Any] = {}
+        if os.path.exists(meta_path):
+            try:
+                with open(meta_path, encoding="utf-8") as f:
+                    loaded = json.load(f)
+                    if isinstance(loaded, dict):
+                        data = loaded
+            except (json.JSONDecodeError, OSError) as e:
+                logger.warning("[SkillExecutor] Could not read .meta before recording skill: %s", e)
+
+        executed_skills = data.get("executed_skills", [])
+        if not isinstance(executed_skills, list):
+            executed_skills = []
+        if skill_id not in executed_skills:
+            executed_skills.append(skill_id)
+        data["executed_skills"] = executed_skills
+
+        # Also store execution timestamps
+        history = data.get("skill_execution_history", {})
+        if not isinstance(history, dict):
+            history = {}
+        history[skill_id] = time.time()
+        data["skill_execution_history"] = history
+
+        try:
+            with open(meta_path, "w", encoding="utf-8") as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
+            logger.info("[SkillExecutor] Marked file '%s' as executed by skill '%s'", filepath, skill_id)
+            return True
+        except OSError as e:
+            logger.error("[SkillExecutor] Failed to write skill execution marker to %s: %s", meta_path, e)
+            return False
+
     def filter_matching_files(
         self, folder_path: str, allowed_types: list[str] | None = None
-    ) -> list[dict[str, str]]:
-        """Filters PDF files in a case folder according to the skill's allowed document types."""
-        matching_files: list[dict[str, str]] = []
+    ) -> list[dict[str, Any]]:
+        """Filters PDF files in a case folder according to the skill's allowed document types and loads metadata."""
+        matching_files: list[dict[str, Any]] = []
         if not os.path.exists(folder_path) or not os.path.isdir(folder_path):
             return matching_files
 
@@ -346,23 +396,26 @@ class SkillExecutor:
                 t.strip().lower() for t in allowed_types if t.strip()
             ]
 
-        for fname in os.listdir(folder_path):
+        for fname in sorted(os.listdir(folder_path)):
             if fname.lower().endswith(".pdf"):
                 full_path = os.path.join(folder_path, fname)
                 meta_path = full_path + ".meta"
                 doc_type = "UNKNOWN"
+                meta_data: dict[str, Any] = {}
 
-                # Try to read document type from .meta file
+                # Try to read document type and full metadata from .meta file
                 if os.path.exists(meta_path):
                     try:
                         with open(meta_path, encoding="utf-8") as f:
-                            meta = json.load(f)
-                            doc_type = (
-                                meta.get("Document")
-                                or meta.get("Dokument")
-                                or meta.get("document_type")
-                                or "UNKNOWN"
-                            )
+                            loaded = json.load(f)
+                            if isinstance(loaded, dict):
+                                meta_data = loaded
+                                doc_type = (
+                                    loaded.get("Document")
+                                    or loaded.get("Dokument")
+                                    or loaded.get("document_type")
+                                    or "UNKNOWN"
+                                )
                     except (json.JSONDecodeError, OSError):
                         logger.debug(
                             "[SkillExecutor] .meta file could not be read: %s",
@@ -380,57 +433,125 @@ class SkillExecutor:
                     allowed_types_clean is None
                     or doc_type.lower() in allowed_types_clean
                 ):
+                    executed_skills = meta_data.get("executed_skills", [])
+                    if not isinstance(executed_skills, list):
+                        executed_skills = []
                     matching_files.append(
                         {
                             "filename": fname,
                             "fullpath": full_path,
                             "document_type": doc_type,
+                            "meta": meta_data,
+                            "executed_skills": executed_skills,
                         }
                     )
 
         return matching_files
 
+    def find_pending_cases_for_skill(
+        self, skill_id: str, target_base_dir: str
+    ) -> list[dict[str, Any]]:
+        """Finds all approved case folders containing matching files that have NOT yet been processed by skill_id."""
+        skill = self.skill_manager.get_skill(skill_id)
+        if not skill or not skill.get("enabled", True):
+            return []
+
+        if not os.path.exists(target_base_dir):
+            return []
+
+        allowed_types = skill.get("document_types", ["*"])
+        pending_cases: list[dict[str, Any]] = []
+
+        for folder_name in sorted(os.listdir(target_base_dir)):
+            folder_path = os.path.join(target_base_dir, folder_name)
+            if not os.path.isdir(folder_path):
+                continue
+
+            # Must be approved
+            if not os.path.exists(os.path.join(folder_path, ".approved")):
+                continue
+
+            matching = self.filter_matching_files(folder_path, allowed_types)  # type: ignore[arg-type]
+            # Filter files where skill_id has NOT been executed yet
+            unprocessed_files = [
+                f for f in matching if skill_id not in f.get("executed_skills", [])
+            ]
+
+            if unprocessed_files:
+                pending_cases.append(
+                    {
+                        "folder_name": folder_name,
+                        "folder_path": folder_path,
+                        "matching_files": unprocessed_files,
+                        "unprocessed_count": len(unprocessed_files),
+                    }
+                )
+
+        return pending_cases
+
     def execute_skill_for_folder(
         self, skill_id: str, folder_path: str, context: dict[str, object] | None = None
     ) -> bool:
-        """Executes a skill for a processed folder, filtering by the document_types registered in the skill."""
+        """Executes a skill for an approved folder, merging extracted metadata into context and recording execution."""
         skill = self.skill_manager.get_skill(skill_id)
         if not skill:
             logger.error("[SkillExecutor] Skill '%s' not found.", skill_id)
             return False
 
         allowed_types = skill.get("document_types", [])
-        matching_files = self.filter_matching_files(folder_path, allowed_types)  # type: ignore[arg-type]
+        all_matching = self.filter_matching_files(folder_path, allowed_types)  # type: ignore[arg-type]
+
+        # Process only files that have not yet been executed with this skill
+        matching_files = [
+            f for f in all_matching if skill_id not in f.get("executed_skills", [])
+        ]
 
         if not matching_files:
-            logger.warning(
-                "[SkillExecutor] No matching files found for skill '%s' in %s (Filter: %s).",
+            logger.info(
+                "[SkillExecutor] No pending un-exported files for skill '%s' in %s.",
                 skill_id,
                 folder_path,
-                allowed_types,
             )
+            # If all were already executed, consider it satisfied
+            return True
 
         base_ctx = dict(context or {})
         base_ctx["folder_path"] = folder_path
         base_ctx["matching_files"] = [f["fullpath"] for f in matching_files]
 
-        # If matching files exist, set the first as primary document_fullpath
-        if matching_files:
-            base_ctx["document_fullpath"] = matching_files[0]["fullpath"]
-            base_ctx["document_type"] = matching_files[0]["document_type"]
-            base_ctx["filename"] = matching_files[0]["filename"]
-
-        # Execution in 'each_file' or 'single' mode
+        # Execution in 'each_file' or 'single_file' mode
         upload_mode = skill.get("upload_mode", "single_file")
-        if upload_mode == "each_file" and len(matching_files) > 1:
-            success = True
+
+        if upload_mode == "each_file":
+            all_success = True
             for file_info in matching_files:
                 file_ctx = dict(base_ctx)
+                # Merge file metadata into context
+                for k, v in file_info.get("meta", {}).items():
+                    if k not in file_ctx:
+                        file_ctx[k] = v
+
                 file_ctx["document_fullpath"] = file_info["fullpath"]
                 file_ctx["document_type"] = file_info["document_type"]
                 file_ctx["filename"] = file_info["filename"]
-                if not self.execute_skill(skill_id, file_ctx):
-                    success = False
-            return success
+
+                if self.execute_skill(skill_id, file_ctx):
+                    self.mark_file_skill_executed(file_info["fullpath"], skill_id)
+                else:
+                    all_success = False
+            return all_success
         else:
-            return self.execute_skill(skill_id, base_ctx)
+            # Single file mode: use the first pending file
+            primary_file = matching_files[0]
+            for k, v in primary_file.get("meta", {}).items():
+                if k not in base_ctx:
+                    base_ctx[k] = v
+
+            base_ctx["document_fullpath"] = primary_file["fullpath"]
+            base_ctx["document_type"] = primary_file["document_type"]
+            base_ctx["filename"] = primary_file["filename"]
+
+            if self.execute_skill(skill_id, base_ctx):
+                self.mark_file_skill_executed(primary_file["fullpath"], skill_id)
+                return True
+            return False
