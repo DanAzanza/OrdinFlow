@@ -32,7 +32,6 @@ from routes.api.document_helpers import (
 )
 from routes.api.inbox_api import inbox_api_bp
 from routes.api.split_api import (
-    _is_split_enabled_for_import_skill,
     _parse_pages_input,
     split_api_bp,
 )
@@ -66,5 +65,4 @@ __all__ = [
     "_get_doc_types_from_files",
     "_generate_pdf_thumbnail",
     "_parse_pages_input",
-    "_is_split_enabled_for_import_skill",
 ]

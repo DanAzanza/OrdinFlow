@@ -1,32 +1,32 @@
 import os
 
-import pytest
-
 from core.config import AppConfig
 from core.matcher import FileSystemRouter
-from core.processor import DocumentProcessor
 
 
-@pytest.fixture
-def processor():
-    config = AppConfig()
-    config.document_types = {
-        "Vertrag": {
-            "routing": {"skip_doctor_name_check": True}
-        }
-    }
-    return DocumentProcessor(config)
-
-
-def test_person_matching_find_folder(tmp_path):
+def test_find_existing_folder_by_keywords(tmp_path):
     config = AppConfig()
     config.target_base_dir = str(tmp_path)
     router = FileSystemRouter(config)
 
-    # Erstelle einen bestehenden Ordner
-    os.makedirs(tmp_path / "2024-05-12--Software--Muster--Max")
-
-    # Suche nach derselben Person
-    res1 = router.find_existing_person_folder(str(tmp_path), "Muster", "Max")
+    # 1. Matching person and product in folder name
+    os.makedirs(tmp_path / "2026-05-12--Software--Mustermann--Erika")
+    res1 = router.find_existing_folder_by_keywords(
+        str(tmp_path), ["Mustermann", "Erika", "Software"]
+    )
     assert res1 is not None
-    assert "Muster--Max" in res1
+    assert "Mustermann--Erika" in res1
+
+    # 2. Matching cross-domain invoice / tenant keywords
+    os.makedirs(tmp_path / "2026__Rechnungen__Acme_GmbH")
+    res2 = router.find_existing_folder_by_keywords(
+        str(tmp_path), ["Rechnungen", "Acme"]
+    )
+    assert res2 is not None
+    assert "Acme_GmbH" in res2
+
+    # 3. Non-matching keywords return None
+    res_none = router.find_existing_folder_by_keywords(
+        str(tmp_path), ["NonExistentKeyword"]
+    )
+    assert res_none is None

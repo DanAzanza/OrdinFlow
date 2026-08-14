@@ -412,7 +412,7 @@ def test_dependent_document_inherits_parent_optional_fields(processor):
         extraction_fields=extraction_fields
     )
 
-    # Erwartet: "2026-07-15--Software--Schmidt--Thomas"
+    # Expected folder structure contains resolved first name without fallback placeholders
     assert "----" not in target_dir
     assert "Thomas" in target_dir
 

@@ -204,39 +204,32 @@ def api_clear_logs():
     return jsonify({"status": "cleared"})
 
 
-@system_api_bp.route("/api/log/stats", methods=["GET"])
-def api_get_log_stats():
-    """Parses main.log to compute accurate server-side historical statistics."""
-    import re
-    log_path = "main.log" if os.path.exists("main.log") else "document_router.log"
-    if not os.path.exists(log_path):
-        return jsonify({
-            "recordsCount": 0,
-            "totalFiles": 0,
-            "completedFiles": 0,
-            "manualReviewFiles": 0,
-            "failedFiles": 0,
-            "successRate": "100.0",
-            "totalProcessingTime": "0.0",
-            "maxProcessingTime": "0.0",
-            "avgTimePerFile": "0.0",
-            "avgTimePerPage": "0.0",
-            "totalPages": 0,
-            "categoryCounts": {},
-            "tier1Count": 0,
-            "tier2Count": 0,
-            "tier3Count": 0,
-            "earlyStopCount": 0,
-            "infoCount": 0,
-            "warnCount": 0,
-            "errorCount": 0,
-        })
+def _get_empty_log_stats() -> dict[str, Any]:
+    return {
+        "recordsCount": 0,
+        "totalFiles": 0,
+        "completedFiles": 0,
+        "manualReviewFiles": 0,
+        "failedFiles": 0,
+        "successRate": "100.0",
+        "totalProcessingTime": "0.0",
+        "maxProcessingTime": "0.0",
+        "avgTimePerFile": "0.0",
+        "avgTimePerPage": "0.0",
+        "totalPages": 0,
+        "categoryCounts": {},
+        "tier1Count": 0,
+        "tier2Count": 0,
+        "tier3Count": 0,
+        "earlyStopCount": 0,
+        "infoCount": 0,
+        "warnCount": 0,
+        "errorCount": 0,
+    }
 
-    try:
-        with open(log_path, encoding="utf-8", errors="replace") as f:
-            lines = f.readlines()
-    except Exception:
-        lines = []
+
+def _compute_log_stats(lines: list[str]) -> dict[str, Any]:
+    import re
 
     completed_files = 0
     manual_review_files = 0
@@ -310,7 +303,7 @@ def api_get_log_stats():
         else "0.0"
     )
 
-    return jsonify({
+    return {
         "recordsCount": len(lines),
         "totalFiles": total_files,
         "completedFiles": completed_files,
@@ -330,7 +323,23 @@ def api_get_log_stats():
         "infoCount": info_count,
         "warnCount": warn_count,
         "errorCount": error_count,
-    })
+    }
+
+
+@system_api_bp.route("/api/log/stats", methods=["GET"])
+def api_get_log_stats():
+    """Parses main.log to compute accurate server-side historical statistics."""
+    log_path = "main.log" if os.path.exists("main.log") else "document_router.log"
+    if not os.path.exists(log_path):
+        return jsonify(_get_empty_log_stats())
+
+    try:
+        with open(log_path, encoding="utf-8", errors="replace") as f:
+            lines = f.readlines()
+    except OSError:
+        lines = []
+
+    return jsonify(_compute_log_stats(lines))
 
 
 # ── Configuration Endpoints ──

@@ -375,6 +375,7 @@ class LLMExtractor:
                 },
                 {"role": "user", "content": prompt2, "images": effective_images},
             ],
+            "temperature": temperature,
             "json_schema": json_schema,
         }
 
