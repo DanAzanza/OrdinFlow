@@ -75,13 +75,13 @@ async function loadConfigTab() {
 
                     if (typeof val === "boolean") {
                         groupHtml += `
-                            <div class="config-group" style="display: flex; align-items: center; gap: 10px; padding: 12px 14px; background: rgba(0,0,0,0.2); border-radius: 8px; border: 1px solid rgba(255,255,255,0.06);">
-                                <input type="checkbox" id="cfg_${key}" ${val ? "checked" : ""} style="width: 18px; height: 18px; cursor: pointer; accent-color: #6366f1;">
-                                <label for="cfg_${key}" style="margin: 0; cursor: pointer; font-weight: 600; font-size: 0.88rem; color: var(--text);">${escapeHtml(label)}</label>
+                            <div class="config-group config-toggle-group">
+                                <input type="checkbox" id="cfg_${key}" ${val ? "checked" : ""} class="config-checkbox">
+                                <label for="cfg_${key}" class="config-checkbox-label">${escapeHtml(label)}</label>
                             </div>`;
                     } else {
                         groupHtml += `
-                            <div class="config-group" style="margin-bottom: 12px;">
+                            <div class="config-group config-text-group">
                                 <label class="doc-editor-label" for="cfg_${key}">${escapeHtml(label)}</label>
                                 <input type="text" class="doc-editor-input" id="cfg_${key}" value="${escapeHtml(strVal)}">
                             </div>`;
@@ -91,9 +91,9 @@ async function loadConfigTab() {
 
             if (groupHtml) {
                 html += `
-                    <div class="doc-editor-section" style="margin-bottom: 20px; background: var(--bg-card); padding: 20px; border-radius: 12px; border: 1px solid var(--border);">
-                        <h4 style="margin: 0 0 16px 0; font-size: 0.95rem; font-weight: 700; color: var(--accent);">${escapeHtml(group.title)}</h4>
-                        <div style="display: flex; flex-direction: column; gap: 10px;">${groupHtml}</div>
+                    <div class="doc-editor-section config-editor-section">
+                        <h4 class="config-section-title">${escapeHtml(group.title)}</h4>
+                        <div class="config-section-body">${groupHtml}</div>
                     </div>`;
             }
         }

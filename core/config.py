@@ -188,7 +188,7 @@ class AppConfig:
         clean_doc_types: dict[str, dict[str, Any]] = {}
         if document_types:
             for d_name, d_val in document_types.items():
-                if d_name not in ["UNBEKANNT", "LEER"]:
+                if d_name.upper() not in ["UNKNOWN", "EMPTY", "UNBEKANNT", "LEER"]:
                     clean_doc_types[d_name] = d_val
 
         skill_data["id"] = import_skill_id

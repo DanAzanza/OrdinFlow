@@ -150,7 +150,7 @@ class SkillRecorder:
                 return self._synthesize_skill()
 
             self.is_recording = False
-            self.last_action_desc = "Aufnahme beendet."
+            self.last_action_desc = "Recording stopped."
 
             # Flush listeners
             if self._mouse_listener:
@@ -192,12 +192,12 @@ class SkillRecorder:
             self._add_step(
                 {
                     "id": f"step_{len(self.steps) + 1}",
-                    "description": f"Text eintippen: '{typed_text}'",
+                    "description": f"Type text: '{typed_text}'",
                     "action_type": "TYPE_TEXT",
                     "text": typed_text,
                 }
             )
-            self.last_action_desc = f"Text erfasst: '{typed_text}'"
+            self.last_action_desc = f"Captured text: '{typed_text}'"
 
     def _add_step(self, step: dict[str, Any]):
         step["id"] = f"step_{len(self.steps) + 1}"
@@ -221,7 +221,7 @@ class SkillRecorder:
             self._add_step(
                 {
                     "id": "step_tmp",
-                    "description": f"Fenster holen: {active_win}",
+                    "description": f"Focus window: {active_win}",
                     "action_type": "FOCUS_WINDOW",
                     "window_title": active_win,
                 }

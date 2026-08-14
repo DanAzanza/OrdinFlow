@@ -231,6 +231,55 @@ def test_api_vorgaenge_approval_status(client, tmp_path):
         DashboardState.config.target_base_dir = orig_target_base
 
 
+def test_api_cases_edit_file_atomic_sidecar(client, tmp_path):
+    orig_target_base = DashboardState.config.target_base_dir
+    DashboardState.config.target_base_dir = str(tmp_path)
+    DashboardState.config.folder_structure = ["{Datum}", "{Produkt}", "{Nachname}", "{Vorname}"]
+    DashboardState.config.document_types = {
+        "Invoice": {
+            "routing": {
+                "filename_template": "Invoice__{Nachname}__{Datum}",
+            }
+        }
+    }
+
+    src_folder = tmp_path / "2026-08-01__Software__Doe__John"
+    src_folder.mkdir(parents=True, exist_ok=True)
+    pdf_file = src_folder / "Invoice__Doe__2026-08-01.pdf"
+    pdf_file.write_text("dummy pdf", encoding="utf-8")
+    meta_file = src_folder / "Invoice__Doe__2026-08-01.pdf.meta"
+    meta_file.write_text('{"status": "ok"}', encoding="utf-8")
+
+    try:
+        edit_payload = {
+            "document": "Invoice",
+            "Nachname": "Smith",
+            "Vorname": "Jane",
+            "Datum": "2026-08-02",
+            "Produkt": "Hardware",
+            "move": True,
+        }
+        res = client.post(
+            "/api/cases/2026-08-01__Software__Doe__John/Invoice__Doe__2026-08-01.pdf/edit",
+            json=edit_payload,
+        )
+        assert res.status_code == 200
+        res_data = res.get_json()
+        assert res_data["status"] == "ok"
+        new_folder = tmp_path / res_data["folder"]
+        new_pdf = new_folder / res_data["file"]
+        new_meta = new_folder / (res_data["file"] + ".meta")
+
+        # Verify atomic movement of both file and its sidecar
+        assert new_pdf.exists()
+        assert new_meta.exists()
+        assert not pdf_file.exists()
+        assert not meta_file.exists()
+    finally:
+        DashboardState.config.target_base_dir = orig_target_base
+
+
+
 
 
 

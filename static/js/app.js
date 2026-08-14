@@ -126,9 +126,9 @@ function openAppInspector(data) {
 					: ""
 			}
 			<div class="inspector-card">
-				<h4 style="font-size: 0.82rem; margin-bottom: 8px; color: var(--accent);">📋 Extracted AI Data</h4>
+				<h4 class="inspector-extracted-title">📋 Extracted AI Data</h4>
 				<div class="inspector-field-group">
-					${fieldsHtml || '<p style="font-size: 0.76rem; color: var(--text-dim);">No extraction data available.</p>'}
+					${fieldsHtml || '<p class="inspector-extracted-empty">No extraction data available.</p>'}
 				</div>
 			</div>
 			${

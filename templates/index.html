@@ -731,10 +731,10 @@
             <div class="recorder-info">
                 <span class="recorder-title">🔴 LIVE RECORDING IN PROGRESS</span>
                 <span id="recorderTimer" class="recorder-timer">00:00</span>
-                <span id="recorderStepBadge" class="badge" style="background: rgba(239, 68, 68, 0.25); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.4);">0 steps</span>
+                <span id="recorderStepBadge" class="badge recorder-step-badge">0 steps</span>
             </div>
             <span id="recorderLastAction" class="recorder-last-action">Mouse clicks and inputs are being captured...</span>
-            <button class="btn btn-sm btn-danger" onclick="stopLiveRecording()" style="font-weight: 700; gap: 6px;">
+            <button type="button" class="btn btn-sm btn-danger recorder-stop-btn" onclick="stopLiveRecording()">
                 ⏹️ Stop Recording
             </button>
         </div>
@@ -746,6 +746,8 @@
         <script src="/static/js/inbox.js"></script>
         <script src="/static/js/cases.js"></script>
         <script src="/static/js/config_tab.js"></script>
+        <script src="/static/js/skills_queue.js"></script>
+        <script src="/static/js/skills_recorder.js"></script>
         <script src="/static/js/skills_tab.js"></script>
         <script src="/static/js/log_tab.js"></script>
         <script src="/static/js/app.js"></script>

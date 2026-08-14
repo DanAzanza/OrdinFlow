@@ -4,6 +4,7 @@ import os
 import threading
 import time
 from io import BytesIO
+from typing import Any
 
 from flask import Blueprint, jsonify, request
 
@@ -26,7 +27,7 @@ logger = logging.getLogger(__name__)
 _SKILL_MANAGER = None
 
 
-def _get_skill_manager():
+def _get_skill_manager() -> SkillManager:
     global _SKILL_MANAGER
     if _SKILL_MANAGER is None:
         base_dir = (
@@ -35,6 +36,72 @@ def _get_skill_manager():
         skills_dir = os.path.join(base_dir, "settings", "skills")
         _SKILL_MANAGER = SkillManager(skills_dir=skills_dir)
     return _SKILL_MANAGER
+
+
+def _handle_queue_import(item: dict[str, Any]) -> bool:
+    if DashboardState.processor:
+        import queue
+        from main import process_existing_files
+
+        skill_obj = _get_skill_manager().get_skill(item["skill_id"])
+        allowed_exts = (
+            skill_obj.get("allowed_extensions") if skill_obj else None
+        )
+        temp_q: queue.Queue = queue.Queue()
+        process_existing_files(
+            DashboardState.processor,
+            temp_q,
+            allowed_extensions=allowed_exts,
+        )
+        while not temp_q.empty():
+            fp = temp_q.get()
+            if fp:
+                try:
+                    DashboardState.processor.process_and_route_file(fp)
+                except Exception as e:
+                    logger.error(
+                        "[SkillQueueManager] Error processing file %s: %s",
+                        fp,
+                        e,
+                    )
+                finally:
+                    temp_q.task_done()
+    return True
+
+
+def _handle_queue_export(item: dict[str, Any]) -> bool:
+    extractor = (
+        DashboardState.processor.llm_extractor
+        if DashboardState.processor
+        else None
+    )
+    executor = SkillExecutor(
+        _get_skill_manager(), vision_extractor=extractor
+    )
+    context = item.get("context", {})
+    folder_name = context.get("folder_name")
+    if folder_name and DashboardState.config:
+        folder_path = os.path.abspath(
+            os.path.join(
+                DashboardState.config.target_base_dir, folder_name
+            )
+        )
+        return executor.execute_skill_for_folder(
+            item["skill_id"], folder_path, context
+        )
+    else:
+        return executor.execute_skill(
+            item["skill_id"], context
+        )
+
+
+def _get_configured_queue_manager():
+    qm = get_skill_queue_manager(_get_skill_manager())
+    qm.set_handlers(
+        import_handler=_handle_queue_import,
+        export_handler=_handle_queue_export,
+    )
+    return qm
 
 
 @skills_api_bp.route("/api/skills", methods=["GET"])
@@ -164,7 +231,7 @@ def start_skill_recorder():
     from core.skill_recorder import SkillRecorder
 
     data = request.json or {}
-    skill_name = data.get("skill_name", "Neuer Aufgezeichneter Skill")
+    skill_name = data.get("skill_name", "New Recorded Skill")
     recorder = SkillRecorder.get_instance()
     try:
         res = recorder.start_recording(skill_name=skill_name)
@@ -195,7 +262,7 @@ def status_skill_recorder():
 
 @skills_api_bp.route("/api/skills/queue", methods=["GET"])
 def get_skill_queue():
-    qm = get_skill_queue_manager(_get_skill_manager())
+    qm = _get_configured_queue_manager()
     return jsonify(qm.get_queue_state())
 
 
@@ -207,7 +274,7 @@ def add_to_skill_queue():
     if not skill_id:
         return jsonify({"error": "skill_id required"}), 400
 
-    qm = get_skill_queue_manager(_get_skill_manager())
+    qm = _get_configured_queue_manager()
     item = qm.add_to_queue(skill_id, context)
     return jsonify({"status": "ok", "item": item})
 
@@ -219,7 +286,7 @@ def remove_from_skill_queue():
     if not queue_id:
         return jsonify({"error": "queue_id required"}), 400
 
-    qm = get_skill_queue_manager(_get_skill_manager())
+    qm = _get_configured_queue_manager()
     success = qm.remove_from_queue(queue_id)
     if success:
         return jsonify({"status": "ok"})
@@ -233,21 +300,21 @@ def reorder_skill_queue():
     if not isinstance(item_ids, list):
         return jsonify({"error": "item_ids array required"}), 400
 
-    qm = get_skill_queue_manager(_get_skill_manager())
+    qm = _get_configured_queue_manager()
     qm.reorder_queue(item_ids)
     return jsonify({"status": "ok"})
 
 
 @skills_api_bp.route("/api/skills/queue/start", methods=["POST"])
 def start_skill_queue():
-    qm = get_skill_queue_manager(_get_skill_manager())
+    qm = _get_configured_queue_manager()
     qm.start_queue()
     return jsonify({"status": "started", "is_running": True})
 
 
 @skills_api_bp.route("/api/skills/queue/stop", methods=["POST"])
 def stop_skill_queue():
-    qm = get_skill_queue_manager(_get_skill_manager())
+    qm = _get_configured_queue_manager()
     qm.stop_queue()
     return jsonify({"status": "stopped", "is_running": False})
 

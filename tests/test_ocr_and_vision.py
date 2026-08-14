@@ -114,19 +114,27 @@ def test_vision_unknown_type_returns_empty_rules():
 
 
 def test_image_preprocessor_scale_and_encode_returns_base64(processor):
-    """Skaliertes Bild wird als Base-64-String zurückgegeben."""
+    """Skaliertes Bild wird als Base-64-String zurückgegeben und lässt sich dekodieren."""
+    import base64
+    import io
     import cv2
     import numpy as np
     from PIL import Image
 
     dummy_img = cv2.cvtColor(
-        np.ones((100, 100), dtype=np.uint8) * 128,
+        np.ones((1200, 1600), dtype=np.uint8) * 128,
         cv2.COLOR_GRAY2BGR,
     )
     b64 = processor.image_preprocessor.scale_and_encode_image(
         Image.fromarray(dummy_img), max_dim=800
     )
     assert isinstance(b64, str)
+    assert len(b64) > 0
+
+    # Verify that the returned base64 string is a valid decoded image scaled to max_dim 800
+    decoded_bytes = base64.b64decode(b64)
+    decoded_img = Image.open(io.BytesIO(decoded_bytes))
+    assert max(decoded_img.width, decoded_img.height) <= 800
 
 
 # ──────────────────────────────────────────────────────────────
