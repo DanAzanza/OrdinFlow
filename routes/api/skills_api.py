@@ -299,14 +299,28 @@ def refine_step():
             refined["action_type"] = "DOUBLE_CLICK"
             target = re.sub(r"(?i)^(doppelklick auf|double click on|klicke doppelt auf)\s*", "", instruction).strip("\"' ")
             refined["locator"] = {"type": "auto", "prompt": target or instruction}
-        elif any(k in lower for k in ["prüf", "warten", "verify", "check", "erscheint", "sichtbar"]):
+        elif any(k in lower for k in ["prüf", "warten", "verify", "check", "erscheint", "sichtbar", "wenn nicht", "falls nicht", "if not"]):
             refined["action_type"] = "VERIFY_SCREEN"
-            target = re.sub(r"(?i)^(prüfe ob|warten auf|verify|check if)\s*", "", instruction).strip("\"' ")
-            refined["locator"] = {"type": "auto", "prompt": target or instruction}
+            # Split if condition exists
+            parts = re.split(r"(?i)\s*(?:wenn nicht|falls nicht|if not)\s*,?\s*", instruction, maxsplit=1)
+            target_part = parts[0]
+            target = re.sub(r"(?i)^(prüfe ob|warten auf|verify|check if|suche nach|finde)\s*", "", target_part).strip("\"' ")
+            refined["locator"] = {"type": "auto", "prompt": target or target_part}
+
+            if len(parts) > 1:
+                fallback_part = parts[1].lower()
+                if any(k in fallback_part for k in ["anlegen", "create", "routine", "skill", "ausführen", "starte"]):
+                    refined["on_failure_action"] = "run_skill"
+                    clean_slug = re.sub(r"[^a-z0-9_]+", "_", fallback_part).strip("_")
+                    refined["on_failure_skill"] = clean_slug or "create_patient"
+                elif any(k in fallback_part for k in ["pause", "fragen", "warn", "ton", "alert"]):
+                    refined["on_failure_action"] = "pause_prompt"
+                elif any(k in fallback_part for k in ["überspring", "skip", "abbrech"]):
+                    refined["on_failure_action"] = "skip"
         elif any(k in lower for k in ["fenster", "window", "fokus", "focus"]):
             refined["action_type"] = "FOCUS_WINDOW"
             refined["window_title"] = "Remote Desktop*"
-        elif any(k in lower for k in ["subskill", "sub-skill", "sub skill"]):
+        elif any(k in lower for k in ["subskill", "sub-skill", "sub skill", "routine"]):
             refined["action_type"] = "CALL_SKILL"
             m = re.search(r"[\w_]+", instruction)
             refined["skill_id"] = m.group(0) if m else "sub_skill"

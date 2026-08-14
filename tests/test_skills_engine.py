@@ -266,3 +266,69 @@ def test_find_pending_cases_for_skill(temp_skills_dir):
         assert pending[0]["unprocessed_count"] == 1
     finally:
         shutil.rmtree(cases_dir, ignore_errors=True)
+
+
+def test_verify_screen_fallback_routine(temp_skills_dir, monkeypatch):
+    mgr = SkillManager(skills_dir=temp_skills_dir)
+    executor = SkillExecutor(mgr)
+
+    # 1. Routine skill to create patient
+    routine_executed = []
+    routine_skill = {
+        "id": "create_patient_routine",
+        "name": "Create Patient Routine",
+        "enabled": True,
+        "steps": [
+            {
+                "id": "routine_step_1",
+                "action_type": "FOCUS_WINDOW",
+                "window_title": "Remote Desktop*",
+            }
+        ],
+    }
+    mgr.save_skill(routine_skill)
+
+    # 2. Main skill with VERIFY_SCREEN that fails and triggers fallback routine
+    main_skill = {
+        "id": "main_export_skill",
+        "name": "Main Export Skill",
+        "enabled": True,
+        "steps": [
+            {
+                "id": "check_patient",
+                "action_type": "VERIFY_SCREEN",
+                "locator": {"type": "auto", "prompt": "{Nachname}"},
+                "on_failure_action": "run_skill",
+                "on_failure_skill": "create_patient_routine",
+                "max_retries": 1,
+                "retry_delay_s": 0.01,
+            },
+            {
+                "id": "final_upload_step",
+                "action_type": "FOCUS_WINDOW",
+                "window_title": "Remote Desktop*",
+            }
+        ],
+    }
+    mgr.save_skill(main_skill)
+
+    # Mock locate to fail for {Nachname}
+    def mock_locate(locator, window_title):
+        return None
+
+    monkeypatch.setattr(executor, "_locate_target", mock_locate)
+
+    # Mock execute_skill for the routine to record execution
+    orig_execute = executor.execute_skill
+    def mock_execute_skill(skill_id, context=None, depth=0):
+        if skill_id == "create_patient_routine":
+            routine_executed.append(skill_id)
+            return True
+        return orig_execute(skill_id, context, depth)
+
+    monkeypatch.setattr(executor, "execute_skill", mock_execute_skill)
+
+    res = executor.execute_skill("main_export_skill", context={"Nachname": "Mustermann"})
+    assert res is True
+    assert routine_executed == ["create_patient_routine"]
+

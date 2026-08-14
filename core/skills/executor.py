@@ -307,7 +307,7 @@ class SkillExecutor:
                         text_to_type, press_enter=bool(step.get("press_enter", False))
                     )
 
-            # 5. VERIFY_SCREEN (Conditional Branching)
+            # 5. VERIFY_SCREEN (Conditional Branching & Fallback Routines)
             elif action_type == "VERIFY_SCREEN":
                 locator = step.get("locator", {})
                 loc_copy = dict(locator)
@@ -315,8 +315,12 @@ class SkillExecutor:
                     loc_copy["value"] = self._substitute_placeholders(
                         loc_copy["value"], context
                     )
+                if "prompt" in loc_copy:
+                    loc_copy["prompt"] = self._substitute_placeholders(
+                        loc_copy["prompt"], context
+                    )
 
-                max_retries = int(step.get("max_retries", 3))
+                max_retries = int(step.get("max_retries", 2))
                 retry_delay_s = float(step.get("retry_delay_s", 1.0))
                 found = False
                 for attempt in range(1, max_retries + 1):
@@ -331,6 +335,39 @@ class SkillExecutor:
                         break
                     if attempt < max_retries:
                         time.sleep(retry_delay_s)
+
+                if not found:
+                    on_failure_action = str(step.get("on_failure_action", "")).lower()
+                    on_failure_skill = step.get("on_failure_skill")
+
+                    if (on_failure_action == "run_skill" or on_failure_skill) and on_failure_skill:
+                        logger.info(
+                            "[SkillExecutor] Verification not found on screen. Running fallback routine '%s'...",
+                            on_failure_skill,
+                        )
+                        fallback_ok = self.execute_skill(
+                            str(on_failure_skill),
+                            context,
+                            depth=depth + 1,
+                        )
+                        if not fallback_ok:
+                            logger.error(
+                                "[SkillExecutor] Fallback routine '%s' failed.",
+                                on_failure_skill,
+                            )
+                            return False
+                    elif on_failure_action == "pause_prompt":
+                        logger.warning(
+                            "[SkillExecutor] Verification '%s' failed. Pausing execution for human intervention.",
+                            step.get("description", step_id),
+                        )
+                        return False
+                    elif on_failure_action == "skip":
+                        logger.warning(
+                            "[SkillExecutor] Verification '%s' failed. Skipping case.",
+                            step.get("description", step_id),
+                        )
+                        return False
 
                 next_target = (
                     step.get("on_success") if found else step.get("on_failure")

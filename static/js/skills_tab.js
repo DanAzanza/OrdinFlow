@@ -748,10 +748,42 @@ function renderEditorSteps() {
 					</div>
 				`;
 			} else if (step.action_type === "VERIFY_SCREEN") {
+				const failureAction = step.on_failure_action || (step.on_failure_skill ? "run_skill" : "skip");
+				const availableRoutines = (state.skills || []).filter((s) => s.type !== "import" && s.id !== selectedSkillId);
+
 				actionSpecificHtml = `
 					<div class="form-group" style="margin-top: 10px;">
 						<label class="doc-editor-label" style="color: #c084fc;">👁️ Element or Text that must appear on screen</label>
 						<input type="text" class="doc-editor-input" value="${escapeHtml(targetVal)}" placeholder="e.g. 'Patient Profile' or 'Saved successfully'" onchange="if(!currentEditingSteps[${idx}].locator) currentEditingSteps[${idx}].locator={}; currentEditingSteps[${idx}].locator.prompt = this.value; currentEditingSteps[${idx}].locator.value = this.value; currentEditingSteps[${idx}].locator.type = 'auto';" />
+					</div>
+
+					<div style="margin-top: 10px; background: rgba(0,0,0,0.25); border: 1px solid rgba(255,255,255,0.06); padding: 12px; border-radius: 8px;">
+						<label class="doc-editor-label" style="color: #fbbf24; margin-bottom: 6px;">❓ What to do if NOT found on screen?</label>
+						<div class="grid-2col" style="display: grid; grid-template-columns: 1.2fr 2fr; gap: 10px; align-items: center;">
+							<select class="doc-editor-input" onchange="currentEditingSteps[${idx}].on_failure_action = this.value; renderEditorSteps();">
+								<option value="run_skill" ${failureAction === "run_skill" ? "selected" : ""}>⚡ Run Routine Workflow</option>
+								<option value="pause_prompt" ${failureAction === "pause_prompt" ? "selected" : ""}>🔔 Pause & Alert Human</option>
+								<option value="skip" ${failureAction === "skip" ? "selected" : ""}>⏭️ Skip this Case</option>
+							</select>
+
+							${
+								failureAction === "run_skill"
+									? `
+								<div style="display: flex; gap: 6px; align-items: center;">
+									<select class="doc-editor-input" style="flex: 1;" onchange="currentEditingSteps[${idx}].on_failure_skill = this.value;">
+										<option value="">-- Select Routine Workflow --</option>
+										${availableRoutines.map((r) => `<option value="${escapeHtml(r.id)}" ${step.on_failure_skill === r.id ? "selected" : ""}>${escapeHtml(r.name || r.id)}</option>`).join("")}
+									</select>
+									<button type="button" class="btn btn-sm btn-secondary" onclick="createRoutineInlineForStep(${idx}, true)" style="white-space: nowrap; padding: 5px 10px; font-size: 0.78rem;" title="Create new routine">➕ New</button>
+								</div>
+							`
+									: `
+								<div style="font-size: 0.8rem; color: var(--text-dim);">
+									${failureAction === "pause_prompt" ? "Sounds an alert and pauses execution for human assistance." : "Safely aborts this file and marks it for review."}
+								</div>
+							`
+							}
+						</div>
 					</div>
 				`;
 			} else if (step.action_type === "FOCUS_WINDOW") {
@@ -762,10 +794,17 @@ function renderEditorSteps() {
 					</div>
 				`;
 			} else if (step.action_type === "CALL_SKILL") {
+				const availableRoutines = (state.skills || []).filter((s) => s.type !== "import" && s.id !== selectedSkillId);
 				actionSpecificHtml = `
 					<div class="form-group" style="margin-top: 10px;">
-						<label class="doc-editor-label">⚡ Sub-Skill ID to run</label>
-						<input type="text" class="doc-editor-input" value="${escapeHtml(step.skill_id || "")}" placeholder="e.g. rdp_login" onchange="currentEditingSteps[${idx}].skill_id = this.value" />
+						<label class="doc-editor-label">⚡ Routine Workflow to run</label>
+						<div style="display: flex; gap: 8px; align-items: center;">
+							<select class="doc-editor-input" style="flex: 1;" onchange="currentEditingSteps[${idx}].skill_id = this.value;">
+								<option value="">-- Select Routine Workflow --</option>
+								${availableRoutines.map((r) => `<option value="${escapeHtml(r.id)}" ${step.skill_id === r.id ? "selected" : ""}>${escapeHtml(r.name || r.id)}</option>`).join("")}
+							</select>
+							<button type="button" class="btn btn-sm btn-secondary" onclick="createRoutineInlineForStep(${idx}, false)" style="white-space: nowrap; padding: 5px 10px; font-size: 0.78rem;" title="Create new routine">➕ New</button>
+						</div>
 					</div>
 				`;
 			}
@@ -847,6 +886,55 @@ async function refineStepWithAI(idx) {
 		}
 	} catch (e) {
 		toast("Error refining step: " + e.message, "error");
+	}
+}
+
+async function createRoutineInlineForStep(idx, isFallback = true) {
+	const defaultName = "New Routine";
+	const name = prompt("Enter a name for the new routine workflow:", defaultName);
+	if (!name || !name.trim()) return;
+
+	const cleanName = name.trim();
+	const slug = slugifySkillName(cleanName) || `routine_${Date.now()}`;
+
+	const newSkill = {
+		id: slug,
+		name: cleanName,
+		type: "export",
+		description: "Sub-routine workflow",
+		target_window: (currentEditingSkill && currentEditingSkill.target_window) || "Remote Desktop*",
+		rdp_path_prefix: (currentEditingSkill && currentEditingSkill.rdp_path_prefix) || "\\\\tsclient\\C",
+		document_types: ["*"],
+		upload_mode: "single_file",
+		enabled: true,
+		steps: [
+			{
+				id: "step_1",
+				description: "Focus Window",
+				action_type: "FOCUS_WINDOW",
+				window_title: (currentEditingSkill && currentEditingSkill.target_window) || "Remote Desktop*",
+			},
+		],
+	};
+
+	try {
+		await api("/api/skills", {
+			method: "POST",
+			body: JSON.stringify(newSkill),
+		});
+
+		toast(`Routine '${cleanName}' created!`, "success");
+		await loadSkills();
+
+		if (isFallback) {
+			currentEditingSteps[idx].on_failure_action = "run_skill";
+			currentEditingSteps[idx].on_failure_skill = slug;
+		} else {
+			currentEditingSteps[idx].skill_id = slug;
+		}
+		renderEditorSteps();
+	} catch (e) {
+		toast("Error creating routine: " + e.message, "error");
 	}
 }
 
