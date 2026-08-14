@@ -7,6 +7,30 @@ let currentEditingSkill = null;
 let currentEditingSteps = [];
 let activeInputField = null;
 let skillsTabPollInterval = null;
+let isNewSkillCreation = false;
+
+function slugifySkillName(name) {
+	if (!name) return "";
+	return name
+		.toLowerCase()
+		.trim()
+		.replace(/[^a-z0-9_]+/g, "_")
+		.replace(/^_+|_+$/g, "");
+}
+
+function onSkillNameInput(val) {
+	document.getElementById("skillHeaderTitle").textContent = val.trim() || "Untitled Workflow";
+	if (isNewSkillCreation) {
+		const slug = slugifySkillName(val) || "custom_skill";
+		const idInput = document.getElementById("editorSkillId");
+		if (idInput) {
+			idInput.value = slug;
+		}
+		if (currentEditingSkill) {
+			currentEditingSkill.id = slug;
+		}
+	}
+}
 
 document.addEventListener("focusin", (e) => {
 	if (
@@ -127,6 +151,7 @@ async function selectSkill(skillId) {
 	selectedSkillId = skillId;
 	currentEditingSkill = skillObj;
 	currentEditingSteps = skillObj.steps ? JSON.parse(JSON.stringify(skillObj.steps)) : [];
+	isNewSkillCreation = false;
 
 	renderSkillsSidebar(state.skills || []);
 
@@ -524,10 +549,19 @@ function removeExtractionField(typeName, fieldKey) {
    ═══════════════════════════════════════════════════════════ */
 
 function createNewSkill() {
-	const newId = "custom_skill_" + Math.floor(Math.random() * 1000);
+	isNewSkillCreation = true;
+	const baseName = "New Workflow";
+	let slug = slugifySkillName(baseName);
+	const existingIds = new Set((state.skills || []).map((s) => s.id));
+	let counter = 2;
+	while (existingIds.has(slug)) {
+		slug = `${slugifySkillName(baseName)}_${counter}`;
+		counter++;
+	}
+
 	const newSkill = {
-		id: newId,
-		name: "New Workflow",
+		id: slug,
+		name: counter > 2 ? `${baseName} ${counter - 1}` : baseName,
 		type: "export",
 		description: "",
 		target_window: "Remote Desktop*",
@@ -545,7 +579,7 @@ function createNewSkill() {
 		],
 	};
 
-	selectedSkillId = newId;
+	selectedSkillId = newSkill.id;
 	currentEditingSkill = newSkill;
 	currentEditingSteps = JSON.parse(JSON.stringify(newSkill.steps));
 
@@ -572,6 +606,13 @@ function createNewSkill() {
 	renderEditorSteps();
 	renderVariableBadges();
 	renderQueueInspector();
+
+	// Focus and select skill name input so the user can type immediately
+	const nameInput = document.getElementById("editorSkillName");
+	if (nameInput) {
+		nameInput.focus();
+		nameInput.select();
+	}
 }
 
 function insertVariable(varName) {
@@ -797,7 +838,7 @@ function renderEditorSteps() {
 }
 
 async function saveSkillFromEditor() {
-	const skill_id = document.getElementById("editorSkillId").value.trim();
+	let skill_id = document.getElementById("editorSkillId").value.trim();
 	const name = document.getElementById("editorSkillName").value.trim();
 	const type = document.getElementById("editorSkillType").value;
 	const description = document.getElementById("editorSkillDesc").value.trim();
@@ -821,9 +862,14 @@ async function saveSkillFromEditor() {
 		: ["*"];
 	const uploadMode = document.getElementById("editorSkillUploadMode").value;
 
-	if (!skill_id || !name) {
-		toast("Please enter Skill ID and Name.", "error");
+	if (!name) {
+		toast("Please enter a skill name.", "error");
 		return;
+	}
+
+	if (!skill_id) {
+		skill_id = slugifySkillName(name) || "custom_skill";
+		document.getElementById("editorSkillId").value = skill_id;
 	}
 
 	const payload = {
@@ -847,20 +893,23 @@ async function saveSkillFromEditor() {
 	}
 
 	try {
-		await api("/api/skills", {
+		const res = await api("/api/skills", {
 			method: "POST",
 			body: JSON.stringify(payload),
 		});
 
+		const finalId = (res && res.skill_id) || skill_id;
+
 		if (type === "import" && state.editingDocTypes) {
-			await api(`/api/skills/${encodeURIComponent(skill_id)}/documents`, {
+			await api(`/api/skills/${encodeURIComponent(finalId)}/documents`, {
 				method: "PUT",
 				body: JSON.stringify({ document_types: state.editingDocTypes }),
 			});
 		}
 
 		toast("Skill '" + name + "' saved successfully!");
-		selectedSkillId = skill_id;
+		isNewSkillCreation = false;
+		selectedSkillId = finalId;
 		await loadSkills();
 	} catch (e) {
 		toast("Error saving skill: " + e.message, "error");

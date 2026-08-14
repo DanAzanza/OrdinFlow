@@ -44,12 +44,17 @@ class SkillManager:
 
     def save_skill(self, skill_data: dict[str, Any]) -> str:
         """Saves a skill to its individual YAML file."""
-        skill_id = skill_data.get("id", "").strip()  # type: ignore[union-attr]
+        skill_id = str(skill_data.get("id") or "").strip()
         if not skill_id:
-            name_slug = re.sub(
-                r"[^a-z0-9_]", "_", skill_data.get("name", "unnamed").lower()
-            )  # type: ignore[arg-type]
-            skill_id = f"skill_{name_slug}_{int(time.time())}"
+            name = str(skill_data.get("name") or "unnamed")
+            name_slug = re.sub(r"[^a-z0-9_]+", "_", name.lower()).strip("_")
+            base_slug = name_slug or "skill"
+            candidate = base_slug
+            counter = 2
+            while os.path.exists(os.path.join(self.skills_dir, f"{candidate}.yaml")):
+                candidate = f"{base_slug}_{counter}"
+                counter += 1
+            skill_id = candidate
             skill_data["id"] = skill_id
 
         filepath = os.path.join(self.skills_dir, f"{skill_id}.yaml")

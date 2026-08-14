@@ -266,12 +266,12 @@
                                     <h4>⚙️ General Settings</h4>
                                     <div class="grid-2col">
                                         <div class="form-group" style="margin: 0;">
-                                            <label class="doc-editor-label">Skill ID (Filename)</label>
-                                            <input type="text" id="editorSkillId" class="doc-editor-input" placeholder="e.g. rdp_patient_export" />
+                                            <label class="doc-editor-label">Skill Name</label>
+                                            <input type="text" id="editorSkillName" class="doc-editor-input" placeholder="e.g. Export to RDP Database" oninput="onSkillNameInput(this.value)" />
                                         </div>
                                         <div class="form-group" style="margin: 0;">
-                                            <label class="doc-editor-label">Skill Name</label>
-                                            <input type="text" id="editorSkillName" class="doc-editor-input" placeholder="e.g. Export to RDP Database" />
+                                            <label class="doc-editor-label">Skill ID <span style="font-size: 0.72rem; color: var(--text-dim); font-weight: normal;">(Auto-generated file identifier)</span></label>
+                                            <input type="text" id="editorSkillId" class="doc-editor-input" placeholder="auto-generated" readonly style="opacity: 0.7; background: rgba(0,0,0,0.25); cursor: default;" />
                                         </div>
                                     </div>
                                     <div class="grid-2col" style="margin-top: 10px;">
