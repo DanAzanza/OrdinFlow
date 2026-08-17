@@ -15,6 +15,7 @@ from core.utils import memory_log_handler
 from routes.state import DashboardState
 
 system_api_bp = Blueprint("api_system_and_config", __name__)
+logger = logging.getLogger(__name__)
 
 # Allowed configuration keys for GET and PUT /api/config
 _CONFIG_SAFE_KEYS = [
