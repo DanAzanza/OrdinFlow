@@ -40,17 +40,44 @@ def _get_skill_manager() -> SkillManager:
 
 
 def _handle_queue_import(item: dict[str, Any]) -> bool:
-    if DashboardState.processor:
-        import queue
-        from main import process_existing_files
+    if not DashboardState.processor:
+        return True
 
-        skill_obj = _get_skill_manager().get_skill(item["skill_id"])
-        allowed_exts = (
-            skill_obj.get("allowed_extensions") if skill_obj else None
+    from main import process_existing_files
+
+    processor = DashboardState.processor
+    skill_obj = _get_skill_manager().get_skill(item["skill_id"])
+    allowed_exts = (
+        skill_obj.get("allowed_extensions") if skill_obj else None
+    )
+
+    if DashboardState.file_queue is not None:
+        process_existing_files(
+            processor,
+            DashboardState.file_queue,
+            allowed_extensions=allowed_exts,
         )
+
+        # Wait until all queued and actively processing files finish
+        while True:
+            with processor.processing_lock:
+                busy_files_count = len(processor.processing_files)
+            queue_count = (
+                DashboardState.file_queue.qsize()
+                if hasattr(DashboardState.file_queue, "qsize")
+                else 0
+            )
+
+            if busy_files_count == 0 and queue_count == 0:
+                break
+
+            time.sleep(0.5)
+    else:
+        import queue
+
         temp_q: queue.Queue = queue.Queue()
         process_existing_files(
-            DashboardState.processor,
+            processor,
             temp_q,
             allowed_extensions=allowed_exts,
         )
@@ -58,7 +85,7 @@ def _handle_queue_import(item: dict[str, Any]) -> bool:
             fp = temp_q.get()
             if fp:
                 try:
-                    DashboardState.processor.process_and_route_file(fp)
+                    processor.process_and_route_file(fp)
                 except Exception as e:
                     logger.error(
                         "[SkillQueueManager] Error processing file %s: %s",
@@ -67,6 +94,7 @@ def _handle_queue_import(item: dict[str, Any]) -> bool:
                     )
                 finally:
                     temp_q.task_done()
+
     return True
 
 
