@@ -466,6 +466,13 @@ def remove_from_skill_queue():
     return jsonify({"error": "Item not found or currently running"}), 400
 
 
+@skills_api_bp.route("/api/skills/queue/clear", methods=["POST"])
+def clear_skill_queue():
+    qm = _get_configured_queue_manager()
+    qm.clear_queue()
+    return jsonify({"status": "ok"})
+
+
 @skills_api_bp.route("/api/skills/queue/reorder", methods=["POST"])
 def reorder_skill_queue():
     data = request.json or {}

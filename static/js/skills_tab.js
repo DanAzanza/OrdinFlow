@@ -6,7 +6,6 @@ let selectedSkillId = null;
 let currentEditingSkill = null;
 let currentEditingSteps = [];
 let activeInputField = null;
-let skillsTabPollInterval = null;
 let isNewSkillCreation = false;
 
 function slugifySkillName(name) {
@@ -208,15 +207,6 @@ async function selectSkill(skillId) {
 	renderEditorSteps();
 	renderVariableBadges();
 	renderQueueInspector();
-
-	if (!skillsTabPollInterval) {
-		skillsTabPollInterval = setInterval(() => {
-			const activeTab = document.querySelector(".nav-item.active")?.dataset?.tab;
-			if (activeTab === "skills") {
-				renderQueueInspector();
-			}
-		}, 3000);
-	}
 }
 
 function renderVariableBadges() {
