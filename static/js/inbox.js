@@ -60,36 +60,113 @@ function toggleSelectAllInbox(checked) {
 	updateBatchBar();
 }
 
-function renderInbox() {
-	const q = document.getElementById("searchInbox").value.toLowerCase();
-	let data = state.inbox;
-	if (state.pruefenOnly) data = data.filter((f) => f.is_pruefen);
-	if (q) data = data.filter((f) => (f.name || "").toLowerCase().includes(q));
+let inboxThumbObserver = null;
+let inboxSentinelObserver = null;
+let lastInboxRenderHash = "";
+let isInboxDelegated = false;
+let currentInboxData = [];
+let inboxRenderedCount = 48;
 
-	const list = document.getElementById("inboxList");
-	document.getElementById("emptyInbox").style.display = data.length
-		? "none"
-		: "block";
+const INBOX_PLACEHOLDER_IMG = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 11'%3E%3Crect width='16' height='11' fill='%23060911'/%3E%3C/svg%3E";
 
-	list.className = "file-grid";
-	list.innerHTML = data
-		.map((f) => {
-			const hasPreview = !!f.preview_url;
-			const fileUrl = f.file_url || "";
-			const isChecked = state.selectedInbox.has(f.path);
+function setupInboxThumbObserver(container) {
+	if (!container) return;
+	const scrollRoot = document.getElementById("tab-inbox") || null;
+	if ("IntersectionObserver" in window) {
+		if (!inboxThumbObserver) {
+			inboxThumbObserver = new IntersectionObserver(
+				(entries) => {
+					entries.forEach((entry) => {
+						if (entry.isIntersecting) {
+							const img = entry.target;
+							const src = img.dataset.src;
+							if (src) {
+								img.src = src;
+								img.removeAttribute("data-src");
+							}
+							inboxThumbObserver.unobserve(img);
+						}
+					});
+				},
+				{ root: scrollRoot, rootMargin: "250px 0px", threshold: 0.01 }
+			);
+		}
+		container
+			.querySelectorAll("img[data-src]")
+			.forEach((img) => inboxThumbObserver.observe(img));
+	} else {
+		container.querySelectorAll("img[data-src]").forEach((img) => {
+			img.src = img.dataset.src;
+			img.removeAttribute("data-src");
+		});
+	}
+}
 
-			// Check if filename has all information for auto assign
-			const parts = splitByDelimiter(f.name.split(".")[0]);
-			const hasAllInfo = parts.length === 4;
+function initInboxDelegation(list) {
+	if (isInboxDelegated || !list) return;
+	isInboxDelegated = true;
 
-			return `<div class="file-card ${f.is_pruefen ? "pruefen" : ""}" style="position:relative;">
+	list.addEventListener("click", (e) => {
+		const autoAssignBtn = e.target.closest("button[data-autoassign]");
+		if (autoAssignBtn) {
+			e.stopPropagation();
+			autoAssignFile(decodeURIComponent(autoAssignBtn.dataset.autoassign));
+			return;
+		}
+
+		const retryBtn = e.target.closest("button[data-retryfile]");
+		if (retryBtn) {
+			e.stopPropagation();
+			retryFile(decodeURIComponent(retryBtn.dataset.retryfile));
+			return;
+		}
+
+		const delBtn = e.target.closest("button[data-delinbox]");
+		if (delBtn) {
+			e.stopPropagation();
+			deleteFile("inbox", "", decodeURIComponent(delBtn.dataset.delinbox));
+			return;
+		}
+
+		const inspectEl = e.target.closest("[data-inspect]");
+		if (inspectEl) {
+			e.stopPropagation();
+			openSplitInspector(decodeURIComponent(inspectEl.dataset.inspect));
+			return;
+		}
+	});
+
+	list.addEventListener("change", (e) => {
+		const chk = e.target.closest("input[data-selectfile]");
+		if (chk) {
+			e.stopPropagation();
+			const path = decodeURIComponent(chk.dataset.selectfile);
+			if (chk.checked) {
+				state.selectedInbox.add(path);
+			} else {
+				state.selectedInbox.delete(path);
+			}
+			updateBatchBar();
+		}
+	});
+}
+
+function renderFileCardHtml(f) {
+	const hasPreview = !!f.preview_url;
+	const isChecked = state.selectedInbox.has(f.path);
+
+	// Check if filename has all information for auto assign
+	const parts = splitByDelimiter(f.name.split(".")[0]);
+	const hasAllInfo = parts.length === 4;
+
+	return `<div class="file-card ${f.is_pruefen ? "pruefen" : ""}" style="position:relative;">
       <div style="position: absolute; top: 8px; left: 8px; z-index: 10;" onclick="event.stopPropagation();">
         <input type="checkbox" class="file-select-checkbox" data-selectfile="${encodeURIComponent(f.path)}" ${isChecked ? "checked" : ""} style="width:18px;height:18px;cursor:pointer;">
       </div>
       <div class="preview" data-inspect="${encodeURIComponent(f.path)}" style="cursor:pointer">
         ${
 					hasPreview
-						? `<img src="${f.preview_url}" alt="Preview" loading="lazy" onerror="this.parentElement.innerHTML='<span class=no-preview>Preview unavailable</span>'">`
+						? `<img data-src="${f.preview_url}" src="${INBOX_PLACEHOLDER_IMG}" alt="Preview" class="lazy-thumb" onerror="this.parentElement.innerHTML='<span class=no-preview>Preview unavailable</span>'">`
 						: '<span class="no-preview">No preview</span>'
 				}
       </div>
@@ -118,48 +195,104 @@ function renderInbox() {
 				}
       </div>
     </div>`;
-		})
-		.join("");
+}
+
+function appendMoreInboxCards() {
+	const list = document.getElementById("inboxList");
+	if (!list) return;
+	const nextSlice = currentInboxData.slice(inboxRenderedCount, inboxRenderedCount + 36);
+	if (nextSlice.length === 0) return;
+
+	inboxRenderedCount += nextSlice.length;
+
+	const oldSentinel = document.getElementById("inboxSentinel");
+	if (oldSentinel) oldSentinel.remove();
+
+	const tempDiv = document.createElement("div");
+	tempDiv.innerHTML = nextSlice.map(renderFileCardHtml).join("");
+	while (tempDiv.firstChild) {
+		list.appendChild(tempDiv.firstChild);
+	}
+
+	if (inboxRenderedCount < currentInboxData.length) {
+		const sentinel = document.createElement("div");
+		sentinel.id = "inboxSentinel";
+		sentinel.style.cssText = "grid-column: 1 / -1; height: 36px; display: flex; align-items: center; justify-content: center; color: var(--text-muted); font-size: 0.72rem;";
+		sentinel.textContent = `Showing ${inboxRenderedCount} of ${currentInboxData.length} files...`;
+		list.appendChild(sentinel);
+		if (inboxSentinelObserver) inboxSentinelObserver.observe(sentinel);
+	}
+
+	setupInboxThumbObserver(list);
+}
+
+function setupSentinelObserver() {
+	if (inboxSentinelObserver) {
+		inboxSentinelObserver.disconnect();
+	}
+	const sentinel = document.getElementById("inboxSentinel");
+	if (!sentinel) return;
+
+	const scrollRoot = document.getElementById("tab-inbox") || null;
+	inboxSentinelObserver = new IntersectionObserver(
+		(entries) => {
+			entries.forEach((entry) => {
+				if (entry.isIntersecting) {
+					appendMoreInboxCards();
+				}
+			});
+		},
+		{ root: scrollRoot, rootMargin: "400px 0px", threshold: 0.01 }
+	);
+	inboxSentinelObserver.observe(sentinel);
+}
+
+function renderInbox() {
+	const searchEl = document.getElementById("searchInbox");
+	const q = searchEl ? searchEl.value.toLowerCase() : "";
+	let data = state.inbox || [];
+	if (state.pruefenOnly) data = data.filter((f) => f.is_pruefen);
+	if (q) data = data.filter((f) => (f.name || "").toLowerCase().includes(q));
+
+	currentInboxData = data;
+	const list = document.getElementById("inboxList");
+	if (!list) return;
+
+	const emptyEl = document.getElementById("emptyInbox");
+	if (emptyEl) {
+		emptyEl.style.display = data.length ? "none" : "block";
+	}
+
+	initInboxDelegation(list);
+
+	// Compute hash of data to avoid destroying DOM and resetting image loads if nothing changed
+	const currentHash = `${q}|${state.pruefenOnly}|${data.length}|` +
+		data.map((f) => `${f.path}:${f.is_pruefen}:${f.grund || ""}:${f.size}`).join("|");
+
+	if (currentHash === lastInboxRenderHash) {
+		// Sync checkboxes only without DOM rebuild
+		list.querySelectorAll("input[data-selectfile]").forEach((chk) => {
+			const path = decodeURIComponent(chk.dataset.selectfile);
+			chk.checked = state.selectedInbox.has(path);
+		});
+		updateBatchBar();
+		return;
+	}
+
+	lastInboxRenderHash = currentHash;
+	list.className = "file-grid";
+	inboxRenderedCount = Math.min(48, data.length);
+
+	const initialSlice = data.slice(0, inboxRenderedCount);
+	let html = initialSlice.map(renderFileCardHtml).join("");
+	if (inboxRenderedCount < data.length) {
+		html += `<div id="inboxSentinel" style="grid-column: 1 / -1; height: 36px; display: flex; align-items: center; justify-content: center; color: var(--text-muted); font-size: 0.72rem;">Showing ${inboxRenderedCount} of ${data.length} files...</div>`;
+	}
+	list.innerHTML = html;
 
 	updateBatchBar();
-
-	// Bind event listeners via delegation
-	list.querySelectorAll("[data-inspect]").forEach((el) => {
-		el.addEventListener("click", (e) => {
-			e.stopPropagation();
-			openSplitInspector(decodeURIComponent(el.dataset.inspect));
-		});
-	});
-	list.querySelectorAll("input[data-selectfile]").forEach((chk) => {
-		chk.addEventListener("change", (e) => {
-			e.stopPropagation();
-			const path = decodeURIComponent(chk.dataset.selectfile);
-			if (chk.checked) {
-				state.selectedInbox.add(path);
-			} else {
-				state.selectedInbox.delete(path);
-			}
-			updateBatchBar();
-		});
-	});
-	list.querySelectorAll("button[data-retryfile]").forEach((btn) => {
-		btn.addEventListener("click", (e) => {
-			e.stopPropagation();
-			retryFile(decodeURIComponent(btn.dataset.retryfile));
-		});
-	});
-	list.querySelectorAll("button[data-delinbox]").forEach((btn) => {
-		btn.addEventListener("click", (e) => {
-			e.stopPropagation();
-			deleteFile("inbox", "", decodeURIComponent(btn.dataset.delinbox));
-		});
-	});
-	list.querySelectorAll("button[data-autoassign]").forEach((btn) => {
-		btn.addEventListener("click", (e) => {
-			e.stopPropagation();
-			autoAssignFile(decodeURIComponent(btn.dataset.autoassign));
-		});
-	});
+	setupInboxThumbObserver(list);
+	setupSentinelObserver();
 }
 
 async function autoAssignFile(filename) {

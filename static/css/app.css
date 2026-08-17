@@ -975,10 +975,6 @@ td:first-child {
 
 /* ── File Grid & File Cards (Inbox & Cases Detail) ──────────────────── */
 .file-grid {
-    flex: 1;
-    min-height: 0;
-    overflow-y: auto;
-    overflow-x: hidden;
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
     gap: 10px;

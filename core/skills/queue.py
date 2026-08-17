@@ -1,5 +1,6 @@
 """Skill Queue Manager for mutually exclusive, sequential skill execution."""
 
+import json
 import logging
 import os
 import threading
@@ -14,10 +15,11 @@ logger = logging.getLogger(__name__)
 
 
 class SkillQueueManager:
-    """Manages a single-threaded queue for executing Import and Export skills sequentially."""
+    """Manages a single-threaded queue for executing Import and Export skills sequentially with disk persistence."""
 
     def __init__(self, skill_manager: SkillManager):
         self.skill_manager = skill_manager
+        self.queue_file = os.path.join(self.skill_manager.skills_dir, "queue_state.json")
         self.lock = threading.Lock()
         self.queue: list[dict[str, Any]] = []
         self.is_running = False
@@ -25,6 +27,42 @@ class SkillQueueManager:
         self._worker_thread: threading.Thread | None = None
         self._import_handler: Callable[[dict[str, Any]], bool] | None = None
         self._export_handler: Callable[[dict[str, Any]], bool] | None = None
+
+        self._load_from_disk()
+
+    def _load_from_disk(self) -> None:
+        """Loads persisted queue items from disk if available."""
+        if not os.path.isfile(self.queue_file):
+            return
+        try:
+            with open(self.queue_file, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            if isinstance(data, list):
+                # Clean up any items that were left in "running" state on restart
+                for item in data:
+                    if isinstance(item, dict) and item.get("status") == "running":
+                        item["status"] = "pending"
+                self.queue = data
+                logger.info(
+                    "[SkillQueueManager] Loaded %d persisted queue items from disk.",
+                    len(self.queue),
+                )
+        except (OSError, json.JSONDecodeError, UnicodeError) as e:
+            logger.warning("[SkillQueueManager] Could not load queue_state.json: %s", e)
+
+    def _save_to_disk(self) -> None:
+        """Safely persists queue items to disk atomically."""
+        try:
+            os.makedirs(os.path.dirname(self.queue_file), exist_ok=True)
+            temp_path = self.queue_file + ".tmp"
+            with open(temp_path, "w", encoding="utf-8") as f:
+                json.dump(self.queue, f, indent=2, ensure_ascii=False)
+            if os.path.exists(self.queue_file):
+                os.replace(temp_path, self.queue_file)
+            else:
+                os.rename(temp_path, self.queue_file)
+        except OSError as e:
+            logger.warning("[SkillQueueManager] Could not save queue_state.json: %s", e)
 
     def set_handlers(
         self,
@@ -40,15 +78,21 @@ class SkillQueueManager:
     def get_queue_state(self) -> dict[str, Any]:
         """Returns current items and running state."""
         with self.lock:
+            active_item = None
+            for item in self.queue:
+                if item.get("status") == "running":
+                    active_item = dict(item)
+                    break
             return {
                 "is_running": self.is_running,
+                "active_item": active_item,
                 "items": [dict(item) for item in self.queue],
             }
 
     def add_to_queue(
         self, skill_id: str, context: dict[str, Any] | None = None
     ) -> dict[str, Any]:
-        """Adds a skill to the queue."""
+        """Adds a skill to the queue and persists state."""
         skill = self.skill_manager.get_skill(skill_id)
         skill_name = skill.get("name", skill_id) if skill else skill_id
         skill_type = skill.get("type", "export") if skill else "export"
@@ -65,6 +109,7 @@ class SkillQueueManager:
         }
         with self.lock:
             self.queue.append(item)
+            self._save_to_disk()
             logger.info(
                 "[SkillQueueManager] Added skill '%s' (%s) to queue as %s",
                 skill_name,
@@ -74,7 +119,7 @@ class SkillQueueManager:
         return item
 
     def remove_from_queue(self, queue_id: str) -> bool:
-        """Removes a pending item from the queue."""
+        """Removes a pending/completed item from the queue and persists state."""
         with self.lock:
             for idx, item in enumerate(self.queue):
                 if item["id"] == queue_id:
@@ -85,6 +130,7 @@ class SkillQueueManager:
                         )
                         return False
                     self.queue.pop(idx)
+                    self._save_to_disk()
                     logger.info(
                         "[SkillQueueManager] Removed item %s from queue", queue_id
                     )
@@ -112,6 +158,7 @@ class SkillQueueManager:
                     new_queue.append(item)
 
             self.queue = new_queue
+            self._save_to_disk()
             logger.info(
                 "[SkillQueueManager] Queue reordered: %s",
                 [it["id"] for it in self.queue],
@@ -150,6 +197,7 @@ class SkillQueueManager:
                     if item["status"] == "pending":
                         target_item = item
                         target_item["status"] = "running"
+                        self._save_to_disk()
                         break
 
             if not target_item:
@@ -202,6 +250,7 @@ class SkillQueueManager:
 
             with self.lock:
                 target_item["status"] = "completed" if success else "failed"
+                self._save_to_disk()
 
             time.sleep(0.5)
 

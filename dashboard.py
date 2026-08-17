@@ -32,10 +32,19 @@ logger = logging.getLogger(__name__)
 def heartbeat_monitor() -> None:
     while not DashboardState.shutdown_event.is_set():
         time.sleep(5)
-        # 120 seconds (2 minutes) inactivity timeout when browser tab is closed
+        # If skill queue is actively running in the background, keep heartbeat alive
+        try:
+            from core.skills.queue import get_skill_queue_manager
+            if get_skill_queue_manager().is_running:
+                DashboardState.last_heartbeat = time.time()
+                continue
+        except Exception:
+            pass
+
+        # 120 seconds (2 minutes) inactivity timeout when browser tab is closed and queue is idle
         if time.time() - DashboardState.last_heartbeat > 120:
             logger.info(
-                "[*] Dashboard closed (no heartbeat for 120s). Terminating application..."
+                "[*] Dashboard closed (no heartbeat for 120s and queue idle). Terminating application..."
             )
             DashboardState.shutdown_event.set()
             time.sleep(2)
