@@ -287,23 +287,23 @@ function renderDetailFiles() {
 				}
 
 				return `<div class="file-card ${f.executed_skills && f.executed_skills.length > 0 ? "file-card-exported" : ""}">
-      <div class="preview clickable" data-inspectvorgang="${encodeURIComponent(f.name)}" style="cursor:pointer">
+      <div class="preview clickable file-card-preview-clickable" data-inspectvorgang="${encodeURIComponent(f.name)}">
         ${
 					f.has_preview
 						? `<img src="${f.preview_url}" alt="Preview" loading="lazy" onerror="this.parentElement.innerHTML='<span class=no-preview>Preview unavailable</span>'">`
 						: '<span class="no-preview">No preview</span>'
 				}
       </div>
-      <div class="file-card-body" style="display: flex; align-items: flex-start; justify-content: space-between; gap: 6px; margin-top: 4px;">
-        <div class="file-info" data-inspectvorgang="${encodeURIComponent(f.name)}" style="cursor:pointer; flex: 1; min-width: 0;">
+      <div class="file-card-body file-card-body-flex">
+        <div class="file-info file-info-flex" data-inspectvorgang="${encodeURIComponent(f.name)}">
           <div class="file-name clickable" title="${escapeHtml(f.name)}">${escapeHtml(f.name)}</div>
           <div class="file-meta">${formatSize(f.size)} · ${escapeHtml(f.modified || "")}</div>
-          <div class="file-skill-badges" style="margin-top: 5px; display: flex; flex-wrap: wrap; gap: 4px;">
+          <div class="file-skill-badges file-skill-badges-flex">
               <span class="badge file-doctype-badge">${docEmoji(f.doc_type)} ${escapeHtml(docLabel(f.doc_type || "Document"))}</span>
               ${skillBadgesHtml}
           </div>
         </div>
-        <button type="button" class="btn-icon-subtle btn-icon-danger" data-delfile="${encodeURIComponent(f.name)}" title="Delete file" style="padding: 4px 6px; font-size: 0.85rem; margin-top: -2px; flex-shrink: 0;">
+        <button type="button" class="btn-icon-subtle btn-icon-danger btn-delfile-compact" data-delfile="${encodeURIComponent(f.name)}" title="Delete file">
           🗑️
         </button>
       </div>

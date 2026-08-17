@@ -100,7 +100,7 @@ function renderSkillsSidebar(skills, searchQuery = "") {
 	let itemsHtml = "";
 	if (skills.length === 0) {
 		itemsHtml = `
-			<div style="padding: 16px; text-align: center; color: var(--text-dim); font-size: 0.82rem;">
+			<div class="skills-empty-note">
 				${searchQuery ? "No matches" : "No skills found"}
 			</div>
 		`;
@@ -249,7 +249,7 @@ function renderVariableBadges() {
 	}
 
 	if (dynamicVars.size === 0) {
-		container.innerHTML = `<span style="font-size:0.75rem; color:var(--text-dim);">No variables configured.</span>`;
+		container.innerHTML = `<span class="variables-empty-note">No variables configured.</span>`;
 		return;
 	}
 
@@ -290,258 +290,7 @@ function onSkillTypeChange(type) {
 	}
 }
 
-async function loadSkillDocumentTypes(importSkillId) {
-	try {
-		const res = await api(`/api/skills/${encodeURIComponent(importSkillId)}/documents`);
-		state.editingDocTypes = res.document_types || {};
-		state.selectedDocType = null;
-		const formEl = document.getElementById("docTypeForm");
-		const msgEl = document.getElementById("noDocSelectedMessage");
-		if (formEl) formEl.style.display = "none";
-		if (msgEl) msgEl.style.display = "flex";
-		renderDocTypesSidebar();
-	} catch (e) {
-		console.error("Error loading document types for skill:", e);
-	}
-}
-
-function renderDocTypesSidebar() {
-	const container = document.getElementById("docTypesList");
-	if (!container) return;
-
-	const keys = Object.keys(state.editingDocTypes || {});
-	let itemsHtml = "";
-
-	if (keys.length === 0) {
-		itemsHtml = `
-			<div class="empty-categories-box">
-				No categories defined yet.
-			</div>
-		`;
-	} else {
-		itemsHtml = keys
-			.map((key) => {
-				const isSelected = key === state.selectedDocType;
-				const doc = state.editingDocTypes[key] || {};
-				const emoji = doc.emoji || "📄";
-				const fieldCount = Object.keys(doc.extraction_fields || {}).length;
-
-				return `
-					<div class="category-item ${isSelected ? "active" : ""}" onclick="selectDocType('${escapeHtml(key)}')">
-						<div class="category-item-name">
-							<span class="category-emoji">${emoji}</span>
-							<span class="category-label" title="${escapeHtml(key)}">
-								${escapeHtml(key)}
-							</span>
-						</div>
-						<span class="category-item-count">
-							${fieldCount} ${fieldCount === 1 ? "field" : "fields"}
-						</span>
-					</div>
-				`;
-			})
-			.join("");
-	}
-
-	container.innerHTML = `
-		${itemsHtml}
-		<button type="button" class="btn btn-sm btn-primary add-category-btn" onclick="createNewDocType()">
-			<span>➕</span> Add type
-		</button>
-	`;
-}
-
-function selectDocType(typeName) {
-	state.selectedDocType = typeName;
-	renderDocTypesSidebar();
-
-	const msgEl = document.getElementById("noDocSelectedMessage");
-	const formEl = document.getElementById("docTypeForm");
-	if (msgEl) msgEl.style.display = "none";
-	if (formEl) {
-		formEl.style.display = "block";
-		renderDocTypeForm(typeName);
-	}
-}
-
-function createNewDocType() {
-	const name = prompt("Name of the new document category (e.g. Invoice, Report):");
-	if (!name || !name.trim()) return;
-
-	const cleanName = name.trim();
-	if (!state.editingDocTypes) state.editingDocTypes = {};
-	if (state.editingDocTypes[cleanName]) {
-		toast("This document category already exists.", "error");
-		return;
-	}
-
-	state.editingDocTypes[cleanName] = {
-		emoji: "📄",
-		classification_desc: "",
-		extraction_fields: {
-			Document: { description: "Category of the document", required: true }
-		}
-	};
-
-	selectDocType(cleanName);
-}
-
-function deleteDocType(typeName) {
-	if (!confirm(`Really delete document category '${typeName}'?`)) return;
-	if (state.editingDocTypes && state.editingDocTypes[typeName]) {
-		delete state.editingDocTypes[typeName];
-	}
-	state.selectedDocType = null;
-	const msgEl = document.getElementById("noDocSelectedMessage");
-	const formEl = document.getElementById("docTypeForm");
-	if (msgEl) msgEl.style.display = "flex";
-	if (formEl) formEl.style.display = "none";
-	renderDocTypesSidebar();
-}
-
-function autoResizeTextarea(el) {
-	if (!el) return;
-	el.style.height = "auto";
-	el.style.height = Math.max(34, el.scrollHeight + 2) + "px";
-}
-
-function renderDocTypeForm(typeName) {
-	const container = document.getElementById("docTypeForm");
-	if (!container) return;
-
-	const doc = (state.editingDocTypes && state.editingDocTypes[typeName]) || { extraction_fields: {}, classification_desc: "", vision_rules: "", emoji: "📄" };
-	const fields = doc.extraction_fields || {};
-	const fieldKeys = Object.keys(fields);
-	const emoji = doc.emoji || "📄";
-	const descValue = doc.classification_desc || doc.vision_rules || "";
-
-	let tableRowsHtml = fieldKeys
-		.map((fKey) => {
-			const fVal = fields[fKey] || {};
-			const desc = typeof fVal === "string" ? fVal : fVal.description || "";
-			const req = typeof fVal === "object" ? Boolean(fVal.required) : false;
-
-			return `
-				<tr class="doc-field-row">
-					<td class="doc-field-name-td">
-						<input type="text" class="doc-editor-input doc-field-key-input" value="${escapeHtml(fKey)}" readonly />
-					</td>
-					<td class="doc-field-prompt-td">
-						<textarea class="doc-editor-textarea auto-resize-ta" rows="1" placeholder="Prompt for the AI..." oninput="autoResizeTextarea(this)" onchange="updateDocTypeField('${escapeHtml(typeName)}', '${escapeHtml(fKey)}', 'desc', this.value)">${escapeHtml(desc)}</textarea>
-					</td>
-					<td class="doc-field-req-td">
-						<input type="checkbox" class="config-checkbox" ${req ? "checked" : ""} onchange="updateDocTypeField('${escapeHtml(typeName)}', '${escapeHtml(fKey)}', 'req', this.checked)" />
-					</td>
-					<td class="doc-field-act-td">
-						<button type="button" class="btn btn-sm btn-danger" onclick="removeExtractionField('${escapeHtml(typeName)}', '${escapeHtml(fKey)}')" title="Remove field">🗑️</button>
-					</td>
-				</tr>
-			`;
-		})
-		.join("");
-
-	let tableHtml = `
-		<table class="doc-fields-table">
-			<thead>
-				<tr>
-					<th style="width: 24%;">Field Name</th>
-					<th style="width: 58%;">Extraction Prompt / Instruction</th>
-					<th style="width: 10%; text-align: center;">Required</th>
-					<th style="width: 8%; text-align: center;">Action</th>
-				</tr>
-			</thead>
-			<tbody>
-				${tableRowsHtml}
-			</tbody>
-		</table>
-	`;
-
-	if (fieldKeys.length === 0) {
-		tableHtml = `<div class="empty-fields-box">No extraction fields defined yet. Click '➕ Add Field' below to configure fields.</div>`;
-	}
-
-	container.innerHTML = `
-		<div class="doc-form-header-card">
-			<div class="doc-form-header-title">
-				<div class="doc-form-header-emoji">${emoji}</div>
-				<div>
-					<h3 class="doc-header-name">${escapeHtml(typeName)}</h3>
-					<span class="doc-header-meta">${fieldKeys.length} extraction fields configured</span>
-				</div>
-			</div>
-			<button type="button" class="btn btn-sm btn-danger" onclick="deleteDocType('${escapeHtml(typeName)}')">🗑️ Delete Category</button>
-		</div>
-
-		<div class="doc-editor-section">
-			<h4>🧠 Recognition & Classification Rules (AI Vision)</h4>
-			<span class="doc-field-hint">
-				Define the visual, text, or layout features the AI uses to recognize this document.
-			</span>
-			<textarea class="doc-editor-textarea auto-resize-ta" rows="2" placeholder="E.g. Document containing the text 'Report' in the header area..." oninput="autoResizeTextarea(this)" onchange="updateDocTypeRules('${escapeHtml(typeName)}', this.value)">${escapeHtml(descValue)}</textarea>
-		</div>
-
-		<div class="doc-editor-section">
-			<div class="doc-section-header-row">
-				<h4>📋 Extraction Fields & AI Prompts</h4>
-				<button type="button" class="btn btn-sm btn-accent" onclick="addExtractionField('${escapeHtml(typeName)}')">➕ Add Field</button>
-			</div>
-			${tableHtml}
-		</div>
-	`;
-
-	setTimeout(() => {
-		container.querySelectorAll(".auto-resize-ta").forEach((ta) => autoResizeTextarea(ta));
-	}, 0);
-}
-
-function updateDocTypeRules(typeName, value) {
-	if (state.editingDocTypes && state.editingDocTypes[typeName]) {
-		state.editingDocTypes[typeName].classification_desc = value;
-		state.editingDocTypes[typeName].vision_rules = value;
-	}
-}
-
-function updateDocTypeField(typeName, fieldKey, property, value) {
-	if (!state.editingDocTypes || !state.editingDocTypes[typeName]) return;
-	const fields = state.editingDocTypes[typeName].extraction_fields;
-	if (!fields[fieldKey]) return;
-
-	if (typeof fields[fieldKey] === "string") {
-		fields[fieldKey] = { description: fields[fieldKey], required: false };
-	}
-
-	if (property === "desc") {
-		fields[fieldKey].description = value;
-	} else if (property === "req") {
-		fields[fieldKey].required = Boolean(value);
-	}
-}
-
-function addExtractionField(typeName) {
-	const key = prompt("Field key name (e.g. InvoiceNumber, Date, Total):");
-	if (!key || !key.trim()) return;
-
-	const cleanKey = key.trim();
-	if (!state.editingDocTypes || !state.editingDocTypes[typeName]) return;
-	const fields = state.editingDocTypes[typeName].extraction_fields || {};
-
-	if (fields[cleanKey]) {
-		toast("Field already exists.", "error");
-		return;
-	}
-
-	fields[cleanKey] = { description: "", required: false };
-	state.editingDocTypes[typeName].extraction_fields = fields;
-	renderDocTypeForm(typeName);
-	renderDocTypesSidebar();
-}
-
-function removeExtractionField(typeName, fieldKey) {
-	if (!state.editingDocTypes || !state.editingDocTypes[typeName]) return;
-	delete state.editingDocTypes[typeName].extraction_fields[fieldKey];
-	renderDocTypeForm(typeName);
-	renderDocTypesSidebar();
-}
+// Document Types & Extraction Fields Editor functions are modularized in doctypes_tab.js
 
 /* ═══════════════════════════════════════════════════════════
    EDITOR ACTIONS & STEPS
@@ -673,21 +422,21 @@ function updateHeaderStepBadge() {
 function getActionBadgeStyle(actionType) {
 	switch (actionType) {
 		case "FOCUS_WINDOW":
-			return { label: "🪟 FOCUS WINDOW", bg: "rgba(99, 102, 241, 0.2)", color: "#a5b4fc", border: "rgba(99, 102, 241, 0.4)" };
+			return { label: "🪟 FOCUS WINDOW", badgeClass: "badge-action-focus" };
 		case "CLICK":
-			return { label: "🎯 CLICK", bg: "rgba(16, 185, 129, 0.2)", color: "#34d399", border: "rgba(16, 185, 129, 0.4)" };
+			return { label: "🎯 CLICK", badgeClass: "badge-action-click" };
 		case "DOUBLE_CLICK":
-			return { label: "🖱️ DOUBLE CLICK", bg: "rgba(16, 185, 129, 0.3)", color: "#6ee7b7", border: "rgba(16, 185, 129, 0.5)" };
+			return { label: "🖱️ DOUBLE CLICK", badgeClass: "badge-action-dblclick" };
 		case "TYPE_TEXT":
-			return { label: "⌨️ TYPE TEXT", bg: "rgba(245, 158, 11, 0.2)", color: "#fbbf24", border: "rgba(245, 158, 11, 0.4)" };
+			return { label: "⌨️ TYPE TEXT", badgeClass: "badge-action-type" };
 		case "TYPE_FILE_PATH":
-			return { label: "📄 FILE PATH", bg: "rgba(236, 72, 153, 0.2)", color: "#f472b6", border: "rgba(236, 72, 153, 0.4)" };
+			return { label: "📄 FILE PATH", badgeClass: "badge-action-filepath" };
 		case "VERIFY_SCREEN":
-			return { label: "👁️ VERIFY SCREEN", bg: "rgba(168, 85, 247, 0.2)", color: "#c084fc", border: "rgba(168, 85, 247, 0.4)" };
+			return { label: "👁️ VERIFY SCREEN", badgeClass: "badge-action-verify" };
 		case "CALL_SKILL":
-			return { label: "⚡ SUB SKILL", bg: "rgba(14, 165, 233, 0.2)", color: "#38bdf8", border: "rgba(14, 165, 233, 0.4)" };
+			return { label: "⚡ SUB SKILL", badgeClass: "badge-action-skill" };
 		default:
-			return { label: actionType || "STEP", bg: "rgba(255,255,255,0.1)", color: "var(--text)", border: "rgba(255,255,255,0.2)" };
+			return { label: actionType || "STEP", badgeClass: "badge-action-default" };
 	}
 }
 
@@ -697,7 +446,7 @@ function renderEditorSteps() {
 
 	if (currentEditingSteps.length === 0) {
 		container.innerHTML = `
-			<div style="text-align: center; padding: 24px; color: var(--text-dim); background: rgba(0,0,0,0.2); border: 1px dashed var(--border); border-radius: 10px; font-style: italic; font-size: 0.85rem;">
+			<div class="step-empty-box">
 				No steps defined for this skill yet. Click "Record workflow" or "Add step manually" below.
 			</div>
 		`;
@@ -715,33 +464,33 @@ function renderEditorSteps() {
 
 			if (["CLICK", "DOUBLE_CLICK"].includes(step.action_type)) {
 				actionSpecificHtml = `
-					<div class="form-group" style="margin-top: 10px;">
+					<div class="form-group">
 						<label class="doc-editor-label">🎯 Target Element / Button Text (or {Variable})</label>
 						<input type="text" class="doc-editor-input" value="${escapeHtml(targetVal)}" placeholder="e.g. 'Search' button or {LastName}" onchange="if(!currentEditingSteps[${idx}].locator) currentEditingSteps[${idx}].locator={}; currentEditingSteps[${idx}].locator.prompt = this.value; currentEditingSteps[${idx}].locator.value = this.value; currentEditingSteps[${idx}].locator.type = 'auto';" />
 					</div>
 				`;
 			} else if (step.action_type === "TYPE_TEXT") {
 				actionSpecificHtml = `
-					<div style="display: grid; grid-template-columns: 1fr auto; gap: 14px; align-items: end; margin-top: 10px;">
-						<div class="form-group" style="margin: 0;">
+					<div class="step-type-row">
+						<div class="form-group zero-margin">
 							<label class="doc-editor-label">⌨️ Text or Variables to type</label>
 							<input type="text" class="doc-editor-input" value="${escapeHtml(step.text || "")}" placeholder="e.g. {LastName}, {BirthDate}" onchange="currentEditingSteps[${idx}].text = this.value" />
 						</div>
-						<label style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px; cursor: pointer; font-size: 0.82rem; color: var(--text-dim); user-select: none;">
-							<input type="checkbox" ${step.press_enter ? "checked" : ""} onchange="currentEditingSteps[${idx}].press_enter = this.checked;" style="width: 16px; height: 16px; accent-color: #6366f1; cursor: pointer;" />
+						<label class="step-checkbox-label">
+							<input type="checkbox" class="step-checkbox-input" ${step.press_enter ? "checked" : ""} onchange="currentEditingSteps[${idx}].press_enter = this.checked;" />
 							Press Enter after typing
 						</label>
 					</div>
 				`;
 			} else if (step.action_type === "TYPE_FILE_PATH") {
 				actionSpecificHtml = `
-					<div style="display: grid; grid-template-columns: 1fr auto; gap: 14px; align-items: end; margin-top: 10px;">
-						<div class="form-group" style="margin: 0;">
+					<div class="step-type-row">
+						<div class="form-group zero-margin">
 							<label class="doc-editor-label">📄 File Path Placeholder</label>
 							<input type="text" class="doc-editor-input" value="${escapeHtml(step.file_path || "{document_fullpath}")}" placeholder="{document_fullpath}" onchange="currentEditingSteps[${idx}].file_path = this.value" />
 						</div>
-						<label style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px; cursor: pointer; font-size: 0.82rem; color: var(--text-dim); user-select: none;">
-							<input type="checkbox" ${step.press_enter !== false ? "checked" : ""} onchange="currentEditingSteps[${idx}].press_enter = this.checked;" style="width: 16px; height: 16px; accent-color: #6366f1; cursor: pointer;" />
+						<label class="step-checkbox-label">
+							<input type="checkbox" class="step-checkbox-input" ${step.press_enter !== false ? "checked" : ""} onchange="currentEditingSteps[${idx}].press_enter = this.checked;" />
 							Press Enter after path
 						</label>
 					</div>
@@ -751,14 +500,14 @@ function renderEditorSteps() {
 				const availableRoutines = (state.skills || []).filter((s) => s.type !== "import" && s.id !== selectedSkillId);
 
 				actionSpecificHtml = `
-					<div class="form-group" style="margin-top: 10px;">
-						<label class="doc-editor-label" style="color: #c084fc;">👁️ Element or Text that must appear on screen</label>
+					<div class="form-group">
+						<label class="doc-editor-label step-verify-label">👁️ Element or Text that must appear on screen</label>
 						<input type="text" class="doc-editor-input" value="${escapeHtml(targetVal)}" placeholder="e.g. 'Patient Profile' or 'Saved successfully'" onchange="if(!currentEditingSteps[${idx}].locator) currentEditingSteps[${idx}].locator={}; currentEditingSteps[${idx}].locator.prompt = this.value; currentEditingSteps[${idx}].locator.value = this.value; currentEditingSteps[${idx}].locator.type = 'auto';" />
 					</div>
 
-					<div style="margin-top: 10px; background: rgba(0,0,0,0.25); border: 1px solid rgba(255,255,255,0.06); padding: 12px; border-radius: 8px;">
-						<label class="doc-editor-label" style="color: #fbbf24; margin-bottom: 6px;">❓ What to do if NOT found on screen?</label>
-						<div class="grid-2col" style="display: grid; grid-template-columns: 1.2fr 2fr; gap: 10px; align-items: center;">
+					<div class="step-fallback-box">
+						<label class="doc-editor-label step-fallback-label">❓ What to do if NOT found on screen?</label>
+						<div class="step-fallback-grid">
 							<select class="doc-editor-input" onchange="currentEditingSteps[${idx}].on_failure_action = this.value; renderEditorSteps();">
 								<option value="run_skill" ${failureAction === "run_skill" ? "selected" : ""}>⚡ Run Routine Workflow</option>
 								<option value="pause_prompt" ${failureAction === "pause_prompt" ? "selected" : ""}>🔔 Pause & Alert Human</option>
@@ -768,16 +517,16 @@ function renderEditorSteps() {
 							${
 								failureAction === "run_skill"
 									? `
-								<div style="display: flex; gap: 6px; align-items: center;">
-									<select class="doc-editor-input" style="flex: 1;" onchange="currentEditingSteps[${idx}].on_failure_skill = this.value;">
+								<div class="step-fallback-flex">
+									<select class="doc-editor-input flex-input-field" onchange="currentEditingSteps[${idx}].on_failure_skill = this.value;">
 										<option value="">-- Select Routine Workflow --</option>
 										${availableRoutines.map((r) => `<option value="${escapeHtml(r.id)}" ${step.on_failure_skill === r.id ? "selected" : ""}>${escapeHtml(r.name || r.id)}</option>`).join("")}
 									</select>
-									<button type="button" class="btn btn-sm btn-secondary" onclick="createRoutineInlineForStep(${idx}, true)" style="white-space: nowrap; padding: 5px 10px; font-size: 0.78rem;" title="Create new routine">➕ New</button>
+									<button type="button" class="btn btn-sm btn-secondary step-btn-create-routine" onclick="createRoutineInlineForStep(${idx}, true)" title="Create new routine">➕ New</button>
 								</div>
 							`
 									: `
-								<div style="font-size: 0.8rem; color: var(--text-dim);">
+								<div class="field-hint-text">
 									${failureAction === "pause_prompt" ? "Sounds an alert and pauses execution for human assistance." : "Safely aborts this file and marks it for review."}
 								</div>
 							`
@@ -787,7 +536,7 @@ function renderEditorSteps() {
 				`;
 			} else if (step.action_type === "FOCUS_WINDOW") {
 				actionSpecificHtml = `
-					<div class="form-group" style="margin-top: 10px;">
+					<div class="form-group">
 						<label class="doc-editor-label">🪟 Target Window Title (Regex or Wildcard)</label>
 						<input type="text" class="doc-editor-input" value="${escapeHtml(step.window_title || "Remote Desktop*")}" placeholder="e.g. Remote Desktop*" onchange="currentEditingSteps[${idx}].window_title = this.value" />
 					</div>
@@ -795,40 +544,40 @@ function renderEditorSteps() {
 			} else if (step.action_type === "CALL_SKILL") {
 				const availableRoutines = (state.skills || []).filter((s) => s.type !== "import" && s.id !== selectedSkillId);
 				actionSpecificHtml = `
-					<div class="form-group" style="margin-top: 10px;">
+					<div class="form-group">
 						<label class="doc-editor-label">⚡ Routine Workflow to run</label>
-						<div style="display: flex; gap: 8px; align-items: center;">
-							<select class="doc-editor-input" style="flex: 1;" onchange="currentEditingSteps[${idx}].skill_id = this.value;">
+						<div class="skill-input-action-row">
+							<select class="doc-editor-input flex-input-field" onchange="currentEditingSteps[${idx}].skill_id = this.value;">
 								<option value="">-- Select Routine Workflow --</option>
 								${availableRoutines.map((r) => `<option value="${escapeHtml(r.id)}" ${step.skill_id === r.id ? "selected" : ""}>${escapeHtml(r.name || r.id)}</option>`).join("")}
 							</select>
-							<button type="button" class="btn btn-sm btn-secondary" onclick="createRoutineInlineForStep(${idx}, false)" style="white-space: nowrap; padding: 5px 10px; font-size: 0.78rem;" title="Create new routine">➕ New</button>
+							<button type="button" class="btn btn-sm btn-secondary step-btn-create-routine" onclick="createRoutineInlineForStep(${idx}, false)" title="Create new routine">➕ New</button>
 						</div>
 					</div>
 				`;
 			}
 
 			return `
-				<div class="doc-editor-section" style="background: rgba(10, 13, 20, 0.6); border: 1px solid rgba(255, 255, 255, 0.08); padding: 14px 16px; margin-bottom: 10px; border-radius: 10px;">
+				<div class="doc-editor-section step-card-box">
 					<!-- Step Header -->
-					<div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.06); padding-bottom: 10px; margin-bottom: 12px;">
-						<div style="display: flex; align-items: center; gap: 10px;">
-							<span style="font-size: 0.82rem; font-weight: 700; color: var(--text-dim);">#${idx + 1}</span>
-							<span class="badge" style="background: ${badgeStyle.bg}; color: ${badgeStyle.color}; border: 1px solid ${badgeStyle.border}; font-weight: 700; font-size: 0.72rem;">
+					<div class="step-card-header">
+						<div class="step-header-left">
+							<span class="step-card-num">#${idx + 1}</span>
+							<span class="badge ${badgeStyle.badgeClass}">
 								${badgeStyle.label}
 							</span>
-							<code style="font-size: 0.75rem; color: var(--text-dim); opacity: 0.7;">${escapeHtml(step.id)}</code>
+							<code class="step-card-id">${escapeHtml(step.id)}</code>
 						</div>
-						<div style="display: flex; align-items: center; gap: 6px;">
-							<button type="button" class="btn btn-sm btn-icon" onclick="moveStepUp(${idx})" ${isFirst ? "disabled style='opacity:0.3'" : ""} title="Move up">⬆️</button>
-							<button type="button" class="btn btn-sm btn-icon" onclick="moveStepDown(${idx})" ${isLast ? "disabled style='opacity:0.3'" : ""} title="Move down">⬇️</button>
-							<button type="button" class="btn btn-sm btn-danger" onclick="removeEditorStep(${idx})" style="padding: 3px 8px; font-size: 0.75rem;" title="Remove step">🗑️</button>
+						<div class="step-card-tools">
+							<button type="button" class="btn btn-sm btn-icon ${isFirst ? "step-btn-disabled" : ""}" onclick="moveStepUp(${idx})" ${isFirst ? "disabled" : ""} title="Move up">⬆️</button>
+							<button type="button" class="btn btn-sm btn-icon ${isLast ? "step-btn-disabled" : ""}" onclick="moveStepDown(${idx})" ${isLast ? "disabled" : ""} title="Move down">⬇️</button>
+							<button type="button" class="btn btn-sm btn-danger step-btn-remove" onclick="removeEditorStep(${idx})" title="Remove step">🗑️</button>
 						</div>
 					</div>
 
 					<!-- Primary Action & Description -->
-					<div class="grid-2col" style="display: grid; grid-template-columns: 1.1fr 2fr; gap: 12px;">
-						<div class="form-group" style="margin:0;">
+					<div class="grid-2col">
+						<div class="form-group zero-margin">
 							<label class="doc-editor-label">Action Type</label>
 							<select class="doc-editor-input" onchange="currentEditingSteps[${idx}].action_type = this.value; renderEditorSteps();">
 								<option value="CLICK" ${step.action_type === "CLICK" ? "selected" : ""}>🎯 Click Element</option>
@@ -840,7 +589,7 @@ function renderEditorSteps() {
 								<option value="CALL_SKILL" ${step.action_type === "CALL_SKILL" ? "selected" : ""}>⚡ Call Sub-Skill</option>
 							</select>
 						</div>
-						<div class="form-group" style="margin:0;">
+						<div class="form-group zero-margin">
 							<label class="doc-editor-label">Description (Optional)</label>
 							<input type="text" class="doc-editor-input" value="${escapeHtml(step.description || "")}" placeholder="e.g. Click search field" onchange="currentEditingSteps[${idx}].description = this.value" />
 						</div>
@@ -850,10 +599,10 @@ function renderEditorSteps() {
 					${actionSpecificHtml}
 
 					<!-- Inline AI Step Refinement -->
-					<div style="margin-top: 12px; display: flex; gap: 8px; align-items: center; background: rgba(99,102,241,0.06); border: 1px dashed rgba(99,102,241,0.25); border-radius: 8px; padding: 6px 10px;">
-						<span style="font-size: 0.85rem; user-select: none;" title="AI Step Assistant">✨</span>
-						<input type="text" id="aiRefineInput_${idx}" class="doc-editor-input" style="flex: 1; height: 30px; font-size: 0.8rem; background: transparent; border: none; padding: 0 4px;" placeholder="Adjust step with AI: e.g. 'Type {LastName} and press Enter' or 'Click search button'" onkeydown="if(event.key==='Enter') refineStepWithAI(${idx})" />
-						<button type="button" class="btn btn-sm btn-accent" style="padding: 3px 10px; font-size: 0.75rem; white-space: nowrap;" onclick="refineStepWithAI(${idx})">✨ Refine</button>
+					<div class="step-ai-refine-box">
+						<span class="ai-assistant-icon" title="AI Step Assistant">✨</span>
+						<input type="text" id="aiRefineInput_${idx}" class="doc-editor-input step-ai-refine-input" placeholder="Adjust step with AI: e.g. 'Type {LastName} and press Enter' or 'Click search button'" onkeydown="if(event.key==='Enter') refineStepWithAI(${idx})" />
+						<button type="button" class="btn btn-sm btn-accent step-btn-refine" onclick="refineStepWithAI(${idx})">✨ Refine</button>
 					</div>
 				</div>
 			`;

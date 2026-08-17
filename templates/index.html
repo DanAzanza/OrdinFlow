@@ -676,10 +676,10 @@
                     </div>
                 </div>
                 <div class="modal-footer">
-                    <button class="btn btn-danger" id="inspectorDeleteBtn" onclick="inspectorDeleteCurrent()">🗑️ Delete</button>
-                    <button class="btn btn-accent" id="inspectorRetryBtn" onclick="inspectorRetryCurrent()" style="margin-right: auto;">🔄 Rescan</button>
-                    <button class="btn" onclick="closeSplitInspector()">Cancel</button>
-                    <button class="btn btn-primary" onclick="submitSplitInspector()">✅ Approve & Move</button>
+                    <button type="button" class="btn btn-danger" id="inspectorDeleteBtn" onclick="inspectorDeleteCurrent()">🗑️ Delete</button>
+                    <button type="button" class="btn btn-accent" id="inspectorRetryBtn" onclick="inspectorRetryCurrent()" style="margin-right: auto;">🔄 Rescan</button>
+                    <button type="button" class="btn" onclick="closeSplitInspector()">Cancel</button>
+                    <button type="button" class="btn btn-primary" onclick="submitSplitInspector()">✅ Approve & Move</button>
                 </div>
             </div>
         </div>
@@ -713,9 +713,11 @@
         <div class="toast-container" id="toasts"></div>
 
         <script src="/static/js/api.js"></script>
+        <script src="/static/js/inbox_drawer.js"></script>
         <script src="/static/js/inbox.js"></script>
         <script src="/static/js/cases.js"></script>
         <script src="/static/js/config_tab.js"></script>
+        <script src="/static/js/doctypes_tab.js"></script>
         <script src="/static/js/skills_queue.js"></script>
         <script src="/static/js/skills_recorder.js"></script>
         <script src="/static/js/skills_tab.js"></script>
