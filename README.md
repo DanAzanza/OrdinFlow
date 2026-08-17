@@ -90,3 +90,7 @@ Navigate to [http://127.0.0.1:8080](http://127.0.0.1:8080) to view processed doc
 Copyright (c) 2026 **Daniel Azanza Hartmann**. This project is licensed under the **GNU Affero General Public License v3 (AGPL-3.0)**. See the [LICENSE](LICENSE) file for details.
 
 *Note: This project utilizes PyMuPDF, which is licensed under GNU AGPL v3. Consequently, any distribution or network-hosted deployments of this codebase or derivative works must be open-sourced under the same license.*
+
+### 💼 Commercial & Custom Licensing
+If you are a commercial entity, healthcare provider, or medical practice seeking a closed-source license, custom integration, or proprietary on-premise deployment exempt from copyleft obligations, please get in touch via [LinkedIn](https://www.linkedin.com/in/daniel-azanza/).
+
