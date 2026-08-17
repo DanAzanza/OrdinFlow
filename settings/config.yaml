@@ -1,8 +1,8 @@
 llm_backend: llama_cpp
 server_url: http://127.0.0.1:8080/v1
 server_api_key: not-needed
-llm_model_path: G:\Meine Ablage\Projekte\OrdinFlow\models\Qwen3-VL-8B-Instruct-UD-Q4_K_XL.gguf
-mmproj_path: G:\Meine Ablage\Projekte\OrdinFlow\models\mmproj-BF16.gguf
+llm_model_path: models/Qwen3-VL-8B-Instruct-UD-Q4_K_XL.gguf
+mmproj_path: models/mmproj-BF16.gguf
 max_dimension: 2048
 crop_padding: 5
 white_border: 8

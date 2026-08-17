@@ -84,13 +84,6 @@
                             oninput="filterInbox()"
                         />
                     </div>
-                    <button
-                        class="btn btn-sm"
-                        onclick="fetchInbox()"
-                        title="Rescan folder manually"
-                    >
-                        🔄 Refresh
-                    </button>
                 </div>
                 <div class="inbox-list" id="inboxList"></div>
                 <div
@@ -211,14 +204,6 @@
                             oninput="filterSkills()"
                         />
                     </div>
-                    <div style="display: flex; gap: 8px;">
-                        <button class="btn btn-sm btn-danger" onclick="startLiveRecording()" style="font-weight: 700;">
-                            <span>🔴</span> Record workflow
-                        </button>
-                        <button class="btn btn-sm btn-primary" onclick="createNewSkill()">
-                            <span>➕</span> Create manually
-                        </button>
-                    </div>
                 </div>
 
                 <div class="doc-editor-container">
@@ -229,51 +214,31 @@
                         </div>
                     </div>
 
-                        <!-- Right Column: Live Editor Form -->
-                        <div class="doc-type-form-panel">
-                            <div id="noSkillSelectedMessage" class="doc-empty-state">
-                                <span class="doc-empty-icon">⚡</span>
-                                Select a skill from the left column or record a new workflow.
-                                <div style="margin-top: 14px; display: flex; gap: 10px;">
-                                    <button class="btn btn-danger" onclick="startLiveRecording()" style="font-weight: 700;">
-                                        🔴 Record live workflow
-                                    </button>
-                                    <button class="btn btn-primary" onclick="createNewSkill()">
-                                        ➕ Create manually
-                                    </button>
-                                </div>
+                    <!-- Right Column: Live Editor Form -->
+                    <div class="doc-type-form-panel">
+                        <div id="noSkillSelectedMessage" class="doc-empty-state">
+                            <span class="doc-empty-icon">⚡</span>
+                            Select a skill from the left column or create a new one.
+                            <div style="margin-top: 14px;">
+                                <button type="button" class="btn btn-primary" onclick="createNewSkill()">
+                                    ➕ Add Skill
+                                </button>
                             </div>
-                            <div id="skillFormWrapper" class="doc-form-wrapper" style="display: none;">
-                                <!-- Header Card with Title & Actions -->
-                                <div class="doc-form-header-card">
-                                    <div class="doc-form-header-title">
-                                        <div class="doc-form-header-emoji">⚡</div>
-                                        <div>
-                                            <h3 id="skillHeaderTitle" style="margin:0; font-size: 1.1rem; font-weight: 700;">Skill Name</h3>
-                                            <span id="skillHeaderBadge" class="badge" style="background: rgba(99, 102, 241, 0.2); color: #a5b4fc;">0 steps</span>
-                                        </div>
+                        </div>
+                        <div id="skillFormWrapper" class="doc-form-wrapper" style="display: none;">
+                            <!-- Metadata Editor -->
+                            <div class="doc-editor-section">
+                                <h4>⚙️ General Settings</h4>
+                                <div class="grid-2col">
+                                    <div class="form-group" style="margin: 0;">
+                                        <label class="doc-editor-label">Skill Name</label>
+                                        <input type="text" id="editorSkillName" class="doc-editor-input" placeholder="e.g. Export to RDP Database" oninput="onSkillNameInput(this.value)" />
                                     </div>
-                                    <div style="display: flex; gap: 8px;">
-                                        <button id="btnRunSkillBatch" class="btn btn-sm btn-success" onclick="runCurrentSkillBatch()" title="Process approved cases with this skill">▶ Batch Run</button>
-                                        <button class="btn btn-sm" onclick="previewSkillWindow()" title="Preview target window">📷 Window Preview</button>
-                                        <button class="btn btn-sm" onclick="duplicateCurrentSkill()" title="Duplicate skill">📋 Duplicate</button>
-                                        <button class="btn btn-sm btn-danger" onclick="deleteCurrentSkill()" title="Delete skill">🗑️ Delete</button>
+                                    <div class="form-group" style="margin: 0;">
+                                        <label class="doc-editor-label">Skill ID <span style="font-size: 0.72rem; color: var(--text-dim); font-weight: normal;">(Auto-generated file identifier)</span></label>
+                                        <input type="text" id="editorSkillId" class="doc-editor-input" placeholder="auto-generated" readonly style="opacity: 0.7; background: rgba(0,0,0,0.25); cursor: default;" />
                                     </div>
                                 </div>
-
-                                <!-- Metadata Editor -->
-                                <div class="doc-editor-section">
-                                    <h4>⚙️ General Settings</h4>
-                                    <div class="grid-2col">
-                                        <div class="form-group" style="margin: 0;">
-                                            <label class="doc-editor-label">Skill Name</label>
-                                            <input type="text" id="editorSkillName" class="doc-editor-input" placeholder="e.g. Export to RDP Database" oninput="onSkillNameInput(this.value)" />
-                                        </div>
-                                        <div class="form-group" style="margin: 0;">
-                                            <label class="doc-editor-label">Skill ID <span style="font-size: 0.72rem; color: var(--text-dim); font-weight: normal;">(Auto-generated file identifier)</span></label>
-                                            <input type="text" id="editorSkillId" class="doc-editor-input" placeholder="auto-generated" readonly style="opacity: 0.7; background: rgba(0,0,0,0.25); cursor: default;" />
-                                        </div>
-                                    </div>
                                     <div class="grid-2col" style="margin-top: 10px;">
                                         <div class="form-group" style="margin: 0;">
                                             <label class="doc-editor-label">Skill Type</label>
@@ -354,10 +319,17 @@
                                     <div class="doc-editor-section">
                                         <div class="steps-header">
                                             <h4 class="steps-title">📋 Workflow Steps</h4>
-                                            <button class="btn btn-sm btn-accent" onclick="addEditorStep()">+ Add step</button>
                                         </div>
                                         <div id="editorStepsList" class="steps-list">
                                             <!-- Step Items rendered dynamically via JS -->
+                                        </div>
+                                        <div class="steps-bottom-actions" style="display: flex; gap: 8px; margin-top: 12px;">
+                                            <button type="button" class="btn btn-sm btn-danger" onclick="startLiveRecording(currentEditingSkill ? currentEditingSkill.name : 'New Workflow')" style="font-weight: 700;">
+                                                <span>🔴</span> Record workflow
+                                            </button>
+                                            <button type="button" class="btn btn-sm btn-primary" onclick="addEditorStep()">
+                                                <span>➕</span> Add step manually
+                                            </button>
                                         </div>
                                     </div>
                                 </div>
@@ -373,9 +345,6 @@
                                             <div class="doc-types-sidebar">
                                                 <div class="doc-sidebar-header">Categories</div>
                                                 <div id="docTypesList" class="doc-types-list"></div>
-                                                <button class="btn btn-primary" onclick="createNewDocType()" style="margin-top: 8px;">
-                                                    <span>➕</span> Add type
-                                                </button>
                                             </div>
                                             <div class="doc-type-form-panel">
                                                 <div id="noDocSelectedMessage" class="doc-empty-state">

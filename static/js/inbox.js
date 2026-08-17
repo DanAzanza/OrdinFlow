@@ -104,15 +104,17 @@ function renderInbox() {
         ${
 					f.is_pruefen
 						? `
-          <button class="btn btn-sm btn-accent" data-retryfile="${encodeURIComponent(f.path)}" title="Reprocess">🔄</button>
+          <button type="button" class="btn btn-sm btn-accent" data-retryfile="${encodeURIComponent(f.path)}" title="Reprocess">🔄</button>
           ${
 						hasAllInfo
-							? `<button class="btn btn-sm btn-success" data-autoassign="${encodeURIComponent(f.path)}">✅ Assign</button>`
-							: `<button class="btn btn-sm btn-accent" data-inspect="${encodeURIComponent(f.path)}">🔍 Inspector</button>`
+							? `<button type="button" class="btn btn-sm btn-success" data-autoassign="${encodeURIComponent(f.path)}">✅ Assign</button>`
+							: ""
 					}
-          <button class="btn btn-sm btn-danger" data-delinbox="${encodeURIComponent(f.path)}">🗑️</button>
+          <button type="button" class="btn btn-sm btn-danger" data-delinbox="${encodeURIComponent(f.path)}" title="Delete">🗑️</button>
         `
-						: `<button class="btn btn-sm btn-accent" data-inspect="${encodeURIComponent(f.path)}">🔍 Open Document</button>`
+						: `
+          <button type="button" class="btn btn-sm btn-danger" data-delinbox="${encodeURIComponent(f.path)}" title="Delete">🗑️</button>
+        `
 				}
       </div>
     </div>`;

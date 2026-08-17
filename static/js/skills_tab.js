@@ -19,7 +19,10 @@ function slugifySkillName(name) {
 }
 
 function onSkillNameInput(val) {
-	document.getElementById("skillHeaderTitle").textContent = val.trim() || "Untitled Workflow";
+	const headerTitle = document.getElementById("skillHeaderTitle");
+	if (headerTitle) {
+		headerTitle.textContent = val.trim() || "Untitled Workflow";
+	}
 	if (isNewSkillCreation) {
 		const slug = slugifySkillName(val) || "custom_skill";
 		const idInput = document.getElementById("editorSkillId");
@@ -94,39 +97,48 @@ function renderSkillsSidebar(skills, searchQuery = "") {
 	const container = document.getElementById("skillsSidebarList");
 	if (!container) return;
 
+	let itemsHtml = "";
 	if (skills.length === 0) {
-		container.innerHTML = `
+		itemsHtml = `
 			<div style="padding: 16px; text-align: center; color: var(--text-dim); font-size: 0.82rem;">
 				${searchQuery ? "No matches" : "No skills found"}
 			</div>
 		`;
-		return;
+	} else {
+		itemsHtml = skills
+			.map((skill) => {
+				const isSelected = skill.id === selectedSkillId;
+				const isImport = skill.type === "import";
+				const icon = isImport ? "📥" : "⚡";
+
+				return `
+					<div class="doc-type-item ${isSelected ? "active" : ""}" onclick="selectSkill('${escapeHtml(skill.id)}')">
+						<div class="doc-type-item-name">
+							<span class="skill-emoji">${icon}</span>
+							<span class="skill-label" title="${escapeHtml(skill.name || skill.id)}">
+								${escapeHtml(skill.name || skill.id)}
+							</span>
+						</div>
+						<div class="skill-item-actions">
+							<button type="button" class="btn-icon-subtle" onclick="event.stopPropagation(); duplicateSkillById('${escapeHtml(skill.id)}')" title="Duplicate skill">
+								📋
+							</button>
+							<button type="button" class="btn-icon-subtle btn-icon-danger" onclick="event.stopPropagation(); deleteSkillById('${escapeHtml(skill.id)}')" title="Delete skill">
+								🗑️
+							</button>
+						</div>
+					</div>
+				`;
+			})
+			.join("");
 	}
 
-	container.innerHTML = skills
-		.map((skill) => {
-			const isSelected = skill.id === selectedSkillId;
-			const isImport = skill.type === "import";
-			const stepCount = (skill.steps || []).length;
-			const icon = isImport ? "📥" : "⚡";
-			const badgeClass = isImport ? "badge-import-skill" : "badge-export-skill";
-			const badgeText = isImport ? "Import" : `${stepCount} ${stepCount === 1 ? "step" : "steps"}`;
-
-			return `
-				<div class="doc-type-item ${isSelected ? "active" : ""}" onclick="selectSkill('${escapeHtml(skill.id)}')">
-					<div class="doc-type-item-name">
-						<span>${icon}</span>
-						<span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 135px;" title="${escapeHtml(skill.name || skill.id)}">
-							${escapeHtml(skill.name || skill.id)}
-						</span>
-					</div>
-					<span class="${badgeClass}">
-						${badgeText}
-					</span>
-				</div>
-			`;
-		})
-		.join("");
+	container.innerHTML = `
+		${itemsHtml}
+		<button type="button" class="btn btn-sm btn-primary add-skill-btn" onclick="createNewSkill()">
+			<span>➕</span> Add Skill
+		</button>
+	`;
 }
 
 function showNoSkillSelected() {
@@ -158,11 +170,10 @@ async function selectSkill(skillId) {
 	const emptyMsg = document.getElementById("noSkillSelectedMessage");
 	const wrapper = document.getElementById("skillFormWrapper");
 	if (emptyMsg) emptyMsg.style.display = "none";
-	if (wrapper) wrapper.style.display = "flex";
+	if (wrapper) wrapper.style.display = "block";
 
-	document.getElementById("skillHeaderTitle").textContent = skillObj.name || skillObj.id;
-	const isImport = skillObj.type === "import";
-	document.getElementById("skillHeaderBadge").textContent = isImport ? "Import Skill" : `${currentEditingSteps.length} ${currentEditingSteps.length === 1 ? "step" : "steps"}`;
+	const headerTitle = document.getElementById("skillHeaderTitle");
+	if (headerTitle) headerTitle.textContent = skillObj.name || skillObj.id;
 
 	document.getElementById("editorSkillId").value = skillObj.id || "";
 	document.getElementById("editorSkillName").value = skillObj.name || "";
@@ -196,12 +207,6 @@ async function selectSkill(skillId) {
 	onSkillTypeChange(skillObj.type || "export");
 	renderEditorSteps();
 	renderVariableBadges();
-
-	// Update Batch Run Button text with pending count
-	if (!isImport) {
-		updateBatchRunBadge(skillId);
-	}
-
 	renderQueueInspector();
 
 	if (!skillsTabPollInterval) {
@@ -211,20 +216,6 @@ async function selectSkill(skillId) {
 				renderQueueInspector();
 			}
 		}, 3000);
-	}
-}
-
-async function updateBatchRunBadge(skillId) {
-	try {
-		const res = await api(`/api/skills/${encodeURIComponent(skillId)}/pending_cases`);
-		const btn = document.getElementById("btnRunSkillBatch");
-		if (btn) {
-			const count = res.count || 0;
-			btn.innerHTML = `▶ Batch Run (${count} ${count === 1 ? "case" : "cases"})`;
-			btn.title = `${count} approved case folder(s) pending for this export skill`;
-		}
-	} catch (e) {
-		console.debug("Could not fetch pending count for skill:", e);
 	}
 }
 
@@ -319,37 +310,45 @@ function renderDocTypesSidebar() {
 	if (!container) return;
 
 	const keys = Object.keys(state.editingDocTypes || {});
+	let itemsHtml = "";
+
 	if (keys.length === 0) {
-		container.innerHTML = `
-			<div style="padding: 16px; text-align: center; color: var(--text-dim); font-size: 0.82rem; background: rgba(0,0,0,0.15); border-radius: 8px;">
-				No categories defined in this skill.
+		itemsHtml = `
+			<div class="empty-categories-box">
+				No categories defined yet.
 			</div>
 		`;
-		return;
-	}
+	} else {
+		itemsHtml = keys
+			.map((key) => {
+				const isSelected = key === state.selectedDocType;
+				const doc = state.editingDocTypes[key] || {};
+				const emoji = doc.emoji || "📄";
+				const fieldCount = Object.keys(doc.extraction_fields || {}).length;
 
-	container.innerHTML = keys
-		.map((key) => {
-			const isSelected = key === state.selectedDocType;
-			const doc = state.editingDocTypes[key] || {};
-			const emoji = doc.emoji || "📄";
-			const fieldCount = Object.keys(doc.extraction_fields || {}).length;
-
-			return `
-				<div class="doc-type-item ${isSelected ? "active" : ""}" onclick="selectDocType('${escapeHtml(key)}')">
-					<div class="doc-type-item-name">
-						<span style="font-size: 1.1rem; width: 22px; text-align: center;">${emoji}</span>
-						<span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 140px;" title="${escapeHtml(key)}">
-							${escapeHtml(key)}
+				return `
+					<div class="category-item ${isSelected ? "active" : ""}" onclick="selectDocType('${escapeHtml(key)}')">
+						<div class="category-item-name">
+							<span class="category-emoji">${emoji}</span>
+							<span class="category-label" title="${escapeHtml(key)}">
+								${escapeHtml(key)}
+							</span>
+						</div>
+						<span class="category-item-count">
+							${fieldCount} ${fieldCount === 1 ? "field" : "fields"}
 						</span>
 					</div>
-					<span class="doc-type-item-count">
-						${fieldCount} ${fieldCount === 1 ? "field" : "fields"}
-					</span>
-				</div>
-			`;
-		})
-		.join("");
+				`;
+			})
+			.join("");
+	}
+
+	container.innerHTML = `
+		${itemsHtml}
+		<button type="button" class="btn btn-sm btn-primary add-category-btn" onclick="createNewDocType()">
+			<span>➕</span> Add type
+		</button>
+	`;
 }
 
 function selectDocType(typeName) {
@@ -403,7 +402,7 @@ function deleteDocType(typeName) {
 function autoResizeTextarea(el) {
 	if (!el) return;
 	el.style.height = "auto";
-	el.style.height = Math.max(38, el.scrollHeight + 2) + "px";
+	el.style.height = Math.max(34, el.scrollHeight + 2) + "px";
 }
 
 function renderDocTypeForm(typeName) {
@@ -423,18 +422,18 @@ function renderDocTypeForm(typeName) {
 			const req = typeof fVal === "object" ? Boolean(fVal.required) : false;
 
 			return `
-				<tr style="border-bottom: 1px solid rgba(255, 255, 255, 0.05); transition: background 0.2s;">
-					<td style="padding: 10px 12px; vertical-align: top;">
-						<input type="text" class="doc-editor-input" value="${escapeHtml(fKey)}" readonly style="background: rgba(99, 102, 241, 0.08); border-color: rgba(99, 102, 241, 0.25); color: #a5b4fc; font-weight: 700;" />
+				<tr class="doc-field-row">
+					<td class="doc-field-name-td">
+						<input type="text" class="doc-editor-input doc-field-key-input" value="${escapeHtml(fKey)}" readonly />
 					</td>
-					<td style="padding: 10px 12px; vertical-align: top;">
-						<textarea class="doc-editor-textarea auto-resize-ta" rows="1" placeholder="Description for the AI..." oninput="autoResizeTextarea(this)" onchange="updateDocTypeField('${escapeHtml(typeName)}', '${escapeHtml(fKey)}', 'desc', this.value)" style="resize: none; overflow: hidden; min-height: 38px;">${escapeHtml(desc)}</textarea>
+					<td class="doc-field-prompt-td">
+						<textarea class="doc-editor-textarea auto-resize-ta" rows="1" placeholder="Prompt for the AI..." oninput="autoResizeTextarea(this)" onchange="updateDocTypeField('${escapeHtml(typeName)}', '${escapeHtml(fKey)}', 'desc', this.value)">${escapeHtml(desc)}</textarea>
 					</td>
-					<td style="padding: 10px 12px; vertical-align: top; text-align: center;">
-						<input type="checkbox" ${req ? "checked" : ""} onchange="updateDocTypeField('${escapeHtml(typeName)}', '${escapeHtml(fKey)}', 'req', this.checked)" style="width: 18px; height: 18px; accent-color: #6366f1; cursor: pointer; margin-top: 8px;" />
+					<td class="doc-field-req-td">
+						<input type="checkbox" class="config-checkbox" ${req ? "checked" : ""} onchange="updateDocTypeField('${escapeHtml(typeName)}', '${escapeHtml(fKey)}', 'req', this.checked)" />
 					</td>
-					<td style="padding: 10px 12px; vertical-align: top; text-align: center;">
-						<button class="btn btn-sm btn-danger" onclick="removeExtractionField('${escapeHtml(typeName)}', '${escapeHtml(fKey)}')" title="Remove field" style="padding: 6px 10px; margin-top: 4px;">🗑️</button>
+					<td class="doc-field-act-td">
+						<button type="button" class="btn btn-sm btn-danger" onclick="removeExtractionField('${escapeHtml(typeName)}', '${escapeHtml(fKey)}')" title="Remove field">🗑️</button>
 					</td>
 				</tr>
 			`;
@@ -442,13 +441,13 @@ function renderDocTypeForm(typeName) {
 		.join("");
 
 	let tableHtml = `
-		<table class="doc-fields-table" style="width: 100%; border-collapse: separate; border-spacing: 0; background: rgba(10, 13, 20, 0.5); border-radius: 10px; border: 1px solid rgba(255,255,255,0.08); overflow: hidden;">
+		<table class="doc-fields-table">
 			<thead>
-				<tr style="background: rgba(255, 255, 255, 0.03); color: var(--text-dim); font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.05em;">
-					<th style="padding: 12px; text-align: left; width: 22%; border-bottom: 1px solid rgba(255,255,255,0.08);">Field name</th>
-					<th style="padding: 12px; text-align: left; width: 60%; border-bottom: 1px solid rgba(255,255,255,0.08);">Extraction prompt / Instruction</th>
-					<th style="padding: 12px; text-align: center; width: 10%; border-bottom: 1px solid rgba(255,255,255,0.08);">Required</th>
-					<th style="padding: 12px; text-align: center; width: 8%; border-bottom: 1px solid rgba(255,255,255,0.08);">Action</th>
+				<tr>
+					<th style="width: 24%;">Field Name</th>
+					<th style="width: 58%;">Extraction Prompt / Instruction</th>
+					<th style="width: 10%; text-align: center;">Required</th>
+					<th style="width: 8%; text-align: center;">Action</th>
 				</tr>
 			</thead>
 			<tbody>
@@ -458,7 +457,7 @@ function renderDocTypeForm(typeName) {
 	`;
 
 	if (fieldKeys.length === 0) {
-		tableHtml = `<div style="padding: 20px; color: var(--text-dim); font-size: 0.85rem; text-align: center; background: rgba(0,0,0,0.15); border-radius: 8px;">No extraction fields defined.</div>`;
+		tableHtml = `<div class="empty-fields-box">No extraction fields defined yet. Click '➕ Add Field' below to configure fields.</div>`;
 	}
 
 	container.innerHTML = `
@@ -466,25 +465,25 @@ function renderDocTypeForm(typeName) {
 			<div class="doc-form-header-title">
 				<div class="doc-form-header-emoji">${emoji}</div>
 				<div>
-					<h3 style="margin: 0; font-size: 1.15rem; font-weight: 700; color: var(--text);">${escapeHtml(typeName)}</h3>
-					<span style="font-size: 0.78rem; color: var(--text-dim);">${fieldKeys.length} extraction fields configured</span>
+					<h3 class="doc-header-name">${escapeHtml(typeName)}</h3>
+					<span class="doc-header-meta">${fieldKeys.length} extraction fields configured</span>
 				</div>
 			</div>
-			<button class="btn btn-sm btn-danger" onclick="deleteDocType('${escapeHtml(typeName)}')">🗑️ Delete Category</button>
+			<button type="button" class="btn btn-sm btn-danger" onclick="deleteDocType('${escapeHtml(typeName)}')">🗑️ Delete Category</button>
 		</div>
 
-		<div class="doc-editor-section" style="margin-top: 16px;">
+		<div class="doc-editor-section">
 			<h4>🧠 Recognition & Classification Rules (AI Vision)</h4>
-			<span style="font-size: 0.8rem; color: var(--text-dim); margin-top: -8px; margin-bottom: 6px; display: block;">
+			<span class="doc-field-hint">
 				Define the visual, text, or layout features the AI uses to recognize this document.
 			</span>
-			<textarea class="doc-editor-textarea auto-resize-ta" rows="2" placeholder="E.g. Document containing the text 'Report' in the header area..." oninput="autoResizeTextarea(this)" onchange="updateDocTypeRules('${escapeHtml(typeName)}', this.value)" style="resize: none; overflow: hidden; min-height: 52px;">${escapeHtml(descValue)}</textarea>
+			<textarea class="doc-editor-textarea auto-resize-ta" rows="2" placeholder="E.g. Document containing the text 'Report' in the header area..." oninput="autoResizeTextarea(this)" onchange="updateDocTypeRules('${escapeHtml(typeName)}', this.value)">${escapeHtml(descValue)}</textarea>
 		</div>
 
-		<div class="doc-editor-section" style="margin-top: 16px;">
-			<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-				<h4 style="margin: 0;">📋 Extraction Fields & AI Prompts</h4>
-				<button class="btn btn-sm btn-accent" onclick="addExtractionField('${escapeHtml(typeName)}')">➕ Add Field</button>
+		<div class="doc-editor-section">
+			<div class="doc-section-header-row">
+				<h4>📋 Extraction Fields & AI Prompts</h4>
+				<button type="button" class="btn btn-sm btn-accent" onclick="addExtractionField('${escapeHtml(typeName)}')">➕ Add Field</button>
 			</div>
 			${tableHtml}
 		</div>
@@ -588,10 +587,10 @@ function createNewSkill() {
 	const emptyMsg = document.getElementById("noSkillSelectedMessage");
 	const wrapper = document.getElementById("skillFormWrapper");
 	if (emptyMsg) emptyMsg.style.display = "none";
-	if (wrapper) wrapper.style.display = "flex";
+	if (wrapper) wrapper.style.display = "block";
 
-	document.getElementById("skillHeaderTitle").textContent = newSkill.name;
-	document.getElementById("skillHeaderBadge").textContent = "1 step";
+	const headerTitle = document.getElementById("skillHeaderTitle");
+	if (headerTitle) headerTitle.textContent = newSkill.name;
 
 	document.getElementById("editorSkillId").value = newSkill.id;
 	document.getElementById("editorSkillName").value = newSkill.name;
@@ -699,7 +698,7 @@ function renderEditorSteps() {
 	if (currentEditingSteps.length === 0) {
 		container.innerHTML = `
 			<div style="text-align: center; padding: 24px; color: var(--text-dim); background: rgba(0,0,0,0.2); border: 1px dashed var(--border); border-radius: 10px; font-style: italic; font-size: 0.85rem;">
-				No steps defined for this skill. Click "+ Add step" above.
+				No steps defined for this skill yet. Click "Record workflow" or "Add step manually" below.
 			</div>
 		`;
 		return;
@@ -1017,80 +1016,36 @@ async function saveSkillFromEditor() {
 	}
 }
 
-async function duplicateCurrentSkill() {
-	if (!selectedSkillId) return;
+async function duplicateSkillById(skillId) {
+	if (!skillId) return;
 	try {
-		const res = await api(`/api/skills/${selectedSkillId}/duplicate`, {
+		const res = await api(`/api/skills/${encodeURIComponent(skillId)}/duplicate`, {
 			method: "POST",
 		});
-		toast("Skill duplicated: " + (res.skill ? res.skill.name : selectedSkillId));
+		toast("Skill duplicated: " + (res.skill ? res.skill.name : skillId));
 		if (res.skill && res.skill.id) {
 			selectedSkillId = res.skill.id;
 		}
-		loadSkills();
+		await loadSkills();
 	} catch (e) {
 		toast("Error duplicating skill: " + e.message, "error");
 	}
 }
 
-async function deleteCurrentSkill() {
-	if (!selectedSkillId) return;
-	if (!confirm("Are you sure you want to delete this skill?")) return;
+async function deleteSkillById(skillId) {
+	if (!skillId) return;
+	const skillObj = (state.skills || []).find((s) => s.id === skillId);
+	const displayName = skillObj ? skillObj.name : skillId;
+	if (!confirm(`Really delete skill '${displayName}'?`)) return;
 	try {
-		await api(`/api/skills/${selectedSkillId}`, { method: "DELETE" });
+		await api(`/api/skills/${encodeURIComponent(skillId)}`, { method: "DELETE" });
 		toast("Skill deleted.");
-		selectedSkillId = null;
-		loadSkills();
+		if (selectedSkillId === skillId) {
+			selectedSkillId = null;
+		}
+		await loadSkills();
 	} catch (e) {
 		toast("Error deleting skill: " + e.message, "error");
 	}
 }
 
-async function runCurrentSkillBatch() {
-	if (!selectedSkillId) return;
-	try {
-		const res = await api(`/api/skills/${encodeURIComponent(selectedSkillId)}/run_batch`, {
-			method: "POST",
-		});
-
-		if (res.status === "no_pending_cases" || res.queued_count === 0) {
-			toast("No pending approved cases found for this skill.", "info");
-		} else {
-			toast(`🚀 ${res.queued_count} approved cases added to queue!`, "success");
-		}
-		renderQueueInspector();
-		updateBatchRunBadge(selectedSkillId);
-	} catch (e) {
-		toast("Error during batch run: " + e.message, "error");
-	}
-}
-
-async function previewSkillWindow() {
-	const winTitle = document.getElementById("editorSkillTargetWindow")?.value || "Remote Desktop*";
-	try {
-		toast("📷 Capturing screenshot of: " + winTitle, "info");
-		const res = await api("/api/skills/screenshot_preview", {
-			method: "POST",
-			body: JSON.stringify({ window_title: winTitle }),
-		});
-
-		if (res.image) {
-			const w = window.open("", "_blank");
-			if (w) {
-				w.document.write(`
-					<html>
-						<head><title>Screenshot Preview - ${escapeHtml(winTitle)}</title></head>
-						<body style="margin:0; background:#0b0f19; display:flex; flex-direction:column; align-items:center; justify-content:center; min-height:100vh; font-family:sans-serif; color:#fff;">
-							<div style="padding:12px 20px; background:rgba(255,255,255,0.08); border-radius:8px; margin-bottom:12px;">
-								<strong>Target window:</strong> ${escapeHtml(winTitle)}
-							</div>
-							<img src="${res.image}" style="max-width:95vw; max-height:85vh; border:2px solid #6366f1; border-radius:8px; box-shadow:0 10px 30px rgba(0,0,0,0.8);" />
-						</body>
-					</html>
-				`);
-			}
-		}
-	} catch (e) {
-		toast("Screenshot capture failed: " + e.message, "error");
-	}
-}
