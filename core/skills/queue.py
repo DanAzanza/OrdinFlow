@@ -38,11 +38,14 @@ class SkillQueueManager:
             with open(self.queue_file, "r", encoding="utf-8") as f:
                 data = json.load(f)
             if isinstance(data, list):
-                # Clean up any items that were left in "running" state on restart
+                has_running = False
                 for item in data:
                     if isinstance(item, dict) and item.get("status") == "running":
                         item["status"] = "pending"
+                        has_running = True
                 self.queue = data
+                if has_running:
+                    self._save_to_disk()
                 logger.info(
                     "[SkillQueueManager] Loaded %d persisted queue items from disk.",
                     len(self.queue),
@@ -119,13 +122,13 @@ class SkillQueueManager:
         return item
 
     def remove_from_queue(self, queue_id: str) -> bool:
-        """Removes a pending/completed item from the queue and persists state."""
+        """Removes an item from the queue and persists state."""
         with self.lock:
             for idx, item in enumerate(self.queue):
                 if item["id"] == queue_id:
-                    if item["status"] == "running":
+                    if self.is_running and item.get("status") == "running":
                         logger.warning(
-                            "[SkillQueueManager] Cannot remove currently running queue item %s",
+                            "[SkillQueueManager] Cannot remove actively executing item %s while queue is running",
                             queue_id,
                         )
                         return False
@@ -136,6 +139,17 @@ class SkillQueueManager:
                     )
                     return True
         return False
+
+    def clear_queue(self) -> bool:
+        """Clears all non-running items from the queue and persists state."""
+        with self.lock:
+            if self.is_running:
+                self.queue = [item for item in self.queue if item.get("status") == "running"]
+            else:
+                self.queue = []
+            self._save_to_disk()
+            logger.info("[SkillQueueManager] Queue cleared.")
+            return True
 
     def reorder_queue(self, item_ids: list[str]) -> bool:
         """Reorders pending items in the queue according to the provided ID list."""
@@ -165,12 +179,24 @@ class SkillQueueManager:
             )
             return True
 
-    def start_queue(self) -> bool:
+    def start_queue(self, force_reset_if_no_pending: bool = True) -> bool:
         """Starts processing the queue in a background worker thread."""
         with self.lock:
             if self.is_running:
                 logger.info("[SkillQueueManager] Queue is already running.")
                 return True
+
+            # If all items are completed or failed, reset them to pending so start runs them
+            has_pending = any(item.get("status") == "pending" for item in self.queue)
+            if not has_pending and self.queue and force_reset_if_no_pending:
+                for item in self.queue:
+                    item["status"] = "pending"
+                self._save_to_disk()
+                logger.info(
+                    "[SkillQueueManager] Reset %d items to pending for execution.",
+                    len(self.queue),
+                )
+
             self.is_running = True
             self._stop_requested = False
             self._worker_thread = threading.Thread(
@@ -185,6 +211,10 @@ class SkillQueueManager:
         with self.lock:
             self._stop_requested = True
             self.is_running = False
+            for item in self.queue:
+                if item.get("status") == "running":
+                    item["status"] = "pending"
+            self._save_to_disk()
             logger.info("[SkillQueueManager] Queue stop requested.")
             return True
 

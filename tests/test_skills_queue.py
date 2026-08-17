@@ -156,3 +156,42 @@ def test_queue_manager_persistence_and_recovery(temp_skills_env):
     assert reloaded_state["items"][0]["status"] == "pending"
 
 
+def test_queue_manager_rerun_completed(temp_skills_env):
+    import time
+    _tmp_dir, skills_dir = temp_skills_env
+    skill_mgr = SkillManager(skills_dir=skills_dir)
+    queue_mgr = SkillQueueManager(skill_manager=skill_mgr)
+
+    s1 = {"id": "skill_r1", "name": "Rerun Skill", "type": "import"}
+    skill_mgr.save_skill(s1)
+
+    executed_count = 0
+    def dummy_handler(_item):
+        nonlocal executed_count
+        executed_count += 1
+        return True
+
+    queue_mgr.set_handlers(import_handler=dummy_handler)
+    queue_mgr.add_to_queue("skill_r1")
+    queue_mgr.start_queue()
+
+    for _ in range(20):
+        if not queue_mgr.is_running:
+            break
+        time.sleep(0.1)
+
+    assert executed_count == 1
+    assert queue_mgr.get_queue_state()["items"][0]["status"] == "completed"
+
+    # Start again without pending items -> must auto-reset completed item to pending and run again
+    queue_mgr.start_queue()
+    for _ in range(20):
+        if not queue_mgr.is_running:
+            break
+        time.sleep(0.1)
+
+    assert executed_count == 2
+    assert queue_mgr.get_queue_state()["items"][0]["status"] == "completed"
+
+
+

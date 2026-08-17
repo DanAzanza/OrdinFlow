@@ -7,7 +7,9 @@ let queuePollTimer = null;
 
 function isQueueInspectorOpen() {
 	const container = document.getElementById("queueItemsContainer");
-	return Boolean(container && container.offsetParent !== null);
+	const inspector = document.getElementById("appInspector");
+	if (!container || !inspector) return false;
+	return !inspector.classList.contains("hidden-inspector");
 }
 
 function startQueuePolling() {
@@ -26,7 +28,7 @@ function startQueuePolling() {
 		} catch (e) {
 			console.debug("Queue poll error:", e);
 		}
-	}, 1200);
+	}, 1000);
 }
 
 function stopQueuePolling() {
@@ -281,6 +283,11 @@ async function onQueueDrop(e, targetId) {
 
 async function startSkillQueue() {
 	try {
+		const btn = document.querySelector(".queue-main-btn");
+		if (btn) {
+			btn.disabled = true;
+			btn.textContent = "▶ Starting...";
+		}
 		await api("/api/skills/queue/start", { method: "POST" });
 		toast("▶ Skill queue started!");
 		const qState = await api("/api/skills/queue");
@@ -288,11 +295,18 @@ async function startSkillQueue() {
 		startQueuePolling();
 	} catch (e) {
 		toast("Error starting queue: " + e.message, "error");
+		const qState = await api("/api/skills/queue").catch(() => null);
+		if (qState) updateQueueInspectorIfOpen(qState);
 	}
 }
 
 async function stopSkillQueue() {
 	try {
+		const btn = document.querySelector(".queue-main-btn");
+		if (btn) {
+			btn.disabled = true;
+			btn.textContent = "⏸️ Stopping...";
+		}
 		await api("/api/skills/queue/stop", { method: "POST" });
 		toast("⏸️ Stopping skill queue...");
 		const qState = await api("/api/skills/queue");
@@ -332,5 +346,16 @@ async function removeQueueItem(queueId) {
 		updateQueueInspectorIfOpen(qState);
 	} catch (e) {
 		toast("Error removing entry: " + e.message, "error");
+	}
+}
+
+async function clearSkillQueue() {
+	try {
+		await api("/api/skills/queue/clear", { method: "POST" });
+		toast("Queue cleared.");
+		const qState = await api("/api/skills/queue");
+		updateQueueInspectorIfOpen(qState);
+	} catch (e) {
+		toast("Error clearing queue: " + e.message, "error");
 	}
 }
