@@ -118,3 +118,41 @@ def test_queue_manager_execution_with_handlers(temp_skills_env):
     assert state["items"][0]["status"] == "completed"
     assert item["id"] in executed_items
 
+
+def test_queue_manager_persistence_and_recovery(temp_skills_env):
+    _tmp_dir, skills_dir = temp_skills_env
+    skill_mgr = SkillManager(skills_dir=skills_dir)
+    queue_mgr = SkillQueueManager(skill_manager=skill_mgr)
+
+    s1 = {"id": "skill_p1", "name": "Persistent Skill 1", "type": "export"}
+    s2 = {"id": "skill_p2", "name": "Persistent Skill 2", "type": "export"}
+    skill_mgr.save_skill(s1)
+    skill_mgr.save_skill(s2)
+
+    item1 = queue_mgr.add_to_queue("skill_p1")
+    item2 = queue_mgr.add_to_queue("skill_p2")
+
+    # Verify queue_state.json exists on disk
+    queue_file = os.path.join(skills_dir, "queue_state.json")
+    assert os.path.isfile(queue_file)
+
+    # Instantiate a brand new SkillQueueManager to simulate server/browser reload
+    new_queue_mgr = SkillQueueManager(skill_manager=skill_mgr)
+    new_state = new_queue_mgr.get_queue_state()
+    assert len(new_state["items"]) == 2
+    assert new_state["items"][0]["id"] == item1["id"]
+    assert new_state["items"][1]["id"] == item2["id"]
+    assert new_state["items"][0]["status"] == "pending"
+
+    # Simulate an interrupted running state in file
+    with open(queue_file, "w", encoding="utf-8") as f:
+        import json
+        json.dump([{"id": "q_crash", "skill_id": "skill_p1", "status": "running"}], f)
+
+    reloaded_mgr = SkillQueueManager(skill_manager=skill_mgr)
+    reloaded_state = reloaded_mgr.get_queue_state()
+    assert len(reloaded_state["items"]) == 1
+    # Interrupted running items must be reset to pending
+    assert reloaded_state["items"][0]["status"] == "pending"
+
+

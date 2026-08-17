@@ -26,6 +26,7 @@ temp/
 # Local logs, configs & secrets
 settings/skills/*.yaml
 !settings/skills/*.example.yaml
+settings/skills/*.json
 *.log
 main.log
 crash.log

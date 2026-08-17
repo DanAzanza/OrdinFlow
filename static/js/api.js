@@ -134,6 +134,28 @@ async function fetchStatus() {
 		// Stats
 		const statAvg = document.getElementById("statAvg");
 		if (statAvg) statAvg.textContent = (d.avg_duration ?? 0).toFixed(1);
+
+		// Skill Queue status check
+		if (d.skill_queue) {
+			state.skillQueue = d.skill_queue;
+			const isRunning = !!d.skill_queue.is_running;
+			const navSkills = document.querySelector(".nav-item[data-tab='skills']");
+			if (navSkills) {
+				const badge = navSkills.querySelector(".nav-badge");
+				if (badge) {
+					if (isRunning) {
+						badge.textContent = "▶ Run";
+						badge.style.display = "";
+					} else {
+						badge.textContent = "";
+						badge.style.display = "none";
+					}
+				}
+			}
+			if (typeof updateQueueInspectorIfOpen === "function") {
+				updateQueueInspectorIfOpen(d.skill_queue);
+			}
+		}
 	} catch (e) {
 		console.error("Error fetching status:", e);
 	}

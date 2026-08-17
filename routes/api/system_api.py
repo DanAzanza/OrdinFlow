@@ -102,9 +102,21 @@ def validate_schema(schema_cls, data: dict[str, Any] | None) -> tuple[Any | None
 @system_api_bp.route("/api/status")
 def api_status():
     DashboardState.last_heartbeat = time.time()
-    if not DashboardState.processor:
-        return jsonify({"paused": False, "avg_duration": 0, "processed_count": 0})
-    return jsonify(DashboardState.processor.get_stats())
+    stats: dict[str, Any] = {}
+    if DashboardState.processor:
+        stats = DashboardState.processor.get_stats()
+    else:
+        stats = {"paused": False, "avg_duration": 0, "processed_count": 0}
+
+    try:
+        from core.skills.queue import get_skill_queue_manager
+        qm = get_skill_queue_manager()
+        stats["skill_queue"] = qm.get_queue_state()
+    except Exception as e:
+        logger.debug("[SystemAPI] Could not retrieve skill queue state: %s", e)
+        stats["skill_queue"] = {"is_running": False, "items": [], "active_item": None}
+
+    return jsonify(stats)
 
 
 @system_api_bp.route("/api/jobs", methods=["GET"])

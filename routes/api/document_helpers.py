@@ -7,7 +7,7 @@ import threading
 from collections import OrderedDict
 from typing import Any
 
-from flask import Response, jsonify
+from flask import Response, jsonify, request
 
 try:
     import fitz
@@ -186,7 +186,7 @@ def _get_doc_types_from_files(folder_path: str) -> list:
 class ThumbnailCache:
     """Thread-safe LRU cache with configurable maximum size."""
 
-    def __init__(self, maxsize: int = 200):
+    def __init__(self, maxsize: int = 3000):
         self._cache: OrderedDict = OrderedDict()
         self._lock = threading.Lock()
         self._maxsize = maxsize
@@ -207,14 +207,29 @@ class ThumbnailCache:
                 self._cache.popitem(last=False)
 
 
-_thumbnail_cache: ThumbnailCache = ThumbnailCache(maxsize=200)
+_thumbnail_cache: ThumbnailCache = ThumbnailCache(maxsize=3000)
 
 
 def _generate_pdf_thumbnail(full_path: str):
-    mtime = os.path.getmtime(full_path)
+    try:
+        mtime = os.path.getmtime(full_path)
+        size = os.path.getsize(full_path)
+    except OSError as e:
+        return jsonify({"error": f"File error: {e}"}), 404
+
+    etag = f'"{int(mtime)}-{size}"'
+    if request.headers.get("If-None-Match") == etag:
+        res = Response(status=304)
+        res.headers["ETag"] = etag
+        res.headers["Cache-Control"] = "public, max-age=86400"
+        return res
+
     cached = _thumbnail_cache.get(full_path)
     if cached and cached[0] == mtime:
-        return Response(cached[1], mimetype="image/jpeg")
+        res = Response(cached[1], mimetype="image/jpeg")
+        res.headers["ETag"] = etag
+        res.headers["Cache-Control"] = "public, max-age=86400"
+        return res
 
     if not fitz:
         return jsonify({"error": "PyMuPDF (fitz) not available"}), 500
@@ -222,14 +237,17 @@ def _generate_pdf_thumbnail(full_path: str):
         doc = fitz.open(full_path)
         try:
             page = doc[0]
-            zoom = 300 / page.rect.width
+            zoom = 280 / page.rect.width
             mat = fitz.Matrix(zoom, zoom)
-            pix = page.get_pixmap(matrix=mat)
-            img_bytes = pix.tobytes("jpeg")
+            pix = page.get_pixmap(matrix=mat, alpha=False)
+            img_bytes = pix.tobytes("jpeg", jpg_quality=75)
         finally:
             doc.close()
 
         _thumbnail_cache.set(full_path, (mtime, img_bytes))
-        return Response(img_bytes, mimetype="image/jpeg")
+        res = Response(img_bytes, mimetype="image/jpeg")
+        res.headers["ETag"] = etag
+        res.headers["Cache-Control"] = "public, max-age=86400"
+        return res
     except (OSError, RuntimeError, ValueError, TypeError) as e:
         return jsonify({"error": f"Preview error: {e}"}), 500
