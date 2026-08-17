@@ -1,8 +1,8 @@
 llm_backend: llama_cpp
 server_url: http://127.0.0.1:8080/v1
 server_api_key: not-needed
-llm_model_path: models/Qwen3-VL-8B-Instruct-UD-Q4_K_XL.gguf
-mmproj_path: models/mmproj-BF16.gguf
+llm_model_path: G:\Meine Ablage\Projekte\OrdinFlow\models\Qwen3-VL-8B-Instruct-UD-Q4_K_XL.gguf
+mmproj_path: G:\Meine Ablage\Projekte\OrdinFlow\models\mmproj-BF16.gguf
 max_dimension: 2048
 crop_padding: 5
 white_border: 8
@@ -16,8 +16,8 @@ classify_dimension: 1280
 vision_api_timeout: 120
 vision_api_retries: 3
 base_dir: .
-watch_dir: Inbox
-target_base_dir: Cases
+watch_dir: C:\OrdinFlowTest\Inbox
+target_base_dir: C:\OrdinFlowTest\Cases
 vision_base_rules: ''
 signature_base_rules: 'SIGNATURE / SIGNING RULES:
 
