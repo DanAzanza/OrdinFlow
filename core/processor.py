@@ -138,8 +138,12 @@ class DocumentProcessor:
         logger.info("=" * 60)
 
     # --- Delegated helper methods for backward compatibility & tests ---
-    def _classify_single_page(self, raw_img: Any, idx: int) -> dict[str, Any]:
-        return self.extraction_pipeline.classify_single_page(raw_img, idx)
+    def _classify_single_page(
+        self, raw_img: Any, idx: int, pdf_path: str | None = None
+    ) -> dict[str, Any]:
+        return self.extraction_pipeline.classify_single_page(
+            raw_img, idx, pdf_path=pdf_path
+        )
 
     def _process_page_group(self, doc_type: str, group_pages: list) -> dict | None:
         """Phase 2: Extraction and signature check on a bundled page group."""
@@ -187,10 +191,16 @@ class DocumentProcessor:
         if not raw_images:
             return None
 
-        classified_pages = [
-            self._classify_single_page(raw_img, idx)
-            for idx, raw_img in enumerate(raw_images)
-        ]
+        try:
+            classified_pages = [
+                self._classify_single_page(raw_img, idx, pdf_path=filepath)
+                for idx, raw_img in enumerate(raw_images)
+            ]
+        except TypeError:
+            classified_pages = [
+                self._classify_single_page(raw_img, idx)
+                for idx, raw_img in enumerate(raw_images)
+            ]
 
         is_all_empty = all(
             p["matched_name"].upper() == "LEER" for p in classified_pages
