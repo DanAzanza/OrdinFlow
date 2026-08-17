@@ -429,6 +429,145 @@ class LLMExtractor:
 
         return res2
 
+    def extract_data_from_text_with_type(
+        self,
+        spatial_text: str,
+        doc_type: str,
+        temperature: float = 0.0,
+        target_fields: list[str] | None = None,
+    ) -> dict[str, Any]:
+        """Extracts structured data from layout-aware spatial text without image inference."""
+        if (
+            not spatial_text
+            or not isinstance(spatial_text, str)
+            or len(spatial_text.strip()) < 10
+        ):
+            return {}
+
+        current_date = datetime.datetime.now(datetime.timezone.utc).date()
+        min_date = current_date - datetime.timedelta(days=365)
+        max_future = current_date + datetime.timedelta(days=31)
+
+        format_kwargs = {
+            "min_date": min_date.strftime("%Y-%m-%d"),
+            "max_future_date": max_future.strftime("%Y-%m-%d"),
+            "today": current_date.strftime("%d.%m.%Y"),
+        }
+
+        _, matched_doc_info = self.find_doc_type_config(doc_type)
+        raw_extraction_fields = dict(matched_doc_info.get("extraction_fields", {}))
+        extraction_fields = {}
+        for k, v in raw_extraction_fields.items():
+            if isinstance(v, str):
+                try:
+                    extraction_fields[k] = v.format(**format_kwargs)
+                except (KeyError, ValueError):
+                    extraction_fields[k] = v
+            else:
+                extraction_fields[k] = v
+
+        # Exclude signature verification from text-only extraction
+        if "Signed" in extraction_fields:
+            extraction_fields.pop("Signed", None)
+
+        if target_fields:
+            target_set = set(target_fields)
+            extraction_fields = {
+                k: v
+                for k, v in extraction_fields.items()
+                if k in target_set and k != "Signed"
+            }
+
+        if not extraction_fields:
+            return {}
+
+        base_rules_tmpl = (
+            f'1. MISSING DATA: If information is missing in the text, enter EXACTLY "{MISSING_PLACEHOLDER}".\n'
+            "2. SPATIAL LAYOUT CONTEXT:\n"
+            "   - Text lines are prefixed with normalized spatial tags `[pos: y=..., x=...]` where y is top-to-bottom (0.0=top, 1.0=bottom) and x is left-to-right (0.0=left, 1.0=right).\n"
+            "   - Use these spatial positions to understand document sections, sender/recipient headers, dates, and tables.\n"
+            "3. OUTPUT FORMAT: Respond exclusively in the specified JSON format."
+        )
+        doc_type_name, specific_rules = self._get_specific_rules_for_doctype(doc_type)
+        prompt_instruction = self._build_extraction_prompt(
+            doc_type_name=doc_type_name,
+            extraction_fields=extraction_fields,
+            base_rules_tmpl=base_rules_tmpl,
+            specific_rules=specific_rules,
+        )
+
+        user_content = (
+            f"{prompt_instruction}\n\n"
+            f"<document_spatial_text>\n{spatial_text.strip()}\n</document_spatial_text>"
+        )
+
+        json_schema = (
+            {
+                "type": "object",
+                "properties": {
+                    field: {"type": "string"} for field in extraction_fields
+                },
+                "required": list(extraction_fields),
+                "additionalProperties": False,
+            }
+            if extraction_fields
+            else None
+        )
+
+        payload: dict[str, Any] = {
+            "messages": [
+                {
+                    "role": "system",
+                    "content": "You are a precise data extraction assistant. Extract ONLY the requested JSON keys from the provided spatial text. Never invent or add unrequested fields. Output valid JSON immediately.",
+                },
+                {"role": "user", "content": user_content},
+            ],
+            "temperature": temperature,
+            "json_schema": json_schema,
+        }
+
+        res = self.call_vision_api_json(payload)
+        if not res or not isinstance(res, dict):
+            return {}
+
+        raw_fields = matched_doc_info.get("extraction_fields", {})
+        optional_list = (
+            matched_doc_info.get("validation", {}).get("optional_fields") or []
+        )
+
+        allowed_keys = (
+            set(extraction_fields.keys()) | set(optional_list)
+            if raw_fields
+            else set(res.keys()) | set(optional_list)
+        )
+
+        normalized_res: dict[str, Any] = {}
+        lower_to_key = {ref_k.lower(): ref_k for ref_k in allowed_keys}
+        for k, v in res.items():
+            ref_key = lower_to_key.get(k.lower())
+            if ref_key or not raw_fields:
+                normalized_res[ref_key or k] = v
+        res = normalized_res
+
+        optional_fields = {k.lower() for k in optional_list}
+        all_keys = set(extraction_fields.keys()) | set(res.keys())
+
+        for key in list(all_keys):
+            val = res.get(key)
+            if is_missing_value(val):
+                if key.lower() in optional_fields:
+                    res[key] = ""
+                else:
+                    res[key] = MISSING_PLACEHOLDER
+            else:
+                res[key] = clean_extracted_value(val)
+
+        for k, v in list(res.items()):
+            if "datum" in k.lower() or "date" in k.lower():
+                res[k] = format_date_robust(v)
+
+        return res
+
     def describe_for_unknown(self, b64_image: str) -> dict[str, Any]:
         """Returns a short description of the image (for UNKNOWN cases)."""
         prompt = (

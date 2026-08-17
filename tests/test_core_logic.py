@@ -569,32 +569,28 @@ def test_boolean_field_voting_consensus():
 
 
 def test_ocr_validation_dates_and_phrases():
-    """Testet den generischen OCR-Boost für Datumswerte und mehrzeilige/mehrwortige Namen."""
+    """Testet das Voting für Datumswerte und mehrzeilige/mehrwortige Namen."""
     from core.extraction_pipeline import _evaluate_field_consensus
 
-    page_ocr = "Patientenname: Max Mustermann Geburtsdatum: 15.03.2026"
-
     # Datum
-    winner_d, _, counts_d = _evaluate_field_consensus(
+    winner_d, k_score_d, counts_d = _evaluate_field_consensus(
         "Datum",
-        [[{"Datum": "15.03.2026"}]],
-        [1396],
-        ocr_texts_per_page=[page_ocr],
-        is_ocr_validated=True
+        [[{"Datum": "15.03.2026"}], [{"Datum": "15.03.2026"}]],
+        [1396, "text"],
     )
     assert winner_d == "15.03.2026"
-    assert counts_d.get("15.03.2026") == 1.5
+    assert counts_d.get("15.03.2026") == 2.0
+    assert k_score_d == 1.0
 
     # Mehrwortiger Name
-    winner_n, _, counts_n = _evaluate_field_consensus(
+    winner_n, k_score_n, counts_n = _evaluate_field_consensus(
         "Nachname",
-        [[{"Nachname": "Max Mustermann"}]],
-        [1396],
-        ocr_texts_per_page=[page_ocr],
-        is_ocr_validated=True
+        [[{"Nachname": "Max Mustermann"}], [{"Nachname": "Max Mustermann"}]],
+        [1396, "text"],
     )
     assert winner_n == "Max Mustermann"
-    assert counts_n.get("Max Mustermann") == 1.5
+    assert counts_n.get("Max Mustermann") == 2.0
+    assert k_score_n == 1.0
 
 
 def test_canonical_casing_clustering():
@@ -651,14 +647,22 @@ def test_stage2_target_fields_only():
             "extraction_fields": {
                 "Vorname": "Vorname",
                 "Nachname": "Nachname",
-                "Geburtsdatum": "Geburtsdatum"
+                "Geburtsdatum": "Geburtsdatum",
             }
         }
     }
     pipeline = ExtractionPipeline(config, MagicMock(), MagicMock())
-    group_pages = [{"page_num": 1, "prep_img": None, "b64_img": "dummy", "ocr_text": "Max Mustermann", "matched_info": config.document_types["Vertrag"]}]
+    group_pages = [
+        {
+            "page_num": 1,
+            "prep_img": None,
+            "b64_img": "dummy",
+            "ocr_text": "Max Mustermann",
+            "matched_info": config.document_types["Vertrag"],
+        }
+    ]
 
-    # Stufe 1 liefert Vorname & Nachname sicher, Geburtsdatum fehlt ("----")
+    # Stufe 1 liefert Vorname & Nachname sicher aus Vision + Text, Geburtsdatum fehlt ("----")
     # Stufe 2 wird mit target_fields=["Geburtsdatum"] aufgerufen
     recorded_target_fields = []
 
@@ -669,6 +673,9 @@ def test_stage2_target_fields_only():
         return [{"Vorname": "Max", "Nachname": "Mustermann", "Geburtsdatum": "----"}]
 
     pipeline.run_extraction_tier = MagicMock(side_effect=mock_run_tier)
+    pipeline.run_text_extraction_tier = MagicMock(
+        return_value=[{"Vorname": "Max", "Nachname": "Mustermann"}]
+    )
     res = pipeline.process_page_group("Vertrag", group_pages)
 
     assert res is not None
@@ -677,22 +684,21 @@ def test_stage2_target_fields_only():
 
 
 def test_substring_merging_and_ocr_priority():
-    """Testet, dass Teilnamen ('Wannink') mit vollen Doppelnamen ('Bramkamp-Wannink') gemergt werden und der längste OCR-bestätigte Name gewinnt."""
+    """Testet, dass Teilnamen ('Wannink') mit vollen Doppelnamen ('Bramkamp-Wannink') gemergt werden und der längste Name gewinnt."""
     from core.extraction_pipeline import _are_similar_or_substring, _cluster_votes
 
     # 1. Test Substring Check
     assert _are_similar_or_substring("Wannink", "Bramkamp-Wannink") is True
     assert _are_similar_or_substring("Henning", "Henning Bjarne") is True
 
-    # 2. Test Voting Cluster Selection mit OCR
+    # 2. Test Voting Cluster Selection
     votes = [
         ("Bramkamp-Wannink", 1.0),
         ("Bramkamp-Wannink", 1.0),
         ("Wannink", 1.0),
     ]
-    ocr_texts = ["Kopfzeile: Sylke Bramkamp-Wannink 16.11.1968"]
 
-    clusters = _cluster_votes(votes, threshold=0.85, ocr_texts=ocr_texts)
+    clusters = _cluster_votes(votes, threshold=0.85)
     assert len(clusters) == 1
     assert clusters[0]["representative"] == "Bramkamp-Wannink"
 

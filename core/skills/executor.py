@@ -54,6 +54,30 @@ class SkillExecutor:
         self.skill_manager = skill_manager
         self.vision_extractor = vision_extractor
 
+    def _save_failure_screenshot(
+        self, step_id: str, desc: str = "", window_title: str | None = None
+    ) -> str | None:
+        """Captures and saves a diagnostic screenshot when a skill step fails."""
+        try:
+            screen = SoMGrounder.capture_screen(window_title)
+            if screen is None:
+                screen = SoMGrounder.capture_screen(None)
+            if screen is not None:
+                base_dir = os.path.dirname(
+                    os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+                )
+                fail_dir = os.path.join(base_dir, "scratch", "rpa_failures")
+                os.makedirs(fail_dir, exist_ok=True)
+                sanitized_step = re.sub(r"[^\w\-_\.]", "_", step_id)
+                filename = f"failure_{int(time.time())}_{sanitized_step}.png"
+                target_path = os.path.join(fail_dir, filename)
+                screen.save(target_path)
+                logger.info("[SkillExecutor] Saved failure screenshot to: %s", target_path)
+                return target_path
+        except Exception as e:
+            logger.debug("[SkillExecutor] Could not save failure screenshot: %s", e)
+        return None
+
     def _substitute_placeholders(self, text: str, context: Mapping[str, object]) -> str:
         """Dynamically substitutes placeholders such as {FieldName} from context without synthetic fallbacks."""
         if not isinstance(text, str) or "{" not in text:
@@ -212,6 +236,7 @@ class SkillExecutor:
                 )
                 max_retries = int(step.get("max_retries", 5))
                 retry_delay_s = float(step.get("retry_delay_s", 1.0))
+                screen = None
                 for attempt in range(1, max_retries + 1):
                     screen = SoMGrounder.capture_screen(win_pattern)
                     if screen is not None:
@@ -225,6 +250,13 @@ class SkillExecutor:
                             retry_delay_s,
                         )
                         time.sleep(retry_delay_s)
+
+                if screen is None and win_pattern:
+                    logger.warning(
+                        "[SkillExecutor] Window '%s' could not be found or focused in step '%s'.",
+                        win_pattern,
+                        step_id,
+                    )
 
             # 2. CALL_SKILL (Sub-Skill)
             elif action_type == "CALL_SKILL":
@@ -281,8 +313,16 @@ class SkillExecutor:
                                 ctypes.windll.user32.mouse_event(0x0004, 0, 0, 0, 0)  # type: ignore[union-attr]
                 else:
                     logger.error(
-                        "[!] Target for click in step '%s' not found.", step_id
+                        "[SkillExecutor] Target for click in step '%s' (%s) not found.",
+                        step_id,
+                        desc,
                     )
+                    self._save_failure_screenshot(
+                        step_id,
+                        desc,
+                        str(window_title) if window_title is not None else None,
+                    )
+                    return False
 
             # 4. TYPE_TEXT / TYPE_FILE_PATH
             elif action_type in ("TYPE_TEXT", "TYPE_FILE_PATH"):

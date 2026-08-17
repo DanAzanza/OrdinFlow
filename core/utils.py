@@ -204,7 +204,7 @@ def format_result(res: dict, include_missing: bool = True) -> str:
 
 
 def is_file_locked(filepath: str) -> bool:
-    """Checks whether a file is exclusively locked by another process."""
+    """Checks whether a file is exclusively locked by another process or unreadable."""
     if not os.path.exists(filepath):
         return False
     try:
@@ -215,17 +215,49 @@ def is_file_locked(filepath: str) -> bool:
         return True
 
 
-def wait_until_unlocked(filepath: str, retries: int = 5, delay: float = 1.0) -> bool:
-    """Patiently waits until a file is no longer locked by external processes (e.g. scanners)."""
+def wait_until_unlocked(filepath: str, retries: int = 6, delay: float = 0.5) -> bool:
+    """Patiently waits until a file is no longer locked and its size has stabilized (debouncing)."""
+    if not os.path.exists(filepath):
+        return False
+
+    last_size = -1
     for attempt in range(retries):
         if not is_file_locked(filepath):
-            return True
+            try:
+                current_size = os.path.getsize(filepath)
+                # Verify non-empty and size stability across check intervals
+                if current_size > 0 and current_size == last_size:
+                    # Optional PDF integrity check if file is a PDF
+                    if filepath.lower().endswith(".pdf"):
+                        try:
+                            import fitz
+
+                            doc = fitz.open(filepath)
+                            doc_len = len(doc)
+                            doc.close()
+                            if doc_len > 0:
+                                return True
+                        except Exception:
+                            pass
+                    else:
+                        return True
+                last_size = current_size
+            except OSError:
+                pass
+
         logger.info(
-            f"[*] File '{os.path.basename(filepath)}' is still locked (write in progress?). "
+            f"[*] File '{os.path.basename(filepath)}' is still writing or locked. "
             f"Waiting {delay}s (attempt {attempt + 1}/{retries})..."
         )
         time.sleep(delay)
-    return not is_file_locked(filepath)
+
+    # Final check if retries exhausted
+    if not is_file_locked(filepath) and os.path.exists(filepath):
+        try:
+            return os.path.getsize(filepath) > 0
+        except OSError:
+            return False
+    return False
 
 
 def safe_move(src: str, dst: str, retries: int = 3, delay: int = 2) -> bool:
