@@ -51,12 +51,12 @@ async function renderQueueInspector() {
 				const icon = item.skill_type === "import" ? "📥" : "⚡";
 
 				return `
-					<div class="inspector-card ${isRunning ? "queue-item-running" : "queue-item-idle"}" data-queue-id="${escapeHtml(item.id)}" draggable="${!isRunning}" ondragstart="onQueueDragStart(event, '${escapeHtml(item.id)}')" ondragover="onQueueDragOver(event)" ondrop="onQueueDrop(event, '${escapeHtml(item.id)}')">
+					<div class="queue-item-card ${isRunning ? "queue-item-running" : "queue-item-idle"}" data-queue-id="${escapeHtml(item.id)}" draggable="${!isRunning}" ondragstart="onQueueDragStart(event, '${escapeHtml(item.id)}')" ondragover="onQueueDragOver(event)" ondrop="onQueueDrop(event, '${escapeHtml(item.id)}')">
 						<div class="queue-item-header">
 							<div class="queue-item-title-group">
 								<span class="queue-drag-handle">⋮⋮</span>
 								<span class="queue-icon">${icon}</span>
-								<div>
+								<div style="min-width: 0;">
 									<div class="queue-name">${escapeHtml(item.skill_name)}</div>
 									<div class="queue-meta">#${index + 1} · ID: ${escapeHtml(item.id)}</div>
 								</div>
@@ -77,7 +77,7 @@ async function renderQueueInspector() {
 	}
 
 	const inspectorHtml = `
-		<div class="inspector-card queue-status-card">
+		<div class="queue-status-card">
 			<div class="queue-status-header">
 				<h4 class="queue-status-title">
 					<span>${qState.is_running ? "▶" : "⏸️"}</span> Status: ${qState.is_running ? "Running" : "Ready"}
@@ -99,7 +99,16 @@ async function renderQueueInspector() {
 			</div>
 		</div>
 
-		<div class="inspector-card">
+		<div class="queue-list-section">
+			<h4 class="queue-list-title">
+				📋 Queued Skills (Drag & Drop to reorder)
+			</h4>
+			<div id="queueItemsContainer">
+				${queueListHtml}
+			</div>
+		</div>
+
+		<div class="queue-add-card">
 			<h4 class="queue-add-title">➕ Add Skill to Queue</h4>
 			<div class="queue-add-row">
 				<select id="queueAddSkillSelect" class="doc-editor-input queue-add-select">
@@ -108,15 +117,6 @@ async function renderQueueInspector() {
 				<button type="button" class="btn btn-accent btn-sm" onclick="addSelectedSkillToQueue()">
 					Add
 				</button>
-			</div>
-		</div>
-
-		<div class="queue-list-section">
-			<h4 class="queue-list-title">
-				📋 Queued Skills (Drag & Drop to reorder)
-			</h4>
-			<div id="queueItemsContainer">
-				${queueListHtml}
 			</div>
 		</div>
 	`;

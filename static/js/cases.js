@@ -294,16 +294,16 @@ function renderDetailFiles() {
 						: '<span class="no-preview">No preview</span>'
 				}
       </div>
-      <div class="file-info" data-inspectvorgang="${encodeURIComponent(f.name)}" style="cursor:pointer">
-        <div class="file-name clickable">${escapeHtml(f.name)}</div>
-        <div class="file-meta">${formatSize(f.size)} · ${escapeHtml(f.modified || "")}</div>
-        <div class="file-skill-badges" style="margin-top: 6px; display: flex; flex-wrap: wrap; gap: 4px;">
-            <span class="badge file-doctype-badge">${docEmoji(f.doc_type)} ${escapeHtml(docLabel(f.doc_type || "Document"))}</span>
-            ${skillBadgesHtml}
+      <div class="file-card-body" style="display: flex; align-items: flex-start; justify-content: space-between; gap: 6px; margin-top: 4px;">
+        <div class="file-info" data-inspectvorgang="${encodeURIComponent(f.name)}" style="cursor:pointer; flex: 1; min-width: 0;">
+          <div class="file-name clickable" title="${escapeHtml(f.name)}">${escapeHtml(f.name)}</div>
+          <div class="file-meta">${formatSize(f.size)} · ${escapeHtml(f.modified || "")}</div>
+          <div class="file-skill-badges" style="margin-top: 5px; display: flex; flex-wrap: wrap; gap: 4px;">
+              <span class="badge file-doctype-badge">${docEmoji(f.doc_type)} ${escapeHtml(docLabel(f.doc_type || "Document"))}</span>
+              ${skillBadgesHtml}
+          </div>
         </div>
-      </div>
-      <div class="file-actions" style="gap: 4px;">
-        <button class="btn btn-sm btn-danger" data-delfile="${encodeURIComponent(f.name)}" title="Delete">
+        <button type="button" class="btn-icon-subtle btn-icon-danger" data-delfile="${encodeURIComponent(f.name)}" title="Delete file" style="padding: 4px 6px; font-size: 0.85rem; margin-top: -2px; flex-shrink: 0;">
           🗑️
         </button>
       </div>

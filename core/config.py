@@ -215,15 +215,5 @@ class AppConfig:
         if not self.target_base_dir:
             self.target_base_dir = os.path.join(base_path, "Cases")
 
-        # Convert relative LLM path to absolute (base_dir + relative path)
-        for attr_name in ("llm_model_path", "mmproj_path"):
-            current = getattr(self, attr_name, None) or ""
-            if current and not os.path.isabs(current):
-                setattr(
-                    self,
-                    attr_name,
-                    os.path.normpath(os.path.join(base_path, current)),
-                )
-
         os.makedirs(self.watch_dir, exist_ok=True)
         os.makedirs(self.target_base_dir, exist_ok=True)
