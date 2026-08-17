@@ -68,7 +68,7 @@ function buildQueueListHtml(items) {
 						<div class="queue-item-title-group">
 							<span class="queue-drag-handle">⋮⋮</span>
 							<span class="queue-icon">${icon}</span>
-							<div style="min-width: 0;">
+							<div class="min-w-0">
 								<div class="queue-name">${escapeHtml(item.skill_name)}</div>
 							</div>
 						</div>

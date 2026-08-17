@@ -453,20 +453,20 @@ function showSkeletons() {
 	const tbody = document.getElementById("casesBody");
 	let html = "";
 	for (let i = 0; i < 6; i++) {
-		html += `<tr><td><div class="skeleton" style="height:14px;width:${70 + Math.random() * 60}px">&nbsp;</div></td>
-      <td><div class="skeleton" style="height:14px;width:80px">&nbsp;</div></td>
-      <td><div class="skeleton" style="height:14px;width:60px">&nbsp;</div></td>
-      <td><div class="skeleton" style="height:10px;width:50px">&nbsp;</div></td>
-      <td><div class="skeleton" style="height:14px;width:20px">&nbsp;</div></td></tr>`;
+		html += `<tr><td><div class="skeleton skeleton-cell-name">&nbsp;</div></td>
+      <td><div class="skeleton skeleton-cell-date">&nbsp;</div></td>
+      <td><div class="skeleton skeleton-cell-cat">&nbsp;</div></td>
+      <td><div class="skeleton skeleton-cell-pill">&nbsp;</div></td>
+      <td><div class="skeleton skeleton-cell-sm">&nbsp;</div></td></tr>`;
 	}
 	tbody.innerHTML = html;
 
 	const list = document.getElementById("inboxList");
 	let ehtml = "";
 	for (let i = 0; i < 4; i++) {
-		ehtml += `<div class="inbox-item"><div class="file-icon skeleton" style="width:38px;height:38px">&nbsp;</div>
-      <div class="inbox-info"><div class="skeleton" style="height:14px;width:${100 + Math.random() * 100}px;margin-bottom:4px">&nbsp;</div>
-      <div class="skeleton" style="height:10px;width:80px">&nbsp;</div></div></div>`;
+		ehtml += `<div class="inbox-item"><div class="file-icon skeleton skeleton-icon-lg">&nbsp;</div>
+      <div class="inbox-info"><div class="skeleton skeleton-title-md">&nbsp;</div>
+      <div class="skeleton skeleton-sub-sm">&nbsp;</div></div></div>`;
 	}
 	list.innerHTML = ehtml;
 }

@@ -219,18 +219,18 @@ async function updateLogInspectorAnalytics() {
 	const catEntries = Object.entries(stats.categoryCounts).sort((a, b) => b[1] - a[1]);
 	let catHtml = "";
 	if (catEntries.length === 0) {
-		catHtml = `<div style="font-size: 0.76rem; color: var(--text-dim); font-style: italic;">No page types classified yet.</div>`;
+		catHtml = `<div class="analytics-empty-note">No page types classified yet.</div>`;
 	} else {
 		catHtml = catEntries.map(([cat, count]) => {
 			const pct = stats.totalPages > 0 ? Math.round((count / stats.totalPages) * 100) : 0;
 			return `
-				<div style="margin-bottom: 8px;">
-					<div style="display: flex; justify-content: space-between; font-size: 0.76rem; margin-bottom: 3px;">
-						<span style="color: var(--text); font-weight: 600;">${escapeHtml(cat)}</span>
-						<span style="color: #a5b4fc;">${count} pages (${pct}%)</span>
+				<div class="analytics-cat-row">
+					<div class="analytics-cat-head">
+						<span class="analytics-cat-name">${escapeHtml(cat)}</span>
+						<span class="analytics-cat-stat">${count} pages (${pct}%)</span>
 					</div>
-					<div style="height: 6px; background: rgba(255,255,255,0.06); border-radius: 3px; overflow: hidden;">
-						<div style="width: ${pct}%; height: 100%; background: linear-gradient(90deg, #6366f1, #3b82f6); border-radius: 3px;"></div>
+					<div class="analytics-bar-track">
+						<div class="analytics-bar-fill" style="width: ${pct}%;"></div>
 					</div>
 				</div>
 			`;
@@ -239,70 +239,70 @@ async function updateLogInspectorAnalytics() {
 
 	body.innerHTML = `
 		<!-- KPI Summary Grid -->
-		<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 12px;">
-			<div class="inspector-card" style="padding: 10px; background: rgba(99, 102, 241, 0.08); border-color: rgba(99, 102, 241, 0.25);">
-				<div style="font-size: 0.72rem; color: #a5b4fc; font-weight: 600;">📄 Files Processed</div>
-				<div style="font-size: 1.3rem; font-weight: 800; color: #ffffff; margin-top: 2px;">${stats.totalFiles}</div>
-				<div style="font-size: 0.68rem; color: var(--text-dim); margin-top: 2px;">${stats.completedFiles} Auto / ${stats.manualReviewFiles} Review</div>
+		<div class="analytics-grid-2col">
+			<div class="analytics-kpi-card analytics-kpi-card-indigo">
+				<div class="analytics-kpi-title-indigo">📄 Files Processed</div>
+				<div class="analytics-kpi-val">${stats.totalFiles}</div>
+				<div class="analytics-kpi-sub">${stats.completedFiles} Auto / ${stats.manualReviewFiles} Review</div>
 			</div>
 
-			<div class="inspector-card" style="padding: 10px; background: rgba(16, 185, 129, 0.08); border-color: rgba(16, 185, 129, 0.25);">
-				<div style="font-size: 0.72rem; color: #6ee7b7; font-weight: 600;">🎯 Automation Rate</div>
-				<div style="font-size: 1.3rem; font-weight: 800; color: #ffffff; margin-top: 2px;">${stats.successRate}%</div>
-				<div style="font-size: 0.68rem; color: var(--text-dim); margin-top: 2px;">without manual review</div>
+			<div class="analytics-kpi-card analytics-kpi-card-emerald">
+				<div class="analytics-kpi-title-emerald">🎯 Automation Rate</div>
+				<div class="analytics-kpi-val">${stats.successRate}%</div>
+				<div class="analytics-kpi-sub">without manual review</div>
 			</div>
 
-			<div class="inspector-card" style="padding: 10px; background: rgba(59, 130, 246, 0.08); border-color: rgba(59, 130, 246, 0.25);">
-				<div style="font-size: 0.72rem; color: #93c5fd; font-weight: 600;">⚡ Avg Time / File</div>
-				<div style="font-size: 1.3rem; font-weight: 800; color: #ffffff; margin-top: 2px;">${stats.avgTimePerFile}s</div>
-				<div style="font-size: 0.68rem; color: var(--text-dim); margin-top: 2px;">Max: ${stats.maxProcessingTime}s</div>
+			<div class="analytics-kpi-card analytics-kpi-card-blue">
+				<div class="analytics-kpi-title-blue">⚡ Avg Time / File</div>
+				<div class="analytics-kpi-val">${stats.avgTimePerFile}s</div>
+				<div class="analytics-kpi-sub">Max: ${stats.maxProcessingTime}s</div>
 			</div>
 
-			<div class="inspector-card" style="padding: 10px; background: rgba(245, 158, 11, 0.08); border-color: rgba(245, 158, 11, 0.25);">
-				<div style="font-size: 0.72rem; color: #fde047; font-weight: 600;">⏱️ Avg Time / Page</div>
-				<div style="font-size: 1.3rem; font-weight: 800; color: #ffffff; margin-top: 2px;">${stats.avgTimePerPage}s</div>
-				<div style="font-size: 0.68rem; color: var(--text-dim); margin-top: 2px;">Total ${stats.totalPages} pages</div>
+			<div class="analytics-kpi-card analytics-kpi-card-purple">
+				<div class="analytics-kpi-title-purple">⏱️ Avg Time / Page</div>
+				<div class="analytics-kpi-val">${stats.avgTimePerPage}s</div>
+				<div class="analytics-kpi-sub">Total ${stats.totalPages} pages</div>
 			</div>
 		</div>
 
 		<!-- Document Types Distribution Card -->
-		<div class="inspector-card" style="margin-bottom: 12px;">
-			<h4 style="font-size: 0.82rem; margin-bottom: 10px; color: var(--accent); display: flex; align-items: center; gap: 6px;">
+		<div class="inspector-card">
+			<h4 class="inspector-section-title">
 				<span>📑</span> Document Types (Classified)
 			</h4>
 			${catHtml}
 		</div>
 
 		<!-- AI Pipeline Performance Card -->
-		<div class="inspector-card" style="margin-bottom: 12px;">
-			<h4 style="font-size: 0.82rem; margin-bottom: 10px; color: var(--accent); display: flex; align-items: center; gap: 6px;">
+		<div class="inspector-card">
+			<h4 class="inspector-section-title">
 				<span>🤖</span> AI Pipeline Stages
 			</h4>
 			<div class="inspector-field-group">
 				<div class="inspector-field-row">
 					<span class="inspector-field-label">🟢 Tier 1 (Direct Consensus)</span>
-					<span class="inspector-field-value" style="color: #34d399;">${stats.earlyStopCount > 0 ? stats.earlyStopCount : stats.tier1Count} Multi-Pass</span>
+					<span class="inspector-field-value stat-tier1-val">${stats.earlyStopCount > 0 ? stats.earlyStopCount : stats.tier1Count} Multi-Pass</span>
 				</div>
 				<div class="inspector-field-row">
 					<span class="inspector-field-label">🟡 Tier 2 (High-Res Verification)</span>
-					<span class="inspector-field-value" style="color: #fbbf24;">${stats.tier2Count}</span>
+					<span class="inspector-field-value stat-tier2-val">${stats.tier2Count}</span>
 				</div>
 				<div class="inspector-field-row">
 					<span class="inspector-field-label">🔴 Tier 3 (Tiebreaker Audit)</span>
-					<span class="inspector-field-value" style="color: #f43f5e;">${stats.tier3Count}</span>
+					<span class="inspector-field-value stat-tier3-val">${stats.tier3Count}</span>
 				</div>
 			</div>
 		</div>
 
 		<!-- Log Health Card -->
 		<div class="inspector-card">
-			<h4 style="font-size: 0.82rem; margin-bottom: 10px; color: var(--accent); display: flex; align-items: center; gap: 6px;">
+			<h4 class="inspector-section-title">
 				<span>📡</span> Stream Health & Log Level
 			</h4>
-			<div style="display: flex; gap: 6px;">
-				<span class="badge" style="background: rgba(16, 185, 129, 0.15); color: #34d399; flex:1; text-align: center;">INFO: ${stats.infoCount}</span>
-				<span class="badge" style="background: rgba(245, 158, 11, 0.15); color: #fbbf24; flex:1; text-align: center;">WARN: ${stats.warnCount}</span>
-				<span class="badge" style="background: rgba(244, 63, 94, 0.15); color: #f43f5e; flex:1; text-align: center;">ERR: ${stats.errorCount}</span>
+			<div class="health-badge-row">
+				<span class="badge badge-health-info">INFO: ${stats.infoCount}</span>
+				<span class="badge badge-health-warn">WARN: ${stats.warnCount}</span>
+				<span class="badge badge-health-err">ERR: ${stats.errorCount}</span>
 			</div>
 		</div>
 	`;
