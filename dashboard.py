@@ -41,10 +41,23 @@ def heartbeat_monitor() -> None:
         except Exception:
             pass
 
-        # 120 seconds (2 minutes) inactivity timeout when browser tab is closed and queue is idle
+        # If background document processing or queued files exist, keep heartbeat alive
+        try:
+            if DashboardState.processor:
+                with DashboardState.processor.processing_lock:
+                    if len(DashboardState.processor.processing_files) > 0:
+                        DashboardState.last_heartbeat = time.time()
+                        continue
+            if DashboardState.file_queue is not None and not DashboardState.file_queue.empty():
+                DashboardState.last_heartbeat = time.time()
+                continue
+        except Exception:
+            pass
+
+        # 120 seconds (2 minutes) inactivity timeout when browser tab is closed and no tasks are running
         if time.time() - DashboardState.last_heartbeat > 120:
             logger.info(
-                "[*] Dashboard closed (no heartbeat for 120s and queue idle). Terminating application..."
+                "[*] Dashboard closed (no heartbeat for 120s and all processing idle). Terminating application..."
             )
             DashboardState.shutdown_event.set()
             time.sleep(2)
