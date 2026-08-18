@@ -14,15 +14,16 @@ logger = logging.getLogger(__name__)
 # ── In-memory log handler for web dashboard buffering ──
 
 class MemoryLogHandler(logging.Handler):
-    def __init__(self, max_records: int = 2000):
+    def __init__(self, max_records: int = 3000):
         super().__init__()
         self.records: deque[dict[str, Any]] = deque(maxlen=max_records)
         self._lock: threading.Lock = threading.Lock()
         self.seq_id = 0
+        self._initialized_from_file = False
 
     def emit(self, record: logging.LogRecord) -> None:
         try:
-            msg = self.format(record)
+            msg = record.getMessage()
             with self._lock:
                 self.seq_id += 1
                 self.records.append(
@@ -35,13 +36,46 @@ class MemoryLogHandler(logging.Handler):
                         ),
                     }
                 )
-        except ValueError:
+        except Exception:
             self.handleError(record)
+
+    def load_initial_from_file(
+        self, log_path: str = "main.log", limit: int = 500
+    ) -> None:
+        """Populates the in-memory ring buffer with recent historical lines from log file."""
+        if not os.path.exists(log_path):
+            return
+        try:
+            with open(log_path, encoding="utf-8", errors="replace") as f:
+                all_lines = f.readlines()
+            recent = all_lines[-limit:] if len(all_lines) > limit else all_lines
+            for line in recent:
+                line_str = line.strip()
+                if not line_str:
+                    continue
+                self.seq_id += 1
+                p = line_str.split(" ", 3)
+                if len(p) >= 4 and p[2].startswith("[") and p[2].endswith("]"):
+                    tm = p[1].split(",")[0]
+                    lvl = p[2][1:-1]
+                    msg = p[3]
+                    self.records.append(
+                        {"id": self.seq_id, "level": lvl, "message": msg, "time": tm}
+                    )
+                else:
+                    self.records.append(
+                        {"id": self.seq_id, "level": "INFO", "message": line_str, "time": ""}
+                    )
+            self._initialized_from_file = True
+        except Exception as e:
+            logger.debug("Could not pre-load logs from file: %s", e)
 
     def get_logs(
         self, since_id: int = 0, limit: int = 300
     ) -> tuple[list[dict[str, Any]], int]:
         with self._lock:
+            if not self._initialized_from_file and not self.records:
+                self.load_initial_from_file()
             if since_id == 0:
                 logs = list(self.records)[-limit:]
             else:
@@ -54,9 +88,6 @@ class MemoryLogHandler(logging.Handler):
 
 
 memory_log_handler = MemoryLogHandler()
-memory_log_handler.setFormatter(
-    logging.Formatter("%(asctime)s [%(levelname)s] %(message)s")
-)
 
 
 _RE_INVALID_PATH_CHARS = re.compile(r'[\\/*?:"<>|]')
