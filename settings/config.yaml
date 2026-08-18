@@ -42,5 +42,4 @@ match_folder_by:
 - Nachname
 - Vorname
 - Titel
-split_multi_documents: false
 save_empty_pages: false

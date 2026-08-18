@@ -6,7 +6,6 @@ import shutil
 import threading
 import time
 from collections import deque
-from difflib import SequenceMatcher
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -203,21 +202,9 @@ def format_date_robust(date_str: str) -> str:
     if not final_date:
         return date_str
 
-    # Date validation (max 1 year in the past, max 1 month in the future)
+    # Validate that it is a real valid calendar date (e.g. not 31st of February)
     try:
-        parsed_date = datetime.datetime.strptime(final_date, "%Y-%m-%d")
-        today = datetime.date.today()
-
-        # 1. Maximum 1 year (365 days) in the past
-        min_date = today - datetime.timedelta(days=365)
-        if parsed_date.date() < min_date:
-            return "----"
-
-        # 2. Maximum 31 days in the future
-        max_future_date = today + datetime.timedelta(days=31)
-        if parsed_date.date() > max_future_date:
-            return "----"
-
+        datetime.datetime.strptime(final_date, "%Y-%m-%d")
         return final_date
     except ValueError:
         return "----"
@@ -306,83 +293,6 @@ def safe_move(src: str, dst: str, retries: int = 3, delay: int = 2) -> bool:
                 )
                 time.sleep(delay)
     raise PermissionError(f"File could not be moved: {src}")
-
-
-def correct_name_with_ocr(extracted: str, ocr_text: str) -> str:
-    """Corrects the extracted name (first or last) based on OCR text.
-    Uses SequenceMatcher (LCS-based, not pure Levenshtein) for fuzzy matching
-    with strict, length-dependent safety rules:
-    1. Corrects formatting (whitespace/casing) when the normalized string is identical.
-    2. Corrects missing umlauts when the OCR word contains the umlaut and otherwise matches.
-
-    The threshold depends on name length:
-    - <= 5 chars: 0.92 (very strict — short names are more prone to false corrections)
-    - <= 8 chars: 0.88
-    - > 8 chars:  0.82
-    """
-    if not extracted or is_missing_value(extracted):
-        return extracted
-
-    def _clean_for_match(text: str) -> str:
-        if not text:
-            return ""
-        return re.sub(r"[^a-zäöüß]", "", text.lower())
-
-    extracted_clean = _clean_for_match(extracted)
-    if len(extracted_clean) < 3:
-        return extracted
-
-    # Dynamic threshold: score short names stricter, medium/long more tolerantly
-    name_len = len(extracted_clean)
-    if name_len <= 4:
-        threshold = 0.9
-    elif name_len <= 8:
-        threshold = 0.85
-    else:
-        threshold = 0.80
-
-    ocr_words = re.split(r"[^a-zA-ZäöüÄÖÜß]", ocr_text)
-
-    best_word = None
-    best_ratio = 0.0
-
-    for word in ocr_words:
-        word_clean = _clean_for_match(word)
-        if len(word_clean) < min(3, len(extracted_clean)):  # Exclude artifacts, but allow short names
-            continue
-
-        ratio = SequenceMatcher(None, extracted_clean, word_clean).ratio()
-        if ratio > best_ratio:
-            best_ratio = ratio
-            best_word = word
-
-    if best_word:
-        best_clean = _clean_for_match(best_word)
-
-        # Pre-check for pure umlaut match (e.g. Muller vs. Müller)
-        extracted_has_umlaut = any(c in extracted_clean for c in "äöüß")
-        ocr_has_umlaut = any(c in best_clean for c in "äöüß")
-        is_pure_umlaut_match = False
-        if ocr_has_umlaut and not extracted_has_umlaut:
-            vowel_map = str.maketrans("äöü", "aou")
-            best_trans = best_clean.translate(vowel_map)
-            if best_trans == extracted_clean:
-                is_pure_umlaut_match = True
-
-        # Allow correction with sufficient best-ratio OR pure umlaut match >= 0.80.
-        if best_ratio >= threshold or (is_pure_umlaut_match and best_ratio >= 0.80):
-            correction_type = (
-                "format" if extracted_clean == best_clean
-                else "umlaut" if is_pure_umlaut_match
-                else "fuzzy"
-            )
-            logger.info(
-                "[+] OCR correction (%s): '%s' -> '%s' (Similarity: %.2f, Threshold: %.2f)",
-                correction_type, extracted, best_word, best_ratio, threshold,
-            )
-            return best_word
-
-    return extracted
 
 
 def _deduplicate_path(target_filepath: str) -> str:

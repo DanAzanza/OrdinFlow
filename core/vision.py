@@ -258,20 +258,24 @@ class LLMExtractor:
             return name, str(v)
         return name, ""
 
-    def _build_json_fields(self, extraction_fields: dict[str, str]) -> str:
+    def _build_json_fields(self, extraction_fields: dict[str, Any]) -> str:
         """Builds the JSON schema format prompt for data extraction."""
         field_entries = []
         for field, desc in extraction_fields.items():
             if field.lower() in ["document"]:
                 continue
-            safe_desc = (desc or "").replace('"', "'")
+            if isinstance(desc, dict):
+                desc_text = str(desc.get("description") or "")
+            else:
+                desc_text = str(desc or "")
+            safe_desc = desc_text.replace('"', "'")
             field_entries.append(f'  "{field}": "{safe_desc}"')
         return "{\n" + ",\n".join(field_entries) + "\n}"
 
     def _build_extraction_prompt(
         self,
         doc_type_name: str,
-        extraction_fields: dict[str, str],
+        extraction_fields: dict[str, Any],
         base_rules_tmpl: str,
         specific_rules: str = "",
     ) -> str:
@@ -309,8 +313,16 @@ class LLMExtractor:
                     extraction_fields[k] = v.format(**format_kwargs)
                 except (KeyError, ValueError):
                     extraction_fields[k] = v
+            elif isinstance(v, dict):
+                d_desc = v.get("description", "")
+                if isinstance(d_desc, str):
+                    try:
+                        d_desc = d_desc.format(**format_kwargs)
+                    except (KeyError, ValueError):
+                        pass
+                extraction_fields[k] = d_desc
             else:
-                extraction_fields[k] = v
+                extraction_fields[k] = str(v) if v is not None else ""
 
         validation_cfg = matched_doc_info.get("validation", {})
 

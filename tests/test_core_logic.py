@@ -257,7 +257,6 @@ def test_split_multi_documents(tmp_path):
     config.watch_dir = str(tmp_path / "watch")
     config.target_base_dir = str(tmp_path / "target")
     config.folder_structure = ["{Datum}", "{Produkt}", "{Nachname}", "{Vorname}"]
-    config.split_multi_documents = True
     config.document_types = {
         "Vertrag": {
             "validation": {"signature_required": True},
@@ -305,7 +304,7 @@ def test_split_multi_documents(tmp_path):
     }
 
     with patch.object(processor, "extract_hybrid_voting", return_value=mock_extracted):
-        success = processor.process_and_route_file(pdf_path)
+        success = processor.process_and_route_file(pdf_path, split_multi_documents=True)
 
     assert success
     assert not os.path.exists(pdf_path)

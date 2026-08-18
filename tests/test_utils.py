@@ -42,15 +42,18 @@ def test_format_date_robust():
     y = valid_date.strftime("%Y")
     assert format_date_robust(f"{d},{m},{y}") == f"{y}-{m}-{d}"
 
-    # Zu weit in der Vergangenheit (über 1 Jahr) -> ----
+    # Historische Daten (z.B. Vorjahre / Altabdrücke von 2023) werden als valides Datum formatiert
     old_date = today - datetime.timedelta(days=400)
-    assert format_date_robust(old_date.strftime("%Y-%m-%d")) == "----"
+    assert format_date_robust(old_date.strftime("%Y-%m-%d")) == old_date.strftime("%Y-%m-%d")
 
-    # Zu weit in der Zukunft (über 1 Monat) -> ----
+    # Zukunftsdaten werden ebenfalls formatiert
     future_date = today + datetime.timedelta(days=40)
-    assert format_date_robust(future_date.strftime("%Y-%m-%d")) == "----"
+    assert format_date_robust(future_date.strftime("%Y-%m-%d")) == future_date.strftime("%Y-%m-%d")
 
-    # Unbekannter String
+    # Ungültige Kalenderdaten -> ----
+    assert format_date_robust("31.02.2026") == "----"
+
+    # Unbekannter String -> ----
     assert format_date_robust("[MISSING]") == "----"
 
 
@@ -81,23 +84,5 @@ def test_declarative_folder_structure_and_parsing():
     assert parsed["Produkt"] == "Software"
     assert parsed["Nachname"] == "Müller"
     assert parsed["Vorname"] == "Max"
-
-
-def test_correct_name_with_ocr():
-    from core.utils import correct_name_with_ocr
-    # Kerning space correction
-    assert correct_name_with_ocr("Mülle r", "Anna / Müller / 1.1.1951") == "Müller"
-    # Umlaut correction
-    assert correct_name_with_ocr("Muller", "Anna / Müller / 1.1.1951") == "Müller"
-    # Bad OCR (no close match) -> keep as is
-    assert correct_name_with_ocr("Meller", "Anna 01.02.1951 ... [Krankenkasse] ... Allgemeine Daten") == "Meller"
-    # Null or FEHLT values
-    assert correct_name_with_ocr("[MISSING]", "Anna / Müller") == "[MISSING]"
-    assert correct_name_with_ocr("----", "Anna / Müller") == "----"
-    assert correct_name_with_ocr("", "Anna / Müller") == ""
-    # Short name (length 3) correction
-    assert correct_name_with_ocr("Oh m", "Herr Ohm war da.") == "Ohm"
-    # Fuzzy OCR correction when similarity meets threshold (e.g. Gücübey -> Gücbey)
-    assert correct_name_with_ocr("Gücübey", "Necla Gücbey 24.03.2026") == "Gücbey"
 
 
