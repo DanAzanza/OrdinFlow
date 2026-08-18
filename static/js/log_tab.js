@@ -22,13 +22,22 @@ function stopLogPolling() {
 async function fetchLogDelta() {
 	try {
 		const d = await api(`/api/log?since_id=${state.lastLogId}&limit=300`);
+		if (d.max_id !== undefined && d.max_id < state.lastLogId) {
+			// Server rebooted or logs were cleared
+			state.logRecords = d.logs || [];
+			state.lastLogId = d.max_id;
+			renderLogLines();
+			return;
+		}
 		if (d.logs && d.logs.length > 0) {
 			state.logRecords.push(...d.logs);
-			state.lastLogId = d.max_id || state.lastLogId;
-			if (state.logRecords.length > 1000) {
-				state.logRecords = state.logRecords.slice(-1000);
+			state.lastLogId = d.max_id !== undefined ? d.max_id : state.lastLogId;
+			if (state.logRecords.length > 1500) {
+				state.logRecords = state.logRecords.slice(-1500);
 			}
 			renderLogLines();
+		} else if (d.max_id !== undefined) {
+			state.lastLogId = d.max_id;
 		}
 	} catch (e) {
 		console.error("Error fetching log delta:", e);

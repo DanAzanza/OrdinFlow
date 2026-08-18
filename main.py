@@ -169,6 +169,11 @@ def setup_logging():
         console_handler.setFormatter(log_formatter)
         root_logger.addHandler(console_handler)
 
+    # In-memory buffer handler for web dashboard live streaming
+    from core.utils import memory_log_handler
+    memory_log_handler.load_initial_from_file("main.log", limit=500)
+    root_logger.addHandler(memory_log_handler)
+
     logging.getLogger("httpx").setLevel(logging.WARNING)
     logging.getLogger("werkzeug").setLevel(logging.ERROR)
 

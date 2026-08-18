@@ -174,41 +174,8 @@ def api_get_logs():
     since_id = request.args.get("since_id", 0, type=int)
     limit = request.args.get("limit", 300, type=int)
 
-    # 1. Try from in-memory log handler
     mem_logs, max_id = memory_log_handler.get_logs(since_id=since_id, limit=limit)
-    if mem_logs:
-        return jsonify({"logs": mem_logs, "max_id": max_id})
-
-    # 2. Fallback to log file
-    log_path = "main.log" if os.path.exists("main.log") else "document_router.log"
-    if not os.path.exists(log_path):
-        return jsonify({"logs": [], "max_id": 0})
-
-    try:
-        with open(log_path, encoding="utf-8", errors="replace") as f:
-            all_lines = f.readlines()
-    except Exception:
-        all_lines = []
-
-    total_lines = len(all_lines)
-    start_idx = max(0, total_lines - limit) if since_id == 0 else since_id
-    slice_lines = all_lines[start_idx : start_idx + limit]
-
-    logs = []
-    for offset, line in enumerate(slice_lines):
-        line_id = start_idx + offset + 1
-        p = line.strip().split(" ", 3)
-        if len(p) >= 4 and p[2].startswith("[") and p[2].endswith("]"):
-            tm = p[1].split(",")[0]
-            lvl = p[2][1:-1]
-            msg = p[3]
-            logs.append({"id": line_id, "level": lvl, "message": msg, "time": tm})
-        elif line.strip():
-            logs.append(
-                {"id": line_id, "level": "INFO", "message": line.strip(), "time": ""}
-            )
-
-    return jsonify({"logs": logs, "max_id": total_lines})
+    return jsonify({"logs": mem_logs, "max_id": max_id})
 
 
 @system_api_bp.route("/api/log/clear", methods=["POST"])
