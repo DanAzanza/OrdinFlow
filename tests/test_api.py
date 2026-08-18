@@ -57,11 +57,10 @@ def test_api_vorgaenge(client, tmp_path):
     assert "Muster%2C%20Max" in data_detail["files"][0]["preview_url"]
 
 def test_api_eingang_retry_and_delete(client, tmp_path):
-    import queue
-
     from core.processor import DocumentProcessor
+    from core.skills.queue import get_skill_queue_manager
+
     DashboardState.config.watch_dir = str(tmp_path)
-    DashboardState.file_queue = queue.Queue()
     DashboardState.processor = DocumentProcessor(DashboardState.config)
 
     # Erstelle Dummy PDF und Meta in einem Unterordner
@@ -72,11 +71,12 @@ def test_api_eingang_retry_and_delete(client, tmp_path):
     meta = subfolder / "scan_001.pdf.meta"
     meta.touch()
 
-    # Teste Retry (wieder verarbeiten)
+    # Teste Retry (wieder verarbeiten über Skill Queue)
     resp_retry = client.post("/api/inbox/Subfolder%20Name/scan_001.pdf/retry")
     assert resp_retry.status_code == 200
     assert not meta.exists()  # .meta Datei muss gelöscht sein
-    assert DashboardState.file_queue.qsize() == 1  # Muss in die Queue gelegt worden sein
+    qm = get_skill_queue_manager()
+    assert len(qm.items) >= 1
 
     # Teste Delete
     meta.touch()  # Wieder erstellen für den Lösch-Test
@@ -310,3 +310,60 @@ def test_api_skills_refine_step(client):
     assert step4["action_type"] == "VERIFY_SCREEN"
     assert step4["on_failure_action"] == "run_skill"
     assert "patient_anlegen" in step4["on_failure_skill"]
+
+
+def test_is_ordinflow_running(monkeypatch):
+    import urllib.request
+    from urllib.error import URLError
+
+    from main import is_ordinflow_running
+
+    class MockResp:
+        status = 200
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            pass
+
+    monkeypatch.setattr(urllib.request, "urlopen", lambda req, timeout=1.5: MockResp())
+    assert is_ordinflow_running(8080) is True
+
+    def raise_err(req, timeout=1.5):
+        raise URLError("Connection refused")
+
+    monkeypatch.setattr(urllib.request, "urlopen", raise_err)
+    assert is_ordinflow_running(8080) is False
+
+
+def test_api_skills_queue_pause_resume(client):
+    # Ensure clean initial state
+    client.post("/api/skills/queue/stop")
+    client.post("/api/skills/queue/clear")
+
+    # Test pause when not running
+    res_pause = client.post("/api/skills/queue/pause")
+    assert res_pause.status_code == 200
+    assert res_pause.get_json()["status"] == "not_running"
+
+    # Add item and start
+    client.post("/api/skills/queue/add", json={"skill_id": "test_skill", "context": {}})
+    res_start = client.post("/api/skills/queue/start")
+    assert res_start.status_code == 200
+
+    # Pause
+    res_pause2 = client.post("/api/skills/queue/pause")
+    assert res_pause2.status_code == 200
+
+    # Resume
+    res_resume = client.post("/api/skills/queue/resume")
+    assert res_resume.status_code == 200
+    assert res_resume.get_json()["is_paused"] is False
+
+    # Stop
+    res_stop = client.post("/api/skills/queue/stop")
+    assert res_stop.status_code == 200
+    assert res_stop.get_json()["is_running"] is False
+
+

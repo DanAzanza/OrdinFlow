@@ -25,7 +25,7 @@ OrdinFlow is an open-source, rule-based AI Document Management System (DMS) desi
 ## 3. Data Processing Architecture
 
 ```
-[ Incoming File ] ──> [ Local Watchdog Listener ]
+[ Incoming File ] ──> [ Local Skill Queue Engine ]
                              │
                              ▼
                     [ Local ONNX OCR ] (RapidOCR)

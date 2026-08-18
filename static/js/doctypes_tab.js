@@ -178,7 +178,6 @@ function renderDocTypeForm(typeName) {
 				<div class="doc-form-header-emoji">${emoji}</div>
 				<div>
 					<h3 class="doc-header-name">${escapeHtml(typeName)}</h3>
-					<span class="doc-header-meta">${fieldKeys.length} extraction fields configured</span>
 				</div>
 			</div>
 			<button type="button" class="btn btn-sm btn-danger" onclick="deleteDocType('${escapeHtml(typeName)}')">🗑️ Delete Category</button>

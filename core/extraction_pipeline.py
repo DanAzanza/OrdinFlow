@@ -66,9 +66,7 @@ def _extract_page_spatial_and_plain_text(
                                 for line in text.split("\n"):
                                     l_str = line.strip()
                                     if l_str:
-                                        spatial_lines.append(
-                                            f"[pos: y={norm_y:.2f}, x={norm_x:.2f}] {l_str}"
-                                        )
+                                        spatial_lines.append(f"[pos: y={norm_y:.2f}, x={norm_x:.2f}] {l_str}")
                                         plain_lines.append(l_str)
                     total_chars = sum(len(line_item) for line_item in plain_lines)
                     if total_chars >= 30:
@@ -82,9 +80,7 @@ def _extract_page_spatial_and_plain_text(
             from PIL import Image
 
             if hasattr(raw_img, "samples") and hasattr(raw_img, "width"):
-                raw_img = Image.frombytes(
-                    "RGB", (raw_img.width, raw_img.height), raw_img.samples
-                )
+                raw_img = Image.frombytes("RGB", (raw_img.width, raw_img.height), raw_img.samples)
         except (AttributeError, OSError, ValueError):
             logger.debug("Image conversion for OCR failed", exc_info=True)
 
@@ -117,9 +113,7 @@ def _extract_page_spatial_and_plain_text(
                                 min_y = min(ys) if ys else 0.0
                                 norm_y = round(min_y / img_h, 2) if img_h > 0 else 0.0
                                 norm_x = round(min_x / img_w, 2) if img_w > 0 else 0.0
-                                ocr_spatial.append(
-                                    f"[pos: y={norm_y:.2f}, x={norm_x:.2f}] {t}"
-                                )
+                                ocr_spatial.append(f"[pos: y={norm_y:.2f}, x={norm_x:.2f}] {t}")
                                 ocr_plain.append(t)
                         return "\n".join(ocr_spatial), "\n".join(ocr_plain)
             except Exception as e:
@@ -200,20 +194,14 @@ def _normalize_for_clustering(val: str) -> str:
     if not isinstance(val, str):
         val = str(val)
     normed = val.casefold().translate(_UMLAUT_MAP)
-    normed = "".join(
-        c
-        for c in unicodedata.normalize("NFD", normed)
-        if unicodedata.category(c) != "Mn"
-    )
+    normed = "".join(c for c in unicodedata.normalize("NFD", normed) if unicodedata.category(c) != "Mn")
     normed = re.sub(r"\s+", " ", normed).strip()
     return normed
 
 
 def _fuzz_similarity(a: str, b: str) -> float:
     """Calculates similarity between two strings (0.0 to 1.0)."""
-    return SequenceMatcher(
-        None, _normalize_for_clustering(a), _normalize_for_clustering(b)
-    ).ratio()
+    return SequenceMatcher(None, _normalize_for_clustering(a), _normalize_for_clustering(b)).ratio()
 
 
 def _are_similar_or_substring(a: str, b: str, threshold: float = 0.80) -> bool:
@@ -284,18 +272,14 @@ def _cluster_votes(
     for val, weight in votes:
         matched_cluster = None
         for cluster in clusters:
-            if _are_similar_or_substring(
-                val, cluster["representative"], threshold=threshold
-            ):
+            if _are_similar_or_substring(val, cluster["representative"], threshold=threshold):
                 matched_cluster = cluster
                 break
 
         if matched_cluster:
             matched_cluster["members"].append((val, weight))
             matched_cluster["total_weight"] += weight
-            matched_cluster["representative"] = _pick_best_representative(
-                matched_cluster["members"]
-            )
+            matched_cluster["representative"] = _pick_best_representative(matched_cluster["members"])
         else:
             clusters.append(
                 {
@@ -345,22 +329,15 @@ def _evaluate_field_consensus(
 
     top_cluster = max(clusters, key=lambda c: c["total_weight"])
     total_weight = sum(c["total_weight"] for c in clusters)
-    confidence_k = (
-        top_cluster["total_weight"] / total_weight if total_weight > 0 else 0.0
-    )
+    confidence_k = top_cluster["total_weight"] / total_weight if total_weight > 0 else 0.0
 
     raw_winner = top_cluster["representative"]
     if is_boolean_field:
         winner_value = _to_bool_value(raw_winner)
-        counts_info = {
-            _to_bool_value(c["representative"]): round(c["total_weight"], 2)
-            for c in clusters
-        }
+        counts_info = {_to_bool_value(c["representative"]): round(c["total_weight"], 2) for c in clusters}
     else:
         winner_value = raw_winner
-        counts_info = {
-            c["representative"]: round(c["total_weight"], 2) for c in clusters
-        }
+        counts_info = {c["representative"]: round(c["total_weight"], 2) for c in clusters}
 
     return winner_value, confidence_k, counts_info
 
@@ -378,32 +355,22 @@ class ExtractionPipeline:
         self.image_preprocessor = image_preprocessor
         self.llm_extractor = llm_extractor
 
-    def classify_single_page(
-        self, raw_img: Any, idx: int, pdf_path: str | None = None
-    ) -> dict[str, Any]:
+    def classify_single_page(self, raw_img: Any, idx: int, pdf_path: str | None = None) -> dict[str, Any]:
         """Pre-processing, spatial text extraction, and classification of a single page."""
         logger.debug(f"[*] Phase 1 (Classification): Page {idx + 1}")
 
         prep_img = self.image_preprocessor.prepare_base_image(raw_img)
-        b64_img = self.image_preprocessor.scale_and_encode_image(
-            prep_img, self.config.classify_dimension
-        )
+        b64_img = self.image_preprocessor.scale_and_encode_image(prep_img, self.config.classify_dimension)
 
         doc_type_result = self.llm_extractor.classify_image(b64_img)
-        doc_type = (
-            doc_type_result.get("Document", "")
-            if isinstance(doc_type_result, dict)
-            else str(doc_type_result)
-        )
+        doc_type = doc_type_result.get("Document", "") if isinstance(doc_type_result, dict) else str(doc_type_result)
         logger.info(f"[+] Page {idx + 1} classification: {doc_type}")
 
         matched_name, matched_info = self.llm_extractor.find_doc_type_config(doc_type)
         if matched_name.upper() in {"UNKNOWN", "EMPTY"}:
             matched_info = {}
 
-        spatial_text, ocr_text = _extract_page_spatial_and_plain_text(
-            raw_img, pdf_path=pdf_path, page_idx=idx
-        )
+        spatial_text, ocr_text = _extract_page_spatial_and_plain_text(raw_img, pdf_path=pdf_path, page_idx=idx)
 
         return {
             "idx": idx,
@@ -441,18 +408,14 @@ class ExtractionPipeline:
 
             # Skip KI request if page type has no extraction fields and no signature required
             if not p_fields and not p_sig:
-                logging.info(
-                    f"[*] Page {p_num} ({p_type}): No extraction fields configured. Skipping KI request."
-                )
+                logging.info(f"[*] Page {p_num} ({p_type}): No extraction fields configured. Skipping KI request.")
                 tier_page_results.append({})
                 continue
 
             img_b64 = (
                 p.get("b64_img")
                 if p.get("prep_img") is None
-                else self.image_preprocessor.scale_and_encode_image(
-                    p["prep_img"], dimension
-                )
+                else self.image_preprocessor.scale_and_encode_image(p["prep_img"], dimension)
             )
             ext = self.llm_extractor.extract_data_from_images_with_type(
                 img_b64, p_type, temperature=0.0, target_fields=target_fields
@@ -491,9 +454,7 @@ class ExtractionPipeline:
 
             spatial_text = p.get("spatial_text", "")
             if not spatial_text or len(spatial_text.strip()) < 10:
-                logging.debug(
-                    f"[*] Page {p_num} ({p_type}) {label}: No spatial text available. Skipping text pass."
-                )
+                logging.debug(f"[*] Page {p_num} ({p_type}) {label}: No spatial text available. Skipping text pass.")
                 tier_page_results.append({})
                 continue
 
@@ -518,9 +479,7 @@ class ExtractionPipeline:
             res["Document"] = doc_type
         return res
 
-    def process_document_pages(
-        self, document_pages: list[dict[str, Any]]
-    ) -> dict[str, Any] | None:
+    def process_document_pages(self, document_pages: list[dict[str, Any]]) -> dict[str, Any] | None:
         """Runs tiered extraction across ALL non-empty pages of a document in one unified pool."""
         if not document_pages:
             return None
@@ -558,14 +517,10 @@ class ExtractionPipeline:
             }
 
         # ── Step 1: Spatial OCR-LLM Pass (Layout-Aware Text) ──
-        text_pass_results = self.run_text_extraction_tier(
-            document_pages, "Document", "Spatial OCR-LLM Pass"
-        )
+        text_pass_results = self.run_text_extraction_tier(document_pages, "Document", "Spatial OCR-LLM Pass")
 
-        # ── Step 2: Vision-LLM Tier 1 (1396px) ──
-        t1_vision_results = self.run_extraction_tier(
-            document_pages, "Document", 1396, "Vision-LLM Tier 1 (1396px)"
-        )
+        # ── Step 2: Vision-LLM Tier 1 ──
+        t1_vision_results = self.run_extraction_tier(document_pages, "Document", 1396, "Vision-LLM Tier 1")
 
         # ── Evaluate individual field consensus after Tier 1 ──
         all_keys_after_t1 = set()
@@ -622,32 +577,27 @@ class ExtractionPipeline:
             )
             if "Signed" not in group_final:
                 group_final["Signed"] = any(
-                    _to_bool_value(res.get("Signed", False))
-                    for res in t1_vision_results
-                    if isinstance(res, dict)
+                    _to_bool_value(res.get("Signed", False)) for res in t1_vision_results if isinstance(res, dict)
                 )
             group_final["pages"] = page_nums
             group_final["_confidence"] = confidences
             return group_final
 
-        # ── Step 3: Vision-LLM Tier 2 (1536px) for pending fields ──
+        # ── Step 3: Vision-LLM Tier 2 for pending fields ──
         t2_target_fields = [
             f
             for f in (expected_fields | all_keys_after_t1)
-            if confidences.get(f, 0.0) < KONSENS_THRESHOLD
-            or winning_weights.get(f, 0.0) < MIN_EVIDENCE_WEIGHT
+            if confidences.get(f, 0.0) < KONSENS_THRESHOLD or winning_weights.get(f, 0.0) < MIN_EVIDENCE_WEIGHT
         ]
         if not t2_target_fields:
             t2_target_fields = None
 
-        logging.info(
-            f"[*] Starting Vision-LLM Tier 2 (1536px) for pending fields: {t2_target_fields}..."
-        )
+        logging.info(f"[*] Starting Vision-LLM Tier 2 for pending fields: {t2_target_fields}...")
         t2_page_results = self.run_extraction_tier(
             document_pages,
             "Document",
             1536,
-            "Vision-LLM Tier 2 (1536px)",
+            "Vision-LLM Tier 2",
             target_fields=t2_target_fields,
         )
 
@@ -656,9 +606,7 @@ class ExtractionPipeline:
             and not any(bool(r) for r in text_pass_results)
             and not any(bool(r) for r in t2_page_results)
         ):
-            logger.warning(
-                f"[-] No valid extractions across all {len(document_pages)} pages."
-            )
+            logger.warning(f"[-] No valid extractions across all {len(document_pages)} pages.")
             return None
 
         all_keys = set()
@@ -696,16 +644,14 @@ class ExtractionPipeline:
                 else:
                     conflicts.append(field_name)
 
-        # ── Step 4: Vision-LLM Tier 3 Tiebreaker (1676px) on conflict fields ──
+        # ── Step 4: Vision-LLM Tier 3 Tiebreaker on conflict fields ──
         if conflicts:
-            logger.info(
-                f"[*] Disagreement in field(s) {conflicts} detected. Starting Vision-LLM Tier 3 Tiebreaker (1676px)..."
-            )
+            logger.info(f"[*] Disagreement in field(s) {conflicts} detected. Starting Vision-LLM Tier 3 Tiebreaker...")
             t3_page_results = self.run_extraction_tier(
                 document_pages,
                 "Document",
                 1676,
-                "Vision-LLM Tier 3 Tiebreaker (1676px)",
+                "Vision-LLM Tier 3 Tiebreaker",
                 target_fields=conflicts,
             )
 
@@ -738,34 +684,20 @@ class ExtractionPipeline:
         group_final["_confidence"] = confidences
         return group_final
 
-    def validate_extracted_data(
-        self, extracted: dict[str, Any] | None
-    ) -> tuple[bool, str]:
+    def validate_extracted_data(self, extracted: dict[str, Any] | None) -> tuple[bool, str]:
         """Generically validates consistency and required fields of extracted data."""
         if not extracted:
             return False, "No data extracted"
 
         dok_art_raw = str(extracted.get("Document", "")).strip()
-        if (
-            not dok_art_raw
-            or is_missing_value(dok_art_raw)
-            or dok_art_raw.upper() in ("UNKNOWN", "EMPTY")
-        ):
+        if not dok_art_raw or is_missing_value(dok_art_raw) or dok_art_raw.upper() in ("UNKNOWN", "EMPTY"):
             return False, "Document unknown or missing"
 
         page_results = extracted.get("page_results") or [extracted]
         for idx, res in enumerate(page_results, 1):
             d_art = str(res.get("Document", "")).strip()
-            if (
-                not d_art
-                or is_missing_value(d_art)
-                or d_art.upper() in ("UNKNOWN", "EMPTY")
-            ):
-                page_info = (
-                    f"on page group {idx}"
-                    if len(page_results) > 1
-                    else "on the document"
-                )
+            if not d_art or is_missing_value(d_art) or d_art.upper() in ("UNKNOWN", "EMPTY"):
+                page_info = f"on page group {idx}" if len(page_results) > 1 else "on the document"
                 return False, f"Document unknown or missing {page_info}"
 
             matched_type, matched_info = self.llm_extractor.find_doc_type_config(d_art)
@@ -800,9 +732,7 @@ class ExtractionPipeline:
                     )
 
             if validation_cfg.get("signature_required", False):
-                has_sig = _to_bool_value(res.get("Signed", False)) or _to_bool_value(
-                    extracted.get("Signed", False)
-                )
+                has_sig = _to_bool_value(res.get("Signed", False)) or _to_bool_value(extracted.get("Signed", False))
                 if not has_sig:
                     return False, f"Signature missing on document ({matched_type})"
 

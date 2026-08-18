@@ -114,7 +114,7 @@ def api_file_meta_inbox(filename: str):
 
 @inbox_api_bp.route("/api/inbox/<path:filename>/retry", methods=["POST"])
 def api_inbox_retry(filename: str):
-    if not DashboardState.config or not DashboardState.file_queue:
+    if not DashboardState.config:
         return jsonify({"error": "Not available"}), 503
 
     filepath = os.path.abspath(os.path.join(DashboardState.config.watch_dir, filename))
@@ -131,9 +131,15 @@ def api_inbox_retry(filename: str):
     logger.info("[Dashboard] Deleted .meta sidecar: %s", filename)
 
     try:
-        DashboardState.file_queue.put(filepath)
-        logger.info("[Dashboard] Released file for reprocessing: %s", filename)
-        return jsonify({"status": "ok"})
+        from core.skills.queue import get_skill_queue_manager
+
+        qm = get_skill_queue_manager()
+        default_import = qm.skill_manager.get_default_import_skill()
+        skill_id = default_import["id"] if default_import else "import_eingang"
+        task = qm.add_to_queue(skill_id, context={"filepath": filepath})
+        qm.start_queue()
+        logger.info("[Dashboard] Released file for reprocessing via Skill Queue: %s (Task %s)", filename, task.id)
+        return jsonify({"status": "ok", "task_id": task.id})
     except (AttributeError, TypeError, RuntimeError) as e:
         return jsonify({"error": str(e)}), 500
 

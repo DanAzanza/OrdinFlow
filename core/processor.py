@@ -289,6 +289,7 @@ class DocumentProcessor:
             self.processing_files.add(filepath)
 
         try:
+            self.wait_if_paused()
             logger.info(f"======== Processing: {filename} ========")
             if not wait_until_unlocked(filepath, retries=5, delay=1.0):
                 logger.warning(

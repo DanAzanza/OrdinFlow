@@ -137,6 +137,9 @@ def api_job_detail(job_id: str):
 def api_pause():
     if DashboardState.processor:
         DashboardState.processor.pause()
+    from core.skills.queue import get_skill_queue_manager
+
+    get_skill_queue_manager().pause_queue()
     return jsonify({"status": "paused"})
 
 
@@ -144,6 +147,9 @@ def api_pause():
 def api_resume():
     if DashboardState.processor:
         DashboardState.processor.resume()
+    from core.skills.queue import get_skill_queue_manager
+
+    get_skill_queue_manager().resume_queue()
     return jsonify({"status": "active"})
 
 
