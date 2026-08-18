@@ -43,7 +43,21 @@ document.addEventListener("focusin", (e) => {
 	}
 });
 
-async function loadSkills() {
+async function loadSkills(forceRefresh = false) {
+	if (state.skills && state.skills.length > 0 && !forceRefresh) {
+		renderSkillsSidebar(state.skills);
+		if (selectedSkillId) {
+			const found = state.skills.find((s) => s.id === selectedSkillId);
+			if (found) {
+				selectSkill(selectedSkillId);
+			} else if (state.skills.length > 0) {
+				selectSkill(state.skills[0].id);
+			}
+		} else if (state.skills.length > 0) {
+			selectSkill(state.skills[0].id);
+		}
+	}
+
 	try {
 		const data = await api("/api/skills");
 		state.skills = data.skills || [];
@@ -64,7 +78,9 @@ async function loadSkills() {
 		}
 	} catch (e) {
 		console.error("Error loading skills:", e);
-		toast("Error loading skills: " + e.message, "error");
+		if (!state.skills || state.skills.length === 0) {
+			toast("Error loading skills: " + e.message, "error");
+		}
 	}
 }
 

@@ -590,6 +590,7 @@ async function syncAppState() {
 			fetchStatus(),
 			fetchCases(),
 			fetchInbox(),
+			ensureSkillsLoaded(),
 			pollJobs(),
 		]);
 	} catch (e) {
@@ -600,9 +601,14 @@ async function syncAppState() {
 }
 
 showSkeletons();
-fetchConfig().then(() => {
-	syncAppState();
-});
+Promise.allSettled([
+	fetchConfig(),
+	ensureSkillsLoaded(),
+	fetchStatus(),
+	fetchCases(),
+	fetchInbox(),
+	pollJobs(),
+]);
 
 // Status and jobs ticker polling
 setInterval(fetchStatus, 4000);

@@ -35,12 +35,18 @@ cases_api_bp = Blueprint("api_cases", __name__)
 logger = logging.getLogger(__name__)
 
 
+_SKILL_MANAGER: SkillManager | None = None
+
+
 def _get_skill_manager() -> SkillManager:
-    base_dir = (
-        DashboardState.config.base_dir if DashboardState.config else os.getcwd()
-    )
-    skills_dir = os.path.join(base_dir, "settings", "skills")
-    return SkillManager(skills_dir=skills_dir)
+    global _SKILL_MANAGER
+    if _SKILL_MANAGER is None:
+        base_dir = (
+            DashboardState.config.base_dir if DashboardState.config else os.getcwd()
+        )
+        skills_dir = os.path.join(base_dir, "settings", "skills")
+        _SKILL_MANAGER = SkillManager(skills_dir=skills_dir)
+    return _SKILL_MANAGER
 
 
 @cases_api_bp.route("/api/cases")
@@ -60,112 +66,140 @@ def api_cases():
     ]
 
     result = []
-    for item in sorted(os.listdir(base_dir)):
-        item_path = os.path.join(base_dir, item)
-        if os.path.isdir(item_path):
-            if delimiter and delimiter not in item:
+    try:
+        entries = sorted(os.scandir(base_dir), key=lambda e: e.name)
+    except OSError:
+        return jsonify([])
+
+    for entry in entries:
+        if not entry.is_dir():
+            continue
+        item = entry.name
+        if delimiter and delimiter not in item:
+            continue
+
+        item_path = entry.path
+        parsed = _parse_folder_name(item)
+
+        doc_types_set = set()
+        files = []
+        is_approved = False
+
+        try:
+            folder_entries = os.scandir(item_path)
+        except OSError:
+            folder_entries = []
+
+        for fe in folder_entries:
+            fname = fe.name
+            if fname == ".approved":
+                is_approved = True
                 continue
-            parsed = _parse_folder_name(item)
-            doc_types = _get_doc_types_from_files(item_path)
-            files = [
-                f
-                for f in os.listdir(item_path)
-                if os.path.isfile(os.path.join(item_path, f))
-                and not f.startswith(".")
-                and not f.lower().endswith(".jpg")
-                and not f.lower().endswith(".meta")
-            ]
-            is_approved = os.path.exists(os.path.join(item_path, ".approved"))
+            if fe.is_file():
+                if (
+                    not fname.startswith(".")
+                    and not fname.lower().endswith(".jpg")
+                    and not fname.lower().endswith(".meta")
+                ):
+                    files.append(fname)
+                    parts = fname.split(delimiter)
+                    if len(parts) >= 1:
+                        for dt in parts[0].split("+"):
+                            dt_clean = dt.strip()
+                            if dt_clean:
+                                doc_types_set.add(dt_clean)
 
-            # Calculate granular multi-skill execution status
-            folder_executed_skills: set[str] = set()
-            total_applicable_tasks = 0
-            completed_applicable_tasks = 0
-            files_with_any_export = 0
+        doc_types = sorted(doc_types_set)
 
-            for fname in files:
-                full_fp = os.path.join(item_path, fname)
-                meta_fp = full_fp + ".meta"
-                f_meta: dict[str, Any] = {}
-                f_doc_type = "UNKNOWN"
-                if os.path.exists(meta_fp):
-                    try:
-                        with open(meta_fp, encoding="utf-8") as mf:
-                            loaded = json.load(mf)
-                            if isinstance(loaded, dict):
-                                f_meta = loaded
-                                f_doc_type = (
-                                    loaded.get("Document")
-                                    or loaded.get("Dokument")
-                                    or loaded.get("document_type")
-                                    or "UNKNOWN"
-                                )
-                    except (json.JSONDecodeError, OSError):
-                        pass
+        # Calculate granular multi-skill execution status
+        folder_executed_skills: set[str] = set()
+        total_applicable_tasks = 0
+        completed_applicable_tasks = 0
+        files_with_any_export = 0
 
-                if f_doc_type == "UNKNOWN" and "__" in fname:
-                    parts = fname.split("__")
-                    if len(parts) >= 2:
-                        f_doc_type = parts[0]
+        for fname in files:
+            full_fp = os.path.join(item_path, fname)
+            meta_fp = full_fp + ".meta"
+            f_meta: dict[str, Any] = {}
+            f_doc_type = "UNKNOWN"
+            if os.path.exists(meta_fp):
+                try:
+                    with open(meta_fp, encoding="utf-8") as mf:
+                        loaded = json.load(mf)
+                        if isinstance(loaded, dict):
+                            f_meta = loaded
+                            f_doc_type = (
+                                loaded.get("Document")
+                                or loaded.get("Dokument")
+                                or loaded.get("document_type")
+                                or "UNKNOWN"
+                            )
+                except (json.JSONDecodeError, OSError):
+                    pass
 
-                executed_skills = f_meta.get("executed_skills", [])
-                if not isinstance(executed_skills, list):
-                    executed_skills = []
-                for s_id in executed_skills:
-                    folder_executed_skills.add(str(s_id))
+            if f_doc_type == "UNKNOWN" and "__" in fname:
+                parts = fname.split("__")
+                if len(parts) >= 2:
+                    f_doc_type = parts[0]
 
-                if executed_skills:
-                    files_with_any_export += 1
+            executed_skills = f_meta.get("executed_skills", [])
+            if not isinstance(executed_skills, list):
+                executed_skills = []
+            for s_id in executed_skills:
+                folder_executed_skills.add(str(s_id))
 
-                # Determine applicable export skills for this file
-                applicable_skills = []
-                for s in export_skills:
-                    s_types = [
-                        t.lower().strip()
-                        for t in s.get("document_types", ["*"])
-                        if isinstance(t, str)
-                    ]
-                    if (
-                        "*" in s_types
-                        or "all" in s_types
-                        or f_doc_type.lower() in s_types
-                    ):
-                        applicable_skills.append(s.get("id"))
+            if executed_skills:
+                files_with_any_export += 1
 
-                for app_skill_id in applicable_skills:
-                    total_applicable_tasks += 1
-                    if app_skill_id in executed_skills:
-                        completed_applicable_tasks += 1
+            # Determine applicable export skills for this file
+            applicable_skills = []
+            for s in export_skills:
+                s_types = [
+                    t.lower().strip()
+                    for t in s.get("document_types", ["*"])
+                    if isinstance(t, str)
+                ]
+                if (
+                    "*" in s_types
+                    or "all" in s_types
+                    or f_doc_type.lower() in s_types
+                ):
+                    applicable_skills.append(s.get("id"))
 
-            if not is_approved:
-                export_status = "pending_approval"
-            elif (
-                total_applicable_tasks > 0
-                and completed_applicable_tasks >= total_applicable_tasks
-            ):
-                export_status = "completed"
-            elif files_with_any_export > 0 or completed_applicable_tasks > 0:
-                export_status = "partially_exported"
-            else:
-                export_status = "approved"
+            for app_skill_id in applicable_skills:
+                total_applicable_tasks += 1
+                if app_skill_id in executed_skills:
+                    completed_applicable_tasks += 1
 
-            result.append(
-                {
-                    "folder": item,
-                    "display_title": parsed.get("display_title", item),
-                    "person": parsed.get("person") or parsed.get("Person") or item,
-                    "datum": parsed.get("datum") or parsed.get("Datum") or "",
-                    "produkt": parsed.get("produkt") or parsed.get("Produkt") or "",
-                    "parts": parsed.get("parts", []),
-                    "doc_types": doc_types,
-                    "file_count": len(files),
-                    "is_approved": is_approved,
-                    "export_status": export_status,
-                    "executed_skills": sorted(list(folder_executed_skills)),
-                    "total_applicable_tasks": total_applicable_tasks,
-                    "completed_applicable_tasks": completed_applicable_tasks,
-                }
-            )
+        if not is_approved:
+            export_status = "pending_approval"
+        elif (
+            total_applicable_tasks > 0
+            and completed_applicable_tasks >= total_applicable_tasks
+        ):
+            export_status = "completed"
+        elif files_with_any_export > 0 or completed_applicable_tasks > 0:
+            export_status = "partially_exported"
+        else:
+            export_status = "approved"
+
+        result.append(
+            {
+                "folder": item,
+                "display_title": parsed.get("display_title", item),
+                "person": parsed.get("person") or parsed.get("Person") or item,
+                "datum": parsed.get("datum") or parsed.get("Datum") or "",
+                "produkt": parsed.get("produkt") or parsed.get("Produkt") or "",
+                "parts": parsed.get("parts", []),
+                "doc_types": doc_types,
+                "file_count": len(files),
+                "is_approved": is_approved,
+                "export_status": export_status,
+                "executed_skills": sorted(list(folder_executed_skills)),
+                "total_applicable_tasks": total_applicable_tasks,
+                "completed_applicable_tasks": completed_applicable_tasks,
+            }
+        )
     return jsonify(result)
 
 
