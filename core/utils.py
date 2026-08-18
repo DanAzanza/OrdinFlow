@@ -44,7 +44,12 @@ class MemoryLogHandler(logging.Handler):
     ) -> None:
         """Populates the in-memory ring buffer with recent historical lines from log file."""
         if not os.path.exists(log_path):
-            return
+            base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            candidate = os.path.join(base_dir, log_path)
+            if os.path.exists(candidate):
+                log_path = candidate
+            else:
+                return
         try:
             with open(log_path, encoding="utf-8", errors="replace") as f:
                 all_lines = f.readlines()

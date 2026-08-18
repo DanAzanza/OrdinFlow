@@ -581,35 +581,56 @@ async function pollJobs() {
 }
 
 
+let _isSyncing = false;
+async function syncAppState() {
+	if (_isSyncing) return;
+	_isSyncing = true;
+	try {
+		await Promise.allSettled([
+			fetchStatus(),
+			fetchCases(),
+			fetchInbox(),
+			pollJobs(),
+		]);
+	} catch (e) {
+		console.error("Error during syncAppState:", e);
+	} finally {
+		_isSyncing = false;
+	}
+}
+
 showSkeletons();
-fetchStatus();
-pollJobs();
 fetchConfig().then(() => {
-	fetchCases();
-	fetchInbox();
+	syncAppState();
 });
 
-// Status every 5s for UI updates (updates last_heartbeat as fallback)
-setInterval(fetchStatus, 5000);
+// Status and jobs ticker polling
+setInterval(fetchStatus, 4000);
 setInterval(pollJobs, 2000);
 
-// Dedicated heartbeat every 15s -> keeps the app alive even if fetchStatus hangs
+// Dedicated heartbeat keepalive every 12s
 setInterval(() => {
 	fetch("/api/heartbeat", { method: "POST" }).catch(() => {});
-}, 15000);
+}, 12000);
 
-// On visibility changes (e.g. return from background tab) send heartbeat immediately
+// Global data synchronization every 6s
+setInterval(syncAppState, 6000);
+
+// On tab visibility change (e.g. return from sleeping or background tab) force immediate full sync
 document.addEventListener("visibilitychange", () => {
 	if (document.visibilityState === "visible") {
-		fetchStatus();
+		syncAppState();
+		const activeTab = document.querySelector(".nav-item.active")?.dataset?.tab;
+		if (activeTab === "log" && typeof fetchLogDelta === "function") {
+			fetchLogDelta();
+			if (typeof updateLogInspectorAnalytics === "function") updateLogInspectorAnalytics();
+		} else if (activeTab === "skills" && typeof renderQueueInspector === "function") {
+			renderQueueInspector();
+		}
 	}
 });
 
-// Data every 10s (skip if detail view is open)
-setInterval(() => {
-	if (!state.expandedFolder) fetchCases();
-	fetchInbox();
-}, 10000);
-
-// When closing browser tab: send shutdown signal.
-// The server terminates automatically after 30 seconds of inactivity via the heartbeat monitor.
+// On window focus force immediate sync
+window.addEventListener("focus", () => {
+	syncAppState();
+});
