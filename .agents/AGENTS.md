@@ -22,6 +22,7 @@
     2. **Static Type Analysis**: `npx -y pyright@latest core/ routes/` (0 errors).
     3. **Automated Tests**: `python -m pytest -q` (100% pass rate, 0 regressions).
   * Only when all 3 gates succeed with 0 errors is committing and pushing permitted. Never rely on remote GitHub Actions to catch basic regressions after the fact.
+* **Explicit User Authorization for Commits & Pushes**: Never commit or push changes automatically or "on the side". After all local verification steps pass with 0 errors, present the completed results to the user and wait for their explicit request (e.g., "please push", "commit now") before executing Git staging, committing, or pushing.
 
 ---
 
