@@ -481,3 +481,5 @@ class DocumentProcessor:
             with self.processing_lock:
                 self.processing_files.discard(filepath)
             self.fs_router.cleanup_empty_directories(os.path.dirname(filepath))
+            import gc
+            gc.collect()

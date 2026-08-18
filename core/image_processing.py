@@ -157,20 +157,19 @@ class ImagePreprocessor:
                         "[!] PyMuPDF (fitz) not installed – PDF cannot be processed."
                     )
                     return None
-                doc = fitz.open(pdf_path)
-                try:
+                pil_images: list[Image.Image] = []
+                with fitz.open(pdf_path) as doc:
                     n_pages = len(doc)
-                    pil_images: list[Image.Image] = []
-                    # 300 DPI: Standard resolution for OCR systems for accurate handwriting & detail recognition
+                    # 300 DPI matrix for crisp OCR recognition
                     mat = fitz.Matrix(300 / 72, 300 / 72)
                     for i in range(n_pages):
-                        pix = doc[i].get_pixmap(matrix=mat, colorspace=fitz.csRGB)
+                        page = doc[i]
+                        pix = page.get_pixmap(matrix=mat, colorspace=fitz.csRGB)
                         img = Image.frombytes(
                             "RGB", (pix.width, pix.height), pix.samples
                         )
                         pil_images.append(img)
-                finally:
-                    doc.close()
+                        del pix
             else:
                 with Image.open(pdf_path) as img:
                     pil_images = [img.convert("RGB")]
@@ -178,6 +177,6 @@ class ImagePreprocessor:
             if return_raw:
                 return pil_images
             return [self.prepare_base_image(img) for img in pil_images]
-        except OSError as ex:
+        except (OSError, RuntimeError, ValueError) as ex:
             logger.warning("[!] Error loading source images: %s", ex)
             return None
