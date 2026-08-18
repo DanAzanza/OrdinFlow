@@ -15,7 +15,6 @@ from routes.api.document_helpers import (
     _MIME_MAP,
     _deduplicate_filename,
     _generate_pdf_thumbnail,
-    _get_doc_types_from_files,
     _is_within_base,
     _parse_folder_name,
     _remove_meta_sidecar,
