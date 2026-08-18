@@ -401,9 +401,8 @@ class DocumentProcessor:
                         try:
                             import fitz
 
-                            doc = fitz.open(filepath)
-                            doc_len = len(doc)
-                            doc.close()
+                            with fitz.open(filepath) as doc:
+                                doc_len = len(doc)
                             for pr in page_results:
                                 if pr.get("Document", "").upper() not in (
                                     "LEER",

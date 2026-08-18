@@ -268,11 +268,9 @@ def wait_until_unlocked(filepath: str, retries: int = 6, delay: float = 0.5) -> 
                         try:
                             import fitz
 
-                            doc = fitz.open(filepath)
-                            doc_len = len(doc)
-                            doc.close()
-                            if doc_len > 0:
-                                return True
+                            with fitz.open(filepath) as doc:
+                                if len(doc) > 0:
+                                    return True
                         except Exception:
                             pass
                     else:

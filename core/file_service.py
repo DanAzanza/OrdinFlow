@@ -178,8 +178,7 @@ class FileService:
         optional_fields = optional_fields or set()
         extraction_fields = extraction_fields or set()
 
-        doc = fitz.open(filepath)  # type: ignore[assignment]
-        try:
+        with fitz.open(filepath) as doc:  # type: ignore[assignment]
             for group_res in page_results:
                 g_type = group_res.get("Document", "UNKNOWN")
                 g_pages = group_res.get("pages", [])
@@ -232,8 +231,7 @@ class FileService:
                     fallbacks={"Document": g_type},
                 )
 
-                new_doc = fitz.open()  # type: ignore[assignment]
-                try:
+                with fitz.open() as new_doc:  # type: ignore[assignment]
                     for p_idx in g_pages:
                         new_doc.insert_pdf(doc, from_page=p_idx - 1, to_page=p_idx - 1)
 
@@ -241,13 +239,9 @@ class FileService:
                         os.path.join(target_dir, target_filename)
                     )
                     new_doc.save(target_filepath)
-                finally:
-                    new_doc.close()
                 logger.info(
                     f"[+] Partial PDF '{os.path.basename(target_filepath)}' (pages {g_pages}) saved successfully."
                 )
-        finally:
-            doc.close()
         _remove_source_with_meta(filepath)
         return True
 
@@ -257,16 +251,10 @@ class FileService:
         """Saves a PDF without empty pages."""
         if not self.can_split_pdf:
             return False
-        doc = fitz.open(src_path)  # type: ignore[assignment]
-        try:
-            new_doc = fitz.open()  # type: ignore[assignment]
-            try:
+        with fitz.open(src_path) as doc:  # type: ignore[assignment]
+            with fitz.open() as new_doc:  # type: ignore[assignment]
                 for p_idx in kept_pages:
                     new_doc.insert_pdf(doc, from_page=p_idx - 1, to_page=p_idx - 1)
                 new_doc.save(dst_path)
-            finally:
-                new_doc.close()
-        finally:
-            doc.close()
         _remove_source_with_meta(src_path)
         return True

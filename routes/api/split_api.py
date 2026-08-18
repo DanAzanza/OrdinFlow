@@ -104,12 +104,11 @@ def _slice_or_move_document(
     )
 
     if should_slice and fitz is not None and pdf_doc is not None:
-        new_doc = fitz.open()
-        for p_idx in pages_to_extract:
-            if 1 <= p_idx <= total_pages:
-                new_doc.insert_pdf(pdf_doc, from_page=p_idx - 1, to_page=p_idx - 1)
-        new_doc.save(target_path)
-        new_doc.close()
+        with fitz.open() as new_doc:
+            for p_idx in pages_to_extract:
+                if 1 <= p_idx <= total_pages:
+                    new_doc.insert_pdf(pdf_doc, from_page=p_idx - 1, to_page=p_idx - 1)
+            new_doc.save(target_path)
     else:
         if os.path.abspath(src_path) != os.path.abspath(target_path):
             shutil.move(src_path, target_path)
@@ -185,20 +184,21 @@ def api_split_inspector_submit():
     is_multi_doc = len(documents_input) > 1
 
     try:
-        for doc_sec in documents_input:
-            res = _slice_or_move_document(
-                doc_sec=doc_sec,
-                src_path=src_path,
-                ext=ext,
-                is_pdf=is_pdf,
-                total_pages=total_pages,
-                pdf_doc=pdf_doc,
-                is_multi_doc=is_multi_doc,
-            )
-            processed_results.append(res)
-
-        if pdf_doc:
-            pdf_doc.close()
+        try:
+            for doc_sec in documents_input:
+                res = _slice_or_move_document(
+                    doc_sec=doc_sec,
+                    src_path=src_path,
+                    ext=ext,
+                    is_pdf=is_pdf,
+                    total_pages=total_pages,
+                    pdf_doc=pdf_doc,
+                    is_multi_doc=is_multi_doc,
+                )
+                processed_results.append(res)
+        finally:
+            if pdf_doc:
+                pdf_doc.close()
 
         _remove_meta_sidecar(src_path)
         if os.path.isfile(src_path):
@@ -225,6 +225,4 @@ def api_split_inspector_submit():
         )
     except (OSError, RuntimeError, ValueError, TypeError) as e:
         logger.error("Error in split inspector submit: %s", e, exc_info=True)
-        if pdf_doc:
-            pdf_doc.close()
         return jsonify({"error": str(e)}), 500

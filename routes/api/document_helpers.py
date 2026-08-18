@@ -234,15 +234,13 @@ def _generate_pdf_thumbnail(full_path: str):
     if not fitz:
         return jsonify({"error": "PyMuPDF (fitz) not available"}), 500
     try:
-        doc = fitz.open(full_path)
-        try:
+        with fitz.open(full_path) as doc:
             page = doc[0]
             zoom = 280 / page.rect.width
             mat = fitz.Matrix(zoom, zoom)
             pix = page.get_pixmap(matrix=mat, alpha=False)
             img_bytes = pix.tobytes("jpeg", jpg_quality=75)
-        finally:
-            doc.close()
+            del pix
 
         _thumbnail_cache.set(full_path, (mtime, img_bytes))
         res = Response(img_bytes, mimetype="image/jpeg")
