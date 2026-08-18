@@ -16,7 +16,12 @@
 * **Zero Placeholders**: Never use placeholders, summaries, or truncation comments (e.g., `// ... existing code ...`, `/* remaining code unchanged */`). Always output fully complete, runnable code files or intact, self-contained functional blocks.
 * **Defensive & Dependency Hygiene**: Implement complete logic without unsolicited third-party packages. Rely on native capabilities and existing utilities first.
 * **Non-Blocking Execution & Zero-Polling Protocol**: When initiating background processes or async timers, never poll for status in a loop. Update the user with a concise status message and yield control to await background notifications.
-* **Mandatory End-to-End Test Verification**: Code is not finished merely because unit tests pass. After code changes, run at least one real test document or live execution through the pipeline and verify actual outputs and logs. Run static analysis (`npx pyright@latest`) and pytest (`pytest -q`) to confirm 0 errors and 100% test pass rate.
+* **Mandatory Pre-Commit / Pre-Push CI Verification Gate**:
+  * NO code may be committed, pushed, or uploaded to GitHub or any version control system without running and passing ALL automated local CI checks:
+    1. **Linter & Style**: `ruff check .` (0 errors, 0 warnings).
+    2. **Static Type Analysis**: `npx -y pyright@latest core/ routes/` (0 errors).
+    3. **Automated Tests**: `python -m pytest -q` (100% pass rate, 0 regressions).
+  * Only when all 3 gates succeed with 0 errors is committing and pushing permitted. Never rely on remote GitHub Actions to catch basic regressions after the fact.
 
 ---
 
@@ -93,10 +98,17 @@ When asked to write or suggest Git commit messages, strictly adhere to the follo
 * **Visual Verification**: Take viewport or full-page screenshots to empirically verify UI rendering, layout alignment, and DOM modifications before concluding frontend work.
 * **Console & Network Hygiene**: Inspect console logs and network traffic via DevTools tools to confirm clean execution without silent API failures or unhandled client-side exceptions.
 
-### 8 Project-Specific CI, Testing & Static Analysis Guidance
-* **Repository-Specific CI Principle**: Core Python logic MUST pass automated checks on GitHub Actions via [.github/workflows/ci.yml].
-* **Automated Pipeline**: The CI workflow executes `ruff check .`, `pyright core/`, and `pytest -q` on Python 3.10.
-* **Pre-Push Local Verification**: Before pushing code or creating pull requests, verify locally that `ruff`, `pyright`, and `pytest` return 0 errors. Never rely solely on remote GitHub Actions to catch basic syntax, type, or unit test regressions.
+---
+
+## 8. CI, Testing & Pre-Push Quality Gate
+* **Local Pre-Flight Rule**: Never commit, stage, or push code before executing the complete automated test and lint pipeline locally:
+  ```bash
+  ruff check .
+  npx pyright core/ routes/
+  python -m pytest -q
+  ```
+* **Zero Regression Standard**: Commits and pushes are strictly blocked if any linter warning, type diagnostic, or test failure is present.
+* **CI Parity**: Ensure local development environment tools match `.github/workflows/ci.yml` (Python 3.10+, Pyright, Ruff, Pytest).
 
 ---
 
