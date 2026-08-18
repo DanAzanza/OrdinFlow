@@ -84,6 +84,8 @@ def worker_loop(file_queue: queue.Queue, processor: DocumentProcessor):
             with processor.processing_lock:
                 processor.processing_files.discard(filepath)
             file_queue.task_done()
+            import gc
+            gc.collect()
 
 
 def process_existing_files(

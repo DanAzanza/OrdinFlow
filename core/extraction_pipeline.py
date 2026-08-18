@@ -51,31 +51,28 @@ def _extract_page_spatial_and_plain_text(
         try:
             import fitz
 
-            doc = fitz.open(pdf_path)
-            if 0 <= page_idx < len(doc):
-                page = doc[page_idx]
-                page_w = page.rect.width
-                page_h = page.rect.height
-                blocks = page.get_text("blocks")
-                for b in blocks:
-                    if len(b) >= 7 and b[6] == 0:  # text block
-                        text = str(b[4]).strip()
-                        if text:
-                            norm_y = round(b[1] / page_h, 2) if page_h > 0 else 0.0
-                            norm_x = round(b[0] / page_w, 2) if page_w > 0 else 0.0
-                            for line in text.split("\n"):
-                                l_str = line.strip()
-                                if l_str:
-                                    spatial_lines.append(
-                                        f"[pos: y={norm_y:.2f}, x={norm_x:.2f}] {l_str}"
-                                    )
-                                    plain_lines.append(l_str)
-                doc.close()
-                total_chars = sum(len(line_item) for line_item in plain_lines)
-                if total_chars >= 30:
-                    return "\n".join(spatial_lines), "\n".join(plain_lines)
-            else:
-                doc.close()
+            with fitz.open(pdf_path) as doc:
+                if 0 <= page_idx < len(doc):
+                    page = doc[page_idx]
+                    page_w = page.rect.width
+                    page_h = page.rect.height
+                    blocks = page.get_text("blocks")
+                    for b in blocks:
+                        if len(b) >= 7 and b[6] == 0:  # text block
+                            text = str(b[4]).strip()
+                            if text:
+                                norm_y = round(b[1] / page_h, 2) if page_h > 0 else 0.0
+                                norm_x = round(b[0] / page_w, 2) if page_w > 0 else 0.0
+                                for line in text.split("\n"):
+                                    l_str = line.strip()
+                                    if l_str:
+                                        spatial_lines.append(
+                                            f"[pos: y={norm_y:.2f}, x={norm_x:.2f}] {l_str}"
+                                        )
+                                        plain_lines.append(l_str)
+                    total_chars = sum(len(line_item) for line_item in plain_lines)
+                    if total_chars >= 30:
+                        return "\n".join(spatial_lines), "\n".join(plain_lines)
         except Exception as e:
             logger.debug("PyMuPDF digital text extraction skipped: %s", e)
 
