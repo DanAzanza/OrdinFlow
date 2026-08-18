@@ -44,7 +44,11 @@
 * **Explicit Exception Handling & Logging**: Catch specific exception classes and log full error context. Never use silent `try/except: pass` blocks. Prefer narrow exceptions over broad `except Exception` wherever practical.
 * **Module-Level Logging**: Use module loggers such as `logger = logging.getLogger(__name__)` instead of the root logger for application code, and prefer structured logging with context over string interpolation.
 * **Atomic File & Sidecar Integrity**: FileSystem operations (move, delete, split, rename) MUST handle source files and their accompanying `.meta` sidecar files atomically. Never orphan metadata during routing.
-* **Resource & Memory Hygiene**: Always release resources (files, sockets, locks, PyMuPDF documents, PIL images, OpenCV matrices) using context managers (`with`) or `finally` blocks to prevent leaks.
+* **Resource & Memory Hygiene in Long-Running Batch Pipelines**:
+  * Always release resources (files, sockets, locks, PyMuPDF documents, PIL images, OpenCV matrices) using context managers (`with`) or `finally` blocks to prevent leaks.
+  * For native C/C++ libraries (`fitz` / PyMuPDF, `cv2` / OpenCV), explicitly deallocate large native buffers (e.g. `del pix`) immediately after byte extraction.
+  * In long-running batch loops, trigger periodic garbage collection (`gc.collect()`) after processing each document to prevent C-heap fragmentation and OS-level access violations (`0xc0000005`).
+* **Headless Background Keep-Alive Safety**: Server heartbeat and keepalive monitors must evaluate all dimensions of ongoing background work (active skill queues, running file processors, non-empty queues) before executing automated idle shutdowns.
 * **Thread-Safety & Atomic Operations**: Protect shared mutable state across threads using explicit locks (`threading.Lock`) or thread-safe queues (`queue.Queue`). Ensure file manipulations are fail-safe and atomic.
 * **Static Analysis & Tooling Rules**:
   * *Python*: Run `ruff check .`, `pyright`, `bandit -r core/ routes/`, and `pytest-cov` after edits and resolve all issues.
@@ -60,6 +64,7 @@
 * **No Inline Styles in JavaScript**: Define visual styles using CSS classes and variables in stylesheet files (`static/css/app.css`). Never inject dynamic `element.style` strings via JavaScript.
 * **DOM Security**: Sanitize and escape dynamic user-generated content (e.g., using `escapeHtml()`) to prevent XSS vulnerabilities.
 * **Semantic HTML & Accessibility**: Use explicit `<button type="button">` attributes and semantic HTML5 elements.
+* **Lifecycle & Background Tab Synchronization**: Modern browsers throttle background/sleeping tabs. Dashboards must hook full state synchronization (`syncAppState`) into both `visibilitychange` (when tab becomes active) and `window.focus` to instantly refresh stale views and metrics upon user return.
 
 ---
 
