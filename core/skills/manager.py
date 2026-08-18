@@ -1,4 +1,6 @@
-"""Skill YAML storage and configuration manager."""
+"""Skill YAML storage, configuration, and engine factory manager."""
+
+from __future__ import annotations
 
 import glob
 import logging
@@ -10,11 +12,15 @@ from typing import Any
 
 import yaml
 
+from core.skills.base import BaseSkill
+from core.skills.engines.export_engine import ExportEngine
+from core.skills.engines.import_engine import ImportEngine
+
 logger = logging.getLogger(__name__)
 
 
 class SkillManager:
-    """Manages loading, saving, deleting, and duplicating skill YAML files with in-memory caching."""
+    """Manages loading, saving, deleting, and instantiating modular skill engines."""
 
     def __init__(self, skills_dir: str = "./settings/skills"):
         self.skills_dir = os.path.abspath(skills_dir)
@@ -32,6 +38,11 @@ class SkillManager:
 
         with self._lock:
             for filepath in sorted(yaml_files):
+                # Ignore example templates and state files
+                fname = os.path.basename(filepath)
+                if fname.endswith(".example.yaml") or fname == "queue_state.json":
+                    continue
+
                 seen_paths.add(filepath)
                 try:
                     mtime = os.path.getmtime(filepath)
@@ -56,11 +67,73 @@ class SkillManager:
         return skills
 
     def get_skill(self, skill_id: str) -> dict[str, Any] | None:
-        """Finds a skill by ID."""
+        """Finds a skill definition by ID."""
         for skill in self.list_skills():
             if skill.get("id") == skill_id:
                 return skill
+
+        # Fallback to direct file lookup
+        for ext in (".yaml", ".yml"):
+            target = os.path.join(self.skills_dir, f"{skill_id}{ext}")
+            if os.path.isfile(target):
+                try:
+                    with open(target, encoding="utf-8") as f:
+                        data = yaml.safe_load(f)
+                        if isinstance(data, dict):
+                            return data
+                except (OSError, yaml.YAMLError):
+                    pass
         return None
+
+    def get_default_import_skill(self) -> dict[str, Any] | None:
+        """Finds the default or first enabled import skill."""
+        skills = self.list_skills()
+        for s in skills:
+            if s.get("type") == "import" and s.get("enabled", True):
+                return s
+        for s in skills:
+            if s.get("type") == "import":
+                return s
+        return None
+
+    def get_document_types_for_skill(self, skill_id: str) -> dict[str, Any]:
+        """Returns the document_types map defined in the specified skill."""
+        skill = self.get_skill(skill_id)
+        if skill and isinstance(skill.get("document_types"), dict):
+            return dict(skill["document_types"])
+        return {}
+
+    def save_document_types_for_skill(self, skill_id: str, doc_types: dict[str, Any]) -> bool:
+        """Saves updated document_types to a skill definition."""
+        skill = self.get_skill(skill_id)
+        if not skill:
+            logger.warning("[SkillManager] Cannot save doc_types: skill '%s' not found.", skill_id)
+            return False
+        skill["document_types"] = doc_types
+        self.save_skill(skill)
+        return True
+
+    def get_skill_engine(
+        self,
+        skill_id: str,
+        vision_extractor: Any = None,
+        processor: Any = None,
+    ) -> BaseSkill | None:
+        """Instantiates the appropriate executable BaseSkill engine for the given skill ID."""
+        definition = self.get_skill(skill_id)
+        if not definition:
+            logger.warning("[SkillManager] No definition found for skill '%s'", skill_id)
+            return None
+
+        skill_type = definition.get("type", "export")
+        if skill_type == "import":
+            return ImportEngine(definition, processor=processor)
+        else:
+            return ExportEngine(
+                definition,
+                skill_manager=self,
+                vision_extractor=vision_extractor,
+            )
 
     def save_skill(self, skill_data: dict[str, Any]) -> str:
         """Saves a skill to its individual YAML file."""

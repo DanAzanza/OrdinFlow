@@ -3,6 +3,7 @@ Unit tests for Dual-Source Tier 1 Spatial Text Extraction, Debouncing, and RPA E
 """
 
 from unittest.mock import MagicMock, patch
+
 import pytest
 from PIL import Image
 
@@ -201,7 +202,7 @@ def test_dual_source_tier1_disagreement_triggers_tier2(sample_config):
     vision_res_t1 = {"Rechnungsnummer": "INV-100", "Datum": "2026-08-17"}
     # Tier 1 Text returns INV-200 (disagreement!)
     text_res_t1 = {"Rechnungsnummer": "INV-200", "Datum": "2026-08-17"}
-    # Tier 2 Vision (1536px) confirms INV-200
+    # Tier 2 Vision confirms INV-200
     vision_res_t2 = {"Rechnungsnummer": "INV-200", "Datum": "2026-08-17"}
 
     def vision_side_effect(img, doc_type, temperature=0.0, target_fields=None):

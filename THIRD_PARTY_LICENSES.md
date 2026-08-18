@@ -16,7 +16,6 @@
 | Pillow (PIL) | Latest available (via requirements.txt) | HPND | Image Processing & Manipulation |
 | llama-cpp-python | Latest available (via requirements.txt) | MIT License | Local Vision-LLM Inference (GGUF) |
 | Qwen3-VL-8B | GGUF Quantization Q4_K_M | Tongyi Qianwen / Apache 2.0 | Local Multimodal Vision Model |
-| watchdog | Latest available (via requirements.txt) | Apache License 2.0 | Filesystem Monitoring |
 | PyYAML | Latest available (via requirements.txt) | MIT License | YAML Configuration Parsing |
 | opencv-python | Latest available (via requirements.txt) | Apache License 2.0 | Computer Vision & Preprocessing |
 | numpy | Latest available (via requirements.txt) | BSD 3-Clause | Numerical Array Computing |
@@ -69,14 +68,7 @@ The full license text is available in `licenses/MIT_LICENSE.txt`.
 
 The full license text is available in `licenses/TONGYI_QIANWEN_LICENSE.txt`.
 
-### 8. watchdog – Apache License 2.0
-
-**Purpose:** Monitoring directory events for incoming document detection.  
-**Summary:** Permissive license. Free to use with attribution.
-
-The full license text is available in `licenses/APACHE-2.0.txt`.
-
-### 9. PyYAML – MIT License
+### 8. PyYAML – MIT License
 
 **Purpose:** Parsing configuration files (`config.yaml`).  
 **Summary:** Permissive license. Free to use and modify.

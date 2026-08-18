@@ -15,20 +15,17 @@ function isQueueInspectorOpen() {
 function startQueuePolling() {
 	if (queuePollTimer) return;
 	queuePollTimer = setInterval(async () => {
-		if (!isQueueInspectorOpen()) {
-			stopQueuePolling();
-			return;
-		}
 		try {
 			const qState = await api("/api/skills/queue");
 			updateQueueInspectorIfOpen(qState);
-			if (!qState.is_running) {
+			updateSkillsSidebarBadge(qState);
+			if (!qState.is_running && !qState.is_paused && !isQueueInspectorOpen()) {
 				stopQueuePolling();
 			}
 		} catch (e) {
-			console.debug("Queue poll error:", e);
+			console.error("Queue poll error:", e);
 		}
-	}, 1000);
+	}, 1500);
 }
 
 function stopQueuePolling() {
@@ -38,24 +35,45 @@ function stopQueuePolling() {
 	}
 }
 
-function buildQueueListHtml(items) {
+function updateSkillsSidebarBadge(qState) {
+	const badge = document.getElementById("badgeSkills") || document.querySelector(".nav-item[data-tab='skills'] .nav-badge");
+	if (!badge) return;
+
+	if (qState && qState.is_running && !qState.is_paused) {
+		badge.textContent = "▶";
+		badge.className = "badge nav-badge badge-running";
+		badge.style.display = "inline-flex";
+	} else if (qState && qState.is_paused) {
+		badge.textContent = "⏸";
+		badge.className = "badge nav-badge badge-paused";
+		badge.style.display = "inline-flex";
+	} else {
+		badge.textContent = "";
+		badge.style.display = "none";
+	}
+}
+
+function buildQueueListHtml(items, activeItemId) {
 	if (!items || items.length === 0) {
 		return `
 			<div class="empty-state-box">
-				Queue is empty.<br>Add a skill below.
+				Queue is empty.<br>Add a skill below or enable auto-run.
 			</div>
 		`;
 	}
 
 	return items
-		.map((item, index) => {
+		.map((item) => {
 			const isRunning = item.status === "running";
 			const isFailed = item.status === "failed";
 			const isCompleted = item.status === "completed";
+			const isPaused = item.status === "paused";
 
 			let statusBadge = `<span class="badge badge-waiting">Waiting</span>`;
 			if (isRunning) {
 				statusBadge = `<span class="badge badge-running">▶ Running...</span>`;
+			} else if (isPaused) {
+				statusBadge = `<span class="badge badge-paused">Paused</span>`;
 			} else if (isCompleted) {
 				statusBadge = `<span class="badge badge-completed">Completed</span>`;
 			} else if (isFailed) {
@@ -63,6 +81,8 @@ function buildQueueListHtml(items) {
 			}
 
 			const icon = item.skill_type === "import" ? "📥" : "⚡";
+			const progressMsg = (item.progress && item.progress.message) ? escapeHtml(item.progress.message) : "";
+			const progressPct = (item.progress && item.progress.percent) ? item.progress.percent : 0;
 
 			return `
 				<div class="queue-item-card ${isRunning ? "queue-item-running" : "queue-item-idle"}" data-queue-id="${escapeHtml(item.id)}" draggable="${!isRunning}" ondragstart="onQueueDragStart(event, '${escapeHtml(item.id)}')" ondragover="onQueueDragOver(event)" ondrop="onQueueDrop(event, '${escapeHtml(item.id)}')">
@@ -72,6 +92,7 @@ function buildQueueListHtml(items) {
 							<span class="queue-icon">${icon}</span>
 							<div class="min-w-0">
 								<div class="queue-name">${escapeHtml(item.skill_name)}</div>
+								${isRunning && progressMsg ? `<div class="queue-item-subtitle">${progressMsg}</div>` : ""}
 							</div>
 						</div>
 						<div class="queue-actions-group">
@@ -87,6 +108,15 @@ function buildQueueListHtml(items) {
 							}
 						</div>
 					</div>
+					${
+						isRunning && progressPct > 0
+							? `
+						<div class="queue-progress-bar-wrap">
+							<div class="queue-progress-bar" style="width: ${progressPct}%"></div>
+						</div>
+					`
+							: ""
+					}
 				</div>
 			`;
 		})
@@ -96,72 +126,108 @@ function buildQueueListHtml(items) {
 function updateQueueInspectorIfOpen(qState) {
 	if (!qState) return;
 
-	// Update Skills Tab Button Badge in primary sidebar
-	const navBtnBadge = document.querySelector(".nav-item[data-tab='skills'] .nav-badge");
-	if (navBtnBadge) {
-		if (qState.is_running) {
-			navBtnBadge.textContent = "▶ Run";
-			navBtnBadge.style.display = "";
-		} else {
-			navBtnBadge.textContent = "";
-			navBtnBadge.style.display = "none";
-		}
-	}
+	updateSkillsSidebarBadge(qState);
 
 	if (!isQueueInspectorOpen()) return;
+
+	const isRunning = !!qState.is_running;
+	const isPaused = !!qState.is_paused;
 
 	// Update Subtitle
 	const subtitleEl = document.querySelector(".app-inspector .inspector-subtitle");
 	if (subtitleEl) {
-		if (qState.is_running) {
+		if (isRunning && !isPaused) {
 			const activeName = qState.active_item ? qState.active_item.skill_name : "";
-			subtitleEl.textContent = activeName ? `▶ Running: ${activeName}` : "▶ Execution running...";
+			const progMsg = qState.active_item && qState.active_item.progress ? qState.active_item.progress.message : "";
+			subtitleEl.textContent = progMsg ? `▶ ${activeName}: ${progMsg}` : `▶ Running: ${activeName || "Execution in progress..."}`;
+		} else if (isPaused) {
+			subtitleEl.textContent = "⏸️ Queue paused";
 		} else {
-			subtitleEl.textContent = "Reorder via drag & drop";
+			subtitleEl.textContent = qState.auto_repeat_enabled ? "🔄 Auto-run active (every 5 min)" : "";
 		}
 	}
 
 	// Update Status Card
 	const statusTitle = document.querySelector(".queue-status-title");
 	if (statusTitle) {
-		statusTitle.innerHTML = `<span>${qState.is_running ? "▶" : "⏸️"}</span> Status: ${qState.is_running ? "Running" : "Ready"}`;
+		if (isRunning && !isPaused) {
+			statusTitle.innerHTML = `<span>▶</span> Status: Running`;
+		} else if (isPaused) {
+			statusTitle.innerHTML = `<span>⏸️</span> Status: Paused`;
+		} else {
+			statusTitle.innerHTML = `<span>⏹️</span> Status: Ready`;
+		}
 	}
+
 	const countBadge = document.querySelector(".queue-status-header .badge");
 	if (countBadge) {
-		countBadge.className = `badge ${qState.is_running ? "badge-running" : "badge-idle"}`;
-		countBadge.textContent = `${qState.items.length} Skills`;
+		if (isRunning && !isPaused) {
+			countBadge.className = "badge badge-running";
+			countBadge.textContent = `${qState.items.length} Tasks`;
+		} else if (isPaused) {
+			countBadge.className = "badge badge-paused";
+			countBadge.textContent = `Paused (${qState.items.length})`;
+		} else {
+			countBadge.className = "badge badge-idle";
+			countBadge.textContent = `${qState.items.length} Tasks`;
+		}
 	}
+
 	const btnRow = document.querySelector(".queue-btn-row");
 	if (btnRow) {
-		btnRow.innerHTML = !qState.is_running
-			? `
+		if (isRunning && !isPaused) {
+			btnRow.innerHTML = `
+				<button type="button" class="btn btn-secondary btn-sm" onclick="pauseSkillQueue()" title="Pause queue execution">
+					⏸️ Pause
+				</button>
+				<button type="button" class="btn btn-danger btn-sm" onclick="stopSkillQueue()" title="Stop queue execution">
+					⏹️ Stop
+				</button>
+			`;
+		} else if (isPaused) {
+			btnRow.innerHTML = `
+				<button type="button" class="btn btn-primary btn-sm" onclick="resumeSkillQueue()" title="Resume queue execution">
+					▶ Resume
+				</button>
+				<button type="button" class="btn btn-danger btn-sm" onclick="stopSkillQueue()" title="Stop queue execution">
+					⏹️ Stop
+				</button>
+			`;
+		} else {
+			btnRow.innerHTML = `
 				<button type="button" class="btn btn-primary btn-sm queue-main-btn" onclick="startSkillQueue()">
 					▶ Start queue
 				</button>
-			`
-			: `
-				<button type="button" class="btn btn-danger btn-sm queue-main-btn" onclick="stopSkillQueue()">
-					⏸️ Stop queue
-				</button>
 			`;
+		}
+	}
+
+	// Update auto-repeat toggle state
+	const autoToggle = document.getElementById("queueAutoRepeatToggle");
+	if (autoToggle) {
+		autoToggle.checked = !!qState.auto_repeat_enabled;
 	}
 
 	// Update Items Container
 	const container = document.getElementById("queueItemsContainer");
 	if (container) {
-		container.innerHTML = buildQueueListHtml(qState.items);
+		const activeId = qState.active_item ? qState.active_item.id : null;
+		container.innerHTML = buildQueueListHtml(qState.items, activeId);
 	}
 }
 
 async function renderQueueInspector() {
 	if (typeof openAppInspector !== "function") return;
 
-	let qState = { is_running: false, items: [], active_item: null };
+	let qState = { is_running: false, is_paused: false, auto_repeat_enabled: false, items: [], active_item: null };
 	try {
 		qState = await api("/api/skills/queue");
 	} catch (e) {
 		console.error("Error fetching queue:", e);
 	}
+
+	const isRunning = !!qState.is_running;
+	const isPaused = !!qState.is_paused;
 
 	const skillOptions = (state.skills || [])
 		.map(
@@ -170,39 +236,65 @@ async function renderQueueInspector() {
 		)
 		.join("");
 
-	const queueListHtml = buildQueueListHtml(qState.items);
+	const queueListHtml = buildQueueListHtml(qState.items, qState.active_item ? qState.active_item.id : null);
+
+	let btnRowHtml = `
+		<button type="button" class="btn btn-primary btn-sm queue-main-btn" onclick="startSkillQueue()">
+			▶ Start queue
+		</button>
+	`;
+	if (isRunning && !isPaused) {
+		btnRowHtml = `
+			<button type="button" class="btn btn-secondary btn-sm" onclick="pauseSkillQueue()" title="Pause queue execution">
+				⏸️ Pause
+			</button>
+			<button type="button" class="btn btn-danger btn-sm" onclick="stopSkillQueue()" title="Stop queue execution">
+				⏹️ Stop
+			</button>
+		`;
+	} else if (isPaused) {
+		btnRowHtml = `
+			<button type="button" class="btn btn-primary btn-sm" onclick="resumeSkillQueue()" title="Resume queue execution">
+				▶ Resume
+			</button>
+			<button type="button" class="btn btn-danger btn-sm" onclick="stopSkillQueue()" title="Stop queue execution">
+				⏹️ Stop
+			</button>
+		`;
+	}
 
 	const inspectorHtml = `
 		<div class="queue-status-card">
 			<div class="queue-status-header">
 				<h4 class="queue-status-title">
-					<span>${qState.is_running ? "▶" : "⏸️"}</span> Status: ${qState.is_running ? "Running" : "Ready"}
+					<span>${isRunning && !isPaused ? "▶" : isPaused ? "⏸️" : "⏹️"}</span> Status: ${isRunning && !isPaused ? "Running" : isPaused ? "Paused" : "Ready"}
 				</h4>
-				<span class="badge ${qState.is_running ? "badge-running" : "badge-idle"}">
-					${qState.items.length} Skills
+				<span class="badge ${isRunning && !isPaused ? "badge-running" : isPaused ? "badge-paused" : "badge-idle"}">
+					${isPaused ? `Paused (${qState.items.length})` : `${qState.items.length} Tasks`}
 				</span>
 			</div>
 			<div class="queue-btn-row">
-				${
-					!qState.is_running
-						? `
-					<button type="button" class="btn btn-primary btn-sm queue-main-btn" onclick="startSkillQueue()">
-						▶ Start queue
-					</button>
-				`
-						: `
-					<button type="button" class="btn btn-danger btn-sm queue-main-btn" onclick="stopSkillQueue()">
-						⏸️ Stop queue
-					</button>
-				`
-				}
+				${btnRowHtml}
+			</div>
+			<div class="queue-auto-repeat-row">
+				<label class="queue-toggle-label">
+					<input type="checkbox" id="queueAutoRepeatToggle" onchange="toggleQueueAutoRepeat(this.checked)" ${qState.auto_repeat_enabled ? "checked" : ""}>
+					<span>🔄 Auto-run queue every 5 min</span>
+				</label>
 			</div>
 		</div>
 
 		<div class="queue-list-section">
-			<h4 class="queue-list-title">
-				📋 Queued Skills (Drag & Drop to reorder)
-			</h4>
+			<div class="queue-list-header-row">
+				<h4 class="queue-list-title">
+					📋 Tasks & Workflow
+				</h4>
+				${qState.items.length > 0 ? `
+					<button type="button" class="btn btn-text btn-sm" onclick="clearSkillQueue()" title="Clear queue">
+						Clear all
+					</button>
+				` : ""}
+			</div>
 			<div id="queueItemsContainer">
 				${queueListHtml}
 			</div>
@@ -221,11 +313,15 @@ async function renderQueueInspector() {
 		</div>
 	`;
 
-	const subtitle = qState.is_running
+	const subtitle = isRunning && !isPaused
 		? qState.active_item
 			? `▶ Running: ${escapeHtml(qState.active_item.skill_name)}`
 			: "▶ Execution running..."
-		: "Reorder via drag & drop";
+		: isPaused
+			? "⏸️ Queue paused"
+			: qState.auto_repeat_enabled
+				? "🔄 Auto-run active (every 5 min)"
+				: "";
 
 	openAppInspector({
 		icon: "⚡",
@@ -234,9 +330,8 @@ async function renderQueueInspector() {
 		html: inspectorHtml,
 	});
 
-	if (qState.is_running) {
-		startQueuePolling();
-	}
+	updateSkillsSidebarBadge(qState);
+	startQueuePolling();
 }
 
 function onQueueDragStart(e, itemId) {
@@ -288,15 +383,48 @@ async function startSkillQueue() {
 			btn.disabled = true;
 			btn.textContent = "▶ Starting...";
 		}
-		await api("/api/skills/queue/start", { method: "POST" });
-		toast("▶ Skill queue started!");
+		const res = await api("/api/skills/queue/start", { method: "POST" });
 		const qState = await api("/api/skills/queue");
 		updateQueueInspectorIfOpen(qState);
-		startQueuePolling();
+		updateSkillsSidebarBadge(qState);
+		if (qState.is_running) {
+			toast("▶ Skill queue started!");
+			startQueuePolling();
+		} else {
+			toast("No pending tasks in queue.", "info");
+		}
 	} catch (e) {
 		toast("Error starting queue: " + e.message, "error");
 		const qState = await api("/api/skills/queue").catch(() => null);
-		if (qState) updateQueueInspectorIfOpen(qState);
+		if (qState) {
+			updateQueueInspectorIfOpen(qState);
+			updateSkillsSidebarBadge(qState);
+		}
+	}
+}
+
+async function pauseSkillQueue() {
+	try {
+		await api("/api/skills/queue/pause", { method: "POST" });
+		toast("⏸️ Skill queue paused.");
+		const qState = await api("/api/skills/queue");
+		updateQueueInspectorIfOpen(qState);
+		updateSkillsSidebarBadge(qState);
+	} catch (e) {
+		toast("Error pausing queue: " + e.message, "error");
+	}
+}
+
+async function resumeSkillQueue() {
+	try {
+		await api("/api/skills/queue/resume", { method: "POST" });
+		toast("▶ Skill queue resumed.");
+		const qState = await api("/api/skills/queue");
+		updateQueueInspectorIfOpen(qState);
+		updateSkillsSidebarBadge(qState);
+		startQueuePolling();
+	} catch (e) {
+		toast("Error resuming queue: " + e.message, "error");
 	}
 }
 
@@ -305,15 +433,34 @@ async function stopSkillQueue() {
 		const btn = document.querySelector(".queue-main-btn");
 		if (btn) {
 			btn.disabled = true;
-			btn.textContent = "⏸️ Stopping...";
+			btn.textContent = "⏹️ Stopping...";
 		}
 		await api("/api/skills/queue/stop", { method: "POST" });
-		toast("⏸️ Stopping skill queue...");
+		toast("⏹️ Skill queue stopped.");
 		const qState = await api("/api/skills/queue");
 		updateQueueInspectorIfOpen(qState);
+		updateSkillsSidebarBadge(qState);
 		stopQueuePolling();
 	} catch (e) {
 		toast("Error stopping queue: " + e.message, "error");
+	}
+}
+
+async function toggleQueueAutoRepeat(enabled) {
+	try {
+		const res = await api("/api/skills/queue/auto_repeat", {
+			method: "POST",
+			body: JSON.stringify({ enabled: enabled, interval_seconds: 300 }),
+		});
+		if (res.auto_repeat_enabled) {
+			toast("🔄 Auto-run active (every 5 min)");
+		} else {
+			toast("Auto-run disabled.");
+		}
+		const qState = await api("/api/skills/queue");
+		updateQueueInspectorIfOpen(qState);
+	} catch (e) {
+		toast("Error updating auto-run: " + e.message, "error");
 	}
 }
 

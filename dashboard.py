@@ -35,7 +35,8 @@ def heartbeat_monitor() -> None:
         # If skill queue is actively running in the background, keep heartbeat alive
         try:
             from core.skills.queue import get_skill_queue_manager
-            if get_skill_queue_manager().is_running:
+            qm = get_skill_queue_manager()
+            if qm.is_running and not qm.is_paused:
                 DashboardState.last_heartbeat = time.time()
                 continue
         except Exception:
@@ -111,7 +112,9 @@ def open_browser(port: int) -> None:
 
 
 def start_dashboard(
-    processor: DocumentProcessor | None, file_queue: queue.Queue, config: AppConfig
+    processor: DocumentProcessor | None,
+    file_queue: queue.Queue | None,
+    config: AppConfig,
 ) -> None:
     if processor:
         DashboardState.processor = processor

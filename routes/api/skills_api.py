@@ -9,12 +9,10 @@ from typing import Any
 
 from flask import Blueprint, jsonify, request
 
-from core.skills_engine import (
-    SkillExecutor,
-    SkillManager,
-    SoMGrounder,
-    get_skill_queue_manager,
-)
+from core.skills.engines.export_engine import ExportEngine
+from core.skills.grounder import SoMGrounder
+from core.skills.manager import SkillManager
+from core.skills.queue import SkillQueueManager, get_skill_queue_manager
 from routes.api.documents_api import (
     _is_within_base,
     _parse_folder_name,
@@ -25,143 +23,20 @@ skills_api_bp = Blueprint("api_skills", __name__)
 
 logger = logging.getLogger(__name__)
 
-_SKILL_MANAGER = None
+_SKILL_MANAGER: SkillManager | None = None
 
 
 def _get_skill_manager() -> SkillManager:
     global _SKILL_MANAGER
     if _SKILL_MANAGER is None:
-        base_dir = (
-            DashboardState.config.base_dir if DashboardState.config else os.getcwd()
-        )
+        base_dir = DashboardState.config.base_dir if DashboardState.config else os.getcwd()
         skills_dir = os.path.join(base_dir, "settings", "skills")
         _SKILL_MANAGER = SkillManager(skills_dir=skills_dir)
     return _SKILL_MANAGER
 
 
-def _handle_queue_import(item: dict[str, Any]) -> bool:
-    if not DashboardState.processor:
-        return True
-
-    from main import process_existing_files
-
-    processor = DashboardState.processor
-    skill_obj = _get_skill_manager().get_skill(item["skill_id"])
-    allowed_exts = (
-        skill_obj.get("allowed_extensions") if skill_obj else None
-    )
-
-    if DashboardState.file_queue is not None:
-        process_existing_files(
-            processor,
-            DashboardState.file_queue,
-            allowed_extensions=allowed_exts,
-        )
-
-        # Wait until all queued and actively processing files finish
-        while True:
-            with processor.processing_lock:
-                busy_files_count = len(processor.processing_files)
-            queue_count = (
-                DashboardState.file_queue.qsize()
-                if hasattr(DashboardState.file_queue, "qsize")
-                else 0
-            )
-
-            if busy_files_count == 0 and queue_count == 0:
-                break
-
-            time.sleep(0.5)
-    else:
-        import queue
-
-        temp_q: queue.Queue = queue.Queue()
-        process_existing_files(
-            processor,
-            temp_q,
-            allowed_extensions=allowed_exts,
-        )
-        while not temp_q.empty():
-            fp = temp_q.get()
-            if fp:
-                try:
-                    processor.process_and_route_file(fp)
-                except Exception as e:
-                    logger.error(
-                        "[SkillQueueManager] Error processing file %s: %s",
-                        fp,
-                        e,
-                    )
-                finally:
-                    temp_q.task_done()
-
-    return True
-
-
-def _handle_queue_export(item: dict[str, Any]) -> bool:
-    extractor = (
-        DashboardState.processor.llm_extractor
-        if DashboardState.processor
-        else None
-    )
-    executor = SkillExecutor(
-        _get_skill_manager(), vision_extractor=extractor
-    )
-    context = item.get("context", {})
-    folder_name = context.get("folder_name")
-    target_base = (
-        DashboardState.config.target_base_dir
-        if DashboardState.config
-        else "./Cases"
-    )
-
-    if folder_name:
-        folder_path = os.path.abspath(
-            os.path.join(target_base, folder_name)
-        )
-        return executor.execute_skill_for_folder(
-            item["skill_id"], folder_path, context
-        )
-    else:
-        # Batch execution: find and process all pending approved folders
-        pending = executor.find_pending_cases_for_skill(
-            item["skill_id"], target_base
-        )
-        if not pending:
-            logger.info(
-                "[SkillQueueManager] No pending cases for export skill %s",
-                item["skill_id"],
-            )
-            return True
-
-        all_ok = True
-        for c in pending:
-            parsed = _parse_folder_name(c["folder_name"])
-            c_ctx = dict(parsed)
-            c_ctx["folder_name"] = c["folder_name"]
-            c_ctx["folder_path"] = c["folder_path"]
-            person = parsed.get("Person", "") or parsed.get("person", "")
-            if person and "," in person:
-                parts = person.split(",", 1)
-                c_ctx.setdefault("Nachname", parts[0].strip())
-                c_ctx.setdefault("Vorname", parts[1].strip())
-            elif person:
-                c_ctx.setdefault("Nachname", person.strip())
-
-            if not executor.execute_skill_for_folder(
-                item["skill_id"], c["folder_path"], c_ctx
-            ):
-                all_ok = False
-        return all_ok
-
-
-def _get_configured_queue_manager():
-    qm = get_skill_queue_manager(_get_skill_manager())
-    qm.set_handlers(
-        import_handler=_handle_queue_import,
-        export_handler=_handle_queue_export,
-    )
-    return qm
+def _get_configured_queue_manager() -> SkillQueueManager:
+    return get_skill_queue_manager(_get_skill_manager())
 
 
 @skills_api_bp.route("/api/skills", methods=["GET"])
@@ -208,41 +83,30 @@ def run_skill():
     qm = _get_configured_queue_manager()
     item = qm.add_to_queue(skill_id, context)
     qm.start_queue()
-    return jsonify({"status": "queued_and_started", "skill_id": skill_id, "item": item})
+    return jsonify({"status": "queued_and_started", "skill_id": skill_id, "item": item.to_dict()})
 
 
 @skills_api_bp.route("/api/skills/<skill_id>/pending_cases", methods=["GET"])
 def get_skill_pending_cases(skill_id: str):
-    target_base = (
-        DashboardState.config.target_base_dir
-        if DashboardState.config
-        else "./Cases"
-    )
-    extractor = (
-        DashboardState.processor.llm_extractor
-        if DashboardState.processor
-        else None
-    )
-    executor = SkillExecutor(_get_skill_manager(), vision_extractor=extractor)
-    pending = executor.find_pending_cases_for_skill(skill_id, target_base)
+    target_base = DashboardState.config.target_base_dir if DashboardState.config else "./Cases"
+    extractor = DashboardState.processor.llm_extractor if DashboardState.processor else None
+    engine = _get_skill_manager().get_skill_engine(skill_id, vision_extractor=extractor)
+    if isinstance(engine, ExportEngine):
+        pending = engine.find_pending_cases(target_base)
+    else:
+        pending = []
     return jsonify({"skill_id": skill_id, "count": len(pending), "cases": pending})
 
 
 @skills_api_bp.route("/api/skills/<skill_id>/run_batch", methods=["POST"])
 def run_skill_batch(skill_id: str):
-    target_base = (
-        DashboardState.config.target_base_dir
-        if DashboardState.config
-        else "./Cases"
-    )
-    extractor = (
-        DashboardState.processor.llm_extractor
-        if DashboardState.processor
-        else None
-    )
-    executor = SkillExecutor(_get_skill_manager(), vision_extractor=extractor)
-    pending = executor.find_pending_cases_for_skill(skill_id, target_base)
+    target_base = DashboardState.config.target_base_dir if DashboardState.config else "./Cases"
+    extractor = DashboardState.processor.llm_extractor if DashboardState.processor else None
+    engine = _get_skill_manager().get_skill_engine(skill_id, vision_extractor=extractor)
+    if not isinstance(engine, ExportEngine):
+        return jsonify({"status": "error", "message": "Batch case run only supported for export skills"}), 400
 
+    pending = engine.find_pending_cases(target_base)
     if not pending:
         return jsonify({"status": "no_pending_cases", "queued_count": 0, "cases": []})
 
@@ -253,7 +117,7 @@ def run_skill_batch(skill_id: str):
             skill_id,
             {"folder_name": c["folder_name"], "folder_path": c["folder_path"]},
         )
-        queued_items.append(item)
+        queued_items.append(item.to_dict())
     qm.start_queue()
     return jsonify(
         {
@@ -329,7 +193,6 @@ def refine_step():
             refined["locator"] = {"type": "auto", "prompt": target or instruction}
         elif any(k in lower for k in ["prüf", "warten", "verify", "check", "erscheint", "sichtbar", "wenn nicht", "falls nicht", "if not"]):
             refined["action_type"] = "VERIFY_SCREEN"
-            # Split if condition exists
             parts = re.split(r"(?i)\s*(?:wenn nicht|falls nicht|if not)\s*,?\s*", instruction, maxsplit=1)
             target_part = parts[0]
             target = re.sub(r"(?i)^(prüfe ob|warten auf|verify|check if|suche nach|finde)\s*", "", target_part).strip("\"' ")
@@ -369,11 +232,7 @@ def approve_and_run_skill():
     if not skill_id or not folder_name:
         return jsonify({"error": "skill_id and folder_name required"}), 400
 
-    target_base = (
-        DashboardState.config.target_base_dir
-        if DashboardState.config
-        else "./Cases"
-    )
+    target_base = DashboardState.config.target_base_dir if DashboardState.config else "./Cases"
     folder_path = os.path.abspath(os.path.join(target_base, folder_name))
 
     if not _is_within_base(folder_path, target_base) or not os.path.exists(folder_path):
@@ -407,7 +266,7 @@ def approve_and_run_skill():
             "status": "approved_and_started",
             "skill_id": skill_id,
             "folder_name": folder_name,
-            "queue_item": item,
+            "queue_item": item.to_dict(),
         }
     )
 
@@ -477,7 +336,7 @@ def add_to_skill_queue():
 
     qm = _get_configured_queue_manager()
     item = qm.add_to_queue(skill_id, context)
-    return jsonify({"status": "ok", "item": item})
+    return jsonify({"status": "ok", "item": item.to_dict()})
 
 
 @skills_api_bp.route("/api/skills/queue/remove", methods=["POST"])
@@ -516,15 +375,39 @@ def reorder_skill_queue():
 @skills_api_bp.route("/api/skills/queue/start", methods=["POST"])
 def start_skill_queue():
     qm = _get_configured_queue_manager()
-    qm.start_queue()
-    return jsonify({"status": "started", "is_running": True})
+    success = qm.start_queue()
+    return jsonify({"status": "started" if success else "empty_or_failed", "is_running": qm.is_running, "is_paused": qm.is_paused})
+
+
+@skills_api_bp.route("/api/skills/queue/pause", methods=["POST"])
+def pause_skill_queue():
+    qm = _get_configured_queue_manager()
+    success = qm.pause_queue()
+    return jsonify({"status": "paused" if success else "not_running", "is_paused": qm.is_paused, "is_running": qm.is_running})
+
+
+@skills_api_bp.route("/api/skills/queue/resume", methods=["POST"])
+def resume_skill_queue():
+    qm = _get_configured_queue_manager()
+    success = qm.resume_queue()
+    return jsonify({"status": "resumed" if success else "failed", "is_paused": qm.is_paused, "is_running": qm.is_running})
 
 
 @skills_api_bp.route("/api/skills/queue/stop", methods=["POST"])
 def stop_skill_queue():
     qm = _get_configured_queue_manager()
     qm.stop_queue()
-    return jsonify({"status": "stopped", "is_running": False})
+    return jsonify({"status": "stopped", "is_running": False, "is_paused": False})
+
+
+@skills_api_bp.route("/api/skills/queue/auto_repeat", methods=["POST"])
+def set_queue_auto_repeat():
+    data = request.json or {}
+    enabled = bool(data.get("enabled", False))
+    interval_seconds = int(data.get("interval_seconds", 300))
+    qm = _get_configured_queue_manager()
+    res = qm.set_auto_repeat(enabled, interval_seconds=interval_seconds)
+    return jsonify({"status": "ok", **res})
 
 
 # ── Per-Skill Document Types Endpoints ──
@@ -532,25 +415,20 @@ def stop_skill_queue():
 
 @skills_api_bp.route("/api/skills/<import_skill_id>/documents", methods=["GET"])
 def get_skill_document_types(import_skill_id: str):
-    if not DashboardState.config:
-        return jsonify({"error": "Config not available"}), 503
-    doc_types = DashboardState.config.get_document_types_for_skill(import_skill_id)
+    mgr = _get_skill_manager()
+    doc_types = mgr.get_document_types_for_skill(import_skill_id)
     return jsonify({"document_types": doc_types})
 
 
 @skills_api_bp.route("/api/skills/<import_skill_id>/documents", methods=["PUT"])
 def save_skill_document_types(import_skill_id: str):
-    if not DashboardState.config:
-        return jsonify({"error": "Config not available"}), 503
+    mgr = _get_skill_manager()
     data = request.json or {}
     doc_types = data.get("document_types", {})
     if not isinstance(doc_types, dict):
         return jsonify({"error": "document_types dict required"}), 400
 
-    DashboardState.config.save_document_types_for_skill(import_skill_id, doc_types)
-    DashboardState.config.document_types = (
-        DashboardState.config.get_document_types_for_skill(import_skill_id)
-    )
-    return jsonify(
-        {"status": "ok", "document_types": DashboardState.config.document_types}
-    )
+    mgr.save_document_types_for_skill(import_skill_id, doc_types)
+    if DashboardState.config:
+        DashboardState.config.document_types = doc_types
+    return jsonify({"status": "ok", "document_types": doc_types})

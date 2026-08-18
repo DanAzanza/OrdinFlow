@@ -9,5 +9,4 @@ rapidocr-onnxruntime
 pymupdf
 pytest
 pytest-mock
-watchdog
 pynput
