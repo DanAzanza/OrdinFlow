@@ -1,4 +1,3 @@
-import datetime
 import json
 import logging
 import time
@@ -294,33 +293,12 @@ class LLMExtractor:
         target_fields: list[str] | None = None,
     ) -> dict[str, Any]:
         """Extracts data from one or more images based on document type rules."""
-        current_date = datetime.datetime.now(datetime.timezone.utc).date()
-        min_date = current_date - datetime.timedelta(days=365)
-        max_future = current_date + datetime.timedelta(days=31)
-
-        format_kwargs = {
-            "min_date": min_date.strftime("%Y-%m-%d"),
-            "max_future_date": max_future.strftime("%Y-%m-%d"),
-            "today": current_date.strftime("%d.%m.%Y"),
-        }
-
         _, matched_doc_info = self.find_doc_type_config(doc_type)
         raw_extraction_fields = dict(matched_doc_info.get("extraction_fields", {}))
-        extraction_fields = {}
+        extraction_fields: dict[str, str] = {}
         for k, v in raw_extraction_fields.items():
-            if isinstance(v, str):
-                try:
-                    extraction_fields[k] = v.format(**format_kwargs)
-                except (KeyError, ValueError):
-                    extraction_fields[k] = v
-            elif isinstance(v, dict):
-                d_desc = v.get("description", "")
-                if isinstance(d_desc, str):
-                    try:
-                        d_desc = d_desc.format(**format_kwargs)
-                    except (KeyError, ValueError):
-                        pass
-                extraction_fields[k] = d_desc
+            if isinstance(v, dict):
+                extraction_fields[k] = str(v.get("description") or "")
             else:
                 extraction_fields[k] = str(v) if v is not None else ""
 
@@ -456,27 +434,14 @@ class LLMExtractor:
         ):
             return {}
 
-        current_date = datetime.datetime.now(datetime.timezone.utc).date()
-        min_date = current_date - datetime.timedelta(days=365)
-        max_future = current_date + datetime.timedelta(days=31)
-
-        format_kwargs = {
-            "min_date": min_date.strftime("%Y-%m-%d"),
-            "max_future_date": max_future.strftime("%Y-%m-%d"),
-            "today": current_date.strftime("%d.%m.%Y"),
-        }
-
         _, matched_doc_info = self.find_doc_type_config(doc_type)
         raw_extraction_fields = dict(matched_doc_info.get("extraction_fields", {}))
-        extraction_fields = {}
+        extraction_fields: dict[str, str] = {}
         for k, v in raw_extraction_fields.items():
-            if isinstance(v, str):
-                try:
-                    extraction_fields[k] = v.format(**format_kwargs)
-                except (KeyError, ValueError):
-                    extraction_fields[k] = v
+            if isinstance(v, dict):
+                extraction_fields[k] = str(v.get("description") or "")
             else:
-                extraction_fields[k] = v
+                extraction_fields[k] = str(v) if v is not None else ""
 
         # Exclude signature verification from text-only extraction
         if "Signed" in extraction_fields:
