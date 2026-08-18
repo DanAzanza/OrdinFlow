@@ -27,6 +27,7 @@ class ImportEngine(BaseSkill):
         super().__init__(definition)
         self.processor = processor
         self.document_types: dict[str, Any] = dict(definition.get("document_types") or {})
+        self.split_multi_documents: bool = bool(definition.get("split_multi_documents", True))
         raw_exts = definition.get("allowed_extensions")
         self.allowed_extensions = set(raw_exts) if raw_exts else DEFAULT_ALLOWED_EXTENSIONS
 
@@ -103,7 +104,7 @@ class ImportEngine(BaseSkill):
 
                 logger.info("[ImportEngine] Processing single file: %s", filepath)
                 processor.wait_if_paused()
-                processor.process_and_route_file(filepath)
+                processor.process_and_route_file(filepath, split_multi_documents=self.split_multi_documents)
                 gc.collect()
 
                 if reporter:
@@ -178,7 +179,7 @@ class ImportEngine(BaseSkill):
                         )
 
                     try:
-                        processor.process_and_route_file(fp)
+                        processor.process_and_route_file(fp, split_multi_documents=self.split_multi_documents)
                         processed.append(fp)
                     except Exception as e:
                         logger.error("[ImportEngine] Error processing file %s: %s", fname, e, exc_info=True)

@@ -56,7 +56,6 @@ class AppConfig:
     match_folder_by: list[str] = field(default_factory=list)
 
     # Feature toggles
-    split_multi_documents: bool = False
     save_empty_pages: bool = False
 
     def __post_init__(self):

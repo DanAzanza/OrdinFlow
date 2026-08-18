@@ -277,7 +277,9 @@ class DocumentProcessor:
         return final_doc
 
     # --- Main Processing Logic ---
-    def process_and_route_file(self, filepath: str) -> bool:
+    def process_and_route_file(
+        self, filepath: str, split_multi_documents: bool = True
+    ) -> bool:
         """Classifies, extracts, and routes a document."""
         start_time = time.time()
         filename = os.path.basename(filepath)
@@ -375,10 +377,7 @@ class DocumentProcessor:
                     return td, tf
 
                 page_results = extracted.get("page_results", [])
-                if (
-                    bool(getattr(self.config, "split_multi_documents", False))
-                    and len(page_results) > 1
-                ):
+                if split_multi_documents and len(page_results) > 1:
                     success = self.file_service.split_multi_page_pdf(
                         filepath=filepath,
                         page_results=page_results,
