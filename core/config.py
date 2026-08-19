@@ -22,6 +22,12 @@ class AppConfig:
     server_api_key: str = "not-needed"
     llm_model_path: str = "models/Qwen3-VL-8B-Instruct-UD-Q4_K_XL.gguf"
     mmproj_path: str = "models/mmproj-BF16.gguf"
+    n_gpu_layers: int = -1
+    n_batch: int = 2048
+    n_ubatch: int = 512
+    n_ctx: int = 16384
+    flash_attn: bool = True
+    n_threads: int = 0
 
     # Preprocessing settings
     max_dimension: int = 1008
