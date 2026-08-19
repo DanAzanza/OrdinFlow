@@ -8,7 +8,7 @@ def test_evaluate_field_consensus_pure_llm_weights():
     winner, k_score, counts = _evaluate_field_consensus(
         "Nachname",
         [[{"Nachname": "Müller"}], [{"Nachname": "Müller"}]],
-        [1396, "text"],
+        [1260, "text"],
     )
 
     assert winner == "Müller"
@@ -22,7 +22,7 @@ def test_evaluate_field_consensus_disagreement_weights():
     winner, k_score, counts = _evaluate_field_consensus(
         "Nachname",
         [[{"Nachname": "Müller"}], [{"Nachname": "Meier"}]],
-        [1396, "text"],
+        [1260, "text"],
     )
 
     assert counts.get("Müller") == 1.0

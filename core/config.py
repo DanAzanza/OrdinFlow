@@ -24,7 +24,7 @@ class AppConfig:
     mmproj_path: str = "models/mmproj-BF16.gguf"
 
     # Preprocessing settings
-    max_dimension: int = 1280
+    max_dimension: int = 1008
     crop_padding: int = 5
     white_border: int = 8
     contrast_limit: float = 1.0
@@ -34,7 +34,7 @@ class AppConfig:
     crop_edge_threshold: int = 45
     min_contour_area: int = 10
 
-    classify_dimension: int = 1280
+    classify_dimension: int = 1008
     vision_api_timeout: float = 120.0
     vision_api_retries: int = 3
 

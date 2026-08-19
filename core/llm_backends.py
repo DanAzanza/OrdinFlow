@@ -219,7 +219,7 @@ class _LlamaCppBackend(LLMBackend):
                 raw_msgs = payload.get("messages") or []  # type: ignore[assignment]
                 messages = self._convert_messages(raw_msgs)  # type: ignore[arg-type]
 
-                max_tok = getattr(self.config, "max_tokens", 1536) or 1536
+                max_tok = getattr(self.config, "max_tokens", 1512) or 1512
                 json_schema = payload.get("json_schema")
                 options = payload.get("options")
                 options_dict = options if isinstance(options, dict) else {}

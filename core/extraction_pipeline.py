@@ -56,18 +56,23 @@ def _extract_page_spatial_and_plain_text(
                     page = doc[page_idx]
                     page_w = page.rect.width
                     page_h = page.rect.height
-                    blocks = page.get_text("blocks")
-                    for b in blocks:
-                        if len(b) >= 7 and b[6] == 0:  # text block
-                            text = str(b[4]).strip()
-                            if text:
-                                norm_y = round(b[1] / page_h, 2) if page_h > 0 else 0.0
-                                norm_x = round(b[0] / page_w, 2) if page_w > 0 else 0.0
-                                for line in text.split("\n"):
-                                    l_str = line.strip()
-                                    if l_str:
-                                        spatial_lines.append(f"[pos: y={norm_y:.2f}, x={norm_x:.2f}] {l_str}")
-                                        plain_lines.append(l_str)
+                    text_dict = page.get_text("dict")
+                    if isinstance(text_dict, dict):
+                        for b in text_dict.get("blocks", []):
+                            if isinstance(b, dict) and b.get("type") == 0:  # text block
+                                for line in b.get("lines", []):
+                                    if isinstance(line, dict):
+                                        line_bbox = line.get("bbox", (0, 0, 0, 0))
+                                        line_text = "".join(
+                                            span.get("text", "")
+                                            for span in line.get("spans", [])
+                                            if isinstance(span, dict)
+                                        ).strip()
+                                        if line_text:
+                                            norm_y = round(line_bbox[1] / page_h, 2) if page_h > 0 else 0.0
+                                            norm_x = round(line_bbox[0] / page_w, 2) if page_w > 0 else 0.0
+                                            spatial_lines.append(f"[pos: y={norm_y:.2f}, x={norm_x:.2f}] {line_text}")
+                                            plain_lines.append(line_text)
                     total_chars = sum(len(line_item) for line_item in plain_lines)
                     if total_chars >= 30:
                         return "\n".join(spatial_lines), "\n".join(plain_lines)
@@ -157,14 +162,14 @@ def _to_bool_value(val: Any) -> bool:
 
 # ──────────────────────────────────────────────────────────────
 # Empirical weighting (based on log data)
-# Dual-Source Tier 1: 1396px (weight 1.0) + Spatial Text (weight 1.0)
-# Tier 2: 1536px (weight 1.25), Tier 3: 1676px (weight 1.5)
+# Dual-Source Tier 1: 1260px (weight 1.0) + Spatial Text (weight 1.0)
+# Tier 2: 1512px (weight 1.25), Tier 3: 1764px (weight 1.5)
 # ──────────────────────────────────────────────────────────────
 TIER_WEIGHTS: dict[int | str, float] = {
-    1396: 1.0,
+    1260: 1.0,
     "text": 1.0,
-    1536: 1.25,
-    1676: 1.5,
+    1512: 1.25,
+    1764: 1.5,
     0: 1.0,
 }
 KONSENS_THRESHOLD = 0.67
@@ -383,6 +388,7 @@ class ExtractionPipeline:
             "matched_info": matched_info,
             "spatial_text": spatial_text,
             "ocr_text": ocr_text,
+            "pdf_path": pdf_path,
         }
 
     def run_extraction_tier(
@@ -534,7 +540,7 @@ class ExtractionPipeline:
         text_pass_results = self.run_text_extraction_tier(document_pages, "Document", "Spatial OCR-LLM Pass")
 
         # ── Step 2: Vision-LLM Tier 1 ──
-        t1_vision_results = self.run_extraction_tier(document_pages, "Document", 1396, "Vision-LLM Tier 1")
+        t1_vision_results = self.run_extraction_tier(document_pages, "Document", 1260, "Vision-LLM Tier 1")
 
         # ── Evaluate individual field consensus after Tier 1 ──
         all_keys_after_t1 = set()
@@ -567,7 +573,7 @@ class ExtractionPipeline:
                 winner, k_score, counts = _evaluate_field_consensus(
                     field_name,
                     [t1_vision_results, text_pass_results],
-                    [1396, "text"],
+                    [1260, "text"],
                 )
                 w_weight = counts.get(winner, 0.0)
                 confidences[field_name] = k_score
@@ -610,7 +616,7 @@ class ExtractionPipeline:
         t2_page_results = self.run_extraction_tier(
             document_pages,
             "Document",
-            1536,
+            1512,
             "Vision-LLM Tier 2",
             target_fields=t2_target_fields,
         )
@@ -648,7 +654,7 @@ class ExtractionPipeline:
                 winner, k_score, counts = _evaluate_field_consensus(
                     field_name,
                     [t1_vision_results, text_pass_results, t2_page_results],
-                    [1396, "text", 1536],
+                    [1260, "text", 1512],
                 )
                 w_weight = counts.get(winner, 0.0)
                 confidences[field_name] = k_score
@@ -664,7 +670,7 @@ class ExtractionPipeline:
             t3_page_results = self.run_extraction_tier(
                 document_pages,
                 "Document",
-                1676,
+                1764,
                 "Vision-LLM Tier 3 Tiebreaker",
                 target_fields=conflicts,
             )
@@ -678,7 +684,7 @@ class ExtractionPipeline:
                         t2_page_results,
                         t3_page_results,
                     ],
-                    [1396, "text", 1536, 1676],
+                    [1260, "text", 1512, 1764],
                 )
                 confidences[field_name] = k_score
                 if winner and not is_missing_value(winner):

@@ -217,7 +217,7 @@ class FileService:
                             new_doc.insert_pdf(doc, from_page=p_idx - 1, to_page=p_idx - 1)
 
                         target_filepath = deduplicate_path(os.path.join(target_dir, target_filename))
-                        new_doc.save(target_filepath)
+                        new_doc.save(target_filepath, garbage=4, deflate=True, clean=True)
                     logger.info(
                         f"[+] Partial PDF '{os.path.basename(target_filepath)}' (pages {g_pages}) saved successfully."
                     )
@@ -239,7 +239,7 @@ class FileService:
                 with fitz.open() as new_doc:  # type: ignore[assignment]
                     for p_idx in kept_pages:
                         new_doc.insert_pdf(doc, from_page=p_idx - 1, to_page=p_idx - 1)
-                    new_doc.save(dst_path)
+                    new_doc.save(dst_path, garbage=4, deflate=True, clean=True)
             remove_source_with_meta(src_path)
             return True
         except Exception as e:

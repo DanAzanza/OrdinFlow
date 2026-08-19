@@ -40,7 +40,9 @@ def download_file(url: str, dest_path: Path):
 
 def main():
     root_dir = Path(__file__).resolve().parent.parent
-    config_path = root_dir / "config.yaml"
+    config_path = root_dir / "settings" / "config.yaml"
+    if not config_path.exists():
+        config_path = root_dir / "config.yaml"
 
     if config_path.exists():
         with open(config_path, "r", encoding="utf-8") as f:

@@ -283,9 +283,7 @@ def _compute_log_stats(lines: list[str]) -> dict[str, Any]:
         elif " [ERROR] " in line or " [CRITICAL] " in line:
             error_count += 1
 
-        match_completed = re.search(
-            r"completed successfully after ([\d\.]+) seconds", line, re.IGNORECASE
-        )
+        match_completed = re.search(r"completed successfully after ([\d\.]+) seconds", line, re.IGNORECASE)
         if match_completed:
             completed_files += 1
             secs = float(match_completed.group(1))
@@ -293,25 +291,18 @@ def _compute_log_stats(lines: list[str]) -> dict[str, Any]:
             if secs > max_processing_time:
                 max_processing_time = secs
 
-        match_incomplete = re.search(
-            r"incomplete \(([\d\.]+)s\)", line, re.IGNORECASE
-        )
+        match_incomplete = re.search(r"incomplete \(([\d\.]+)s\)", line, re.IGNORECASE)
         if match_incomplete:
             manual_review_files += 1
             secs = float(match_incomplete.group(1))
             total_processing_time += secs
             if secs > max_processing_time:
                 max_processing_time = secs
-        elif (
-            "manual assignment required" in line
-            or "manual review required" in line
-        ):
+        elif "manual assignment required" in line or "manual review required" in line:
             if not match_incomplete:
                 manual_review_files += 1
 
-        match_abort = re.search(
-            r"aborted due to error after ([\d\.]+) seconds", line, re.IGNORECASE
-        )
+        match_abort = re.search(r"aborted due to error after ([\d\.]+) seconds", line, re.IGNORECASE)
         if match_abort:
             aborted_files += 1
             secs = float(match_abort.group(1))
@@ -340,14 +331,11 @@ def _compute_log_stats(lines: list[str]) -> dict[str, Any]:
         ):
             tier1_count += 1
 
-        # Tier 2 (High-Res Verification): Escalation to 1536px for pending fields
-        if (
-            "Starting Vision-LLM Tier 2 for pending fields" in line
-            or "Starting Tier 2" in line
-        ):
+        # Tier 2 (High-Res Verification): Escalation to 1512px for pending fields
+        if "Starting Vision-LLM Tier 2 for pending fields" in line or "Starting Tier 2" in line:
             tier2_count += 1
 
-        # Tier 3 (Tiebreaker Audit): Escalation to 1676px for conflicting fields
+        # Tier 3 (Tiebreaker Audit): Escalation to 1764px for conflicting fields
         if (
             "Starting Vision-LLM Tier 3 Tiebreaker" in line
             or "Disagreement in field(s)" in line
@@ -356,21 +344,9 @@ def _compute_log_stats(lines: list[str]) -> dict[str, Any]:
             tier3_count += 1
 
     total_files = completed_files + manual_review_files + aborted_files
-    success_rate = (
-        f"{((completed_files / total_files) * 100):.1f}"
-        if total_files > 0
-        else "100.0"
-    )
-    avg_time_file = (
-        f"{(total_processing_time / total_files):.1f}"
-        if total_files > 0
-        else "0.0"
-    )
-    avg_time_page = (
-        f"{(total_processing_time / total_pages):.1f}"
-        if total_pages > 0
-        else "0.0"
-    )
+    success_rate = f"{((completed_files / total_files) * 100):.1f}" if total_files > 0 else "100.0"
+    avg_time_file = f"{(total_processing_time / total_files):.1f}" if total_files > 0 else "0.0"
+    avg_time_page = f"{(total_processing_time / total_pages):.1f}" if total_pages > 0 else "0.0"
 
     return {
         "recordsCount": len(lines),

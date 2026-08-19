@@ -2,9 +2,10 @@ import base64
 import io
 import logging
 import os
+from typing import Any
 
 import numpy as np
-from PIL import Image
+from PIL import Image, ImageOps
 
 from core.config import AppConfig
 
@@ -29,9 +30,45 @@ except ImportError:
     cv2 = None  # type: ignore[assignment]
 
 
-def _encode_pil_fallback(pil_image: Image.Image) -> str:
+def _apply_pdf_rotation(img: Image.Image, rotation: int) -> Image.Image:
+    """Rotates a PIL image according to PyMuPDF clockwise page rotation degrees."""
+    rot = rotation % 360
+    if rot == 90:
+        return img.transpose(Image.Transpose.ROTATE_270)
+    if rot == 180:
+        return img.transpose(Image.Transpose.ROTATE_180)
+    if rot == 270:
+        return img.transpose(Image.Transpose.ROTATE_90)
+    return img
+
+
+def _encode_pil_fallback(
+    pil_image: Image.Image,
+    max_dim: int | None = None,
+    white_border: int = 0,
+    upscale: bool = True,
+) -> str:
+    img = pil_image.copy()
+    if img.mode != "RGB":
+        img = img.convert("RGB")
+
+    if white_border > 0:
+        w, h = img.size
+        new_img = Image.new("RGB", (w + 2 * white_border, h + 2 * white_border), (255, 255, 255))
+        new_img.paste(img, (white_border, white_border))
+        img = new_img
+
+    if max_dim is not None and max_dim > 0:
+        w, h = img.size
+        longest_side = max(w, h)
+        if longest_side != max_dim and (longest_side > max_dim or upscale):
+            scale = max_dim / longest_side
+            new_w = max(1, int(round(w * scale)))
+            new_h = max(1, int(round(h * scale)))
+            img = img.resize((new_w, new_h), resample=Image.Resampling.LANCZOS)
+
     buffered = io.BytesIO()
-    pil_image.save(buffered, format="JPEG", quality=_JPEG_QUALITY)
+    img.save(buffered, format="JPEG", quality=_JPEG_QUALITY)
     return base64.b64encode(buffered.getvalue()).decode("utf-8")
 
 
@@ -56,7 +93,7 @@ class ImagePreprocessor:
             img = np.array(pil_image)
             img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
 
-            # --- 2. Auto-Crop (shadow exclusion via contour analysis) ---
+            # --- Auto-Crop (shadow exclusion via contour analysis) ---
             gray_temp = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
             blurred_for_crop = cv2.GaussianBlur(gray_temp, (5, 5), 0)
             inv_crop = cv2.bitwise_not(blurred_for_crop)
@@ -100,12 +137,29 @@ class ImagePreprocessor:
                 pil_image = pil_image.convert("RGB")
             return pil_image.copy()
 
-    def scale_and_encode_image(self, pil_image: Image.Image, max_dim: int) -> str:
-        """Scales a prepared base image, adds a white border, and encodes it as Base64."""
+    def scale_and_encode_image(
+        self,
+        pil_image: Image.Image,
+        max_dim: int,
+        upscale: bool = True,
+    ) -> str:
+        """Scales a prepared base image, adds a white border, and encodes it as Base64.
+
+        If image dimension != max_dim:
+        - Downscales with INTER_AREA for crisp sharpness
+        - Upscales with INTER_LANCZOS4 to provide distinct ViT token grids and prevent voting collapse
+        """
         if not HAS_CV2 or cv2 is None:
-            return _encode_pil_fallback(pil_image)
+            return _encode_pil_fallback(
+                pil_image,
+                max_dim=max_dim,
+                white_border=self.config.white_border,
+                upscale=upscale,
+            )
 
         try:
+            if pil_image.mode != "RGB":
+                pil_image = pil_image.convert("RGB")
             img = np.array(pil_image)
             img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
 
@@ -117,17 +171,66 @@ class ImagePreprocessor:
             # --- Rescaling ---
             img_h, img_w = img.shape[:2]
             longest_side = max(img_h, img_w)
-            if longest_side > max_dim:
+            if max_dim > 0 and longest_side != max_dim:
                 scale = max_dim / longest_side
-                new_w = int(img_w * scale)
-                new_h = int(img_h * scale)
-                img = cv2.resize(img, (new_w, new_h), interpolation=cv2.INTER_CUBIC)
+                new_w = max(1, int(round(img_w * scale)))
+                new_h = max(1, int(round(img_h * scale)))
+                if longest_side > max_dim:
+                    img = cv2.resize(img, (new_w, new_h), interpolation=cv2.INTER_AREA)
+                elif upscale:
+                    img = cv2.resize(img, (new_w, new_h), interpolation=cv2.INTER_LANCZOS4)
 
             _, buffer = cv2.imencode(".jpg", img, [int(cv2.IMWRITE_JPEG_QUALITY), _JPEG_QUALITY])
             return base64.b64encode(buffer.tobytes()).decode("utf-8")
         except Exception:
             logger.exception("[!] Error during scaling and encoding")
-            return _encode_pil_fallback(pil_image)
+            return _encode_pil_fallback(
+                pil_image,
+                max_dim=max_dim,
+                white_border=self.config.white_border,
+                upscale=upscale,
+            )
+
+    def extract_single_page_image(self, page: Any, doc: Any) -> Image.Image | None:
+        """Extracts the raw full-page image from a PDF page if it contains exactly one dominant scan image."""
+        try:
+            image_list = page.get_images(full=True)
+            if len(image_list) == 1:
+                drawings = page.get_drawings() if hasattr(page, "get_drawings") else []
+                # If page has non-trivial drawing paths (e.g. vector tables/lines), let it render as vector/hybrid
+                if len(drawings) > 3:
+                    return None
+
+                # Check coverage: if image is placed on page, verify it covers most of the page (>= 60%)
+                page_w = page.rect.width
+                page_h = page.rect.height
+                page_area = page_w * page_h
+                if page_area > 0 and hasattr(page, "get_image_rects"):
+                    try:
+                        rects = page.get_image_rects(image_list[0][0])
+                        if rects:
+                            img_area = rects[0].width * rects[0].height
+                            if (img_area / page_area) < 0.60:
+                                # Small logo / header image on a digital page -> render full page instead
+                                return None
+                    except Exception:
+                        pass
+
+                xref = image_list[0][0]
+                base_img = doc.extract_image(xref)
+                if base_img and "image" in base_img:
+                    raw_bytes = base_img["image"]
+                    img = Image.open(io.BytesIO(raw_bytes))
+                    if img.mode != "RGB":
+                        img = img.convert("RGB")
+                    rot = getattr(page, "rotation", 0)
+                    if rot != 0:
+                        img = _apply_pdf_rotation(img, rot)
+                    if img.width >= 200 and img.height >= 200:
+                        return img
+        except Exception as ex:
+            logger.debug("Direct image extraction skipped: %s", ex)
+        return None
 
     def create_source_images(
         self,
@@ -135,7 +238,7 @@ class ImagePreprocessor:
         return_raw: bool = False,
     ) -> list[Image.Image] | None:
         """Reads the document and creates prepared base images using the configured contrast settings.
-        Uses PyMuPDF (fitz) for PDFs — no Poppler dependency required.
+        Uses PyMuPDF (fitz) for PDFs — with direct scan extraction for single-scan pages.
         """
         _, ext = os.path.splitext(pdf_path.lower())
 
@@ -147,16 +250,20 @@ class ImagePreprocessor:
                 pil_images: list[Image.Image] = []
                 with fitz.open(pdf_path) as doc:
                     n_pages = len(doc)
-                    # 300 DPI matrix for crisp OCR recognition
-                    mat = fitz.Matrix(300 / 72, 300 / 72)
+                    mat_300 = fitz.Matrix(300 / 72, 300 / 72)
                     for i in range(n_pages):
                         page = doc[i]
-                        pix = page.get_pixmap(matrix=mat, colorspace=fitz.csRGB)
-                        img = Image.frombytes("RGB", (pix.width, pix.height), pix.samples)
-                        pil_images.append(img)
-                        del pix
+                        scan_img = self.extract_single_page_image(page, doc)
+                        if scan_img is not None:
+                            pil_images.append(scan_img)
+                        else:
+                            pix = page.get_pixmap(matrix=mat_300, colorspace=fitz.csRGB)
+                            img = Image.frombytes("RGB", (pix.width, pix.height), pix.samples)
+                            pil_images.append(img)
+                            del pix
             else:
                 with Image.open(pdf_path) as img:
+                    img = ImageOps.exif_transpose(img)
                     pil_images = [img.convert("RGB")]
 
             if return_raw:

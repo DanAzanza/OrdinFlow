@@ -106,7 +106,7 @@ def _slice_or_move_document(
             for p_idx in pages_to_extract:
                 if 1 <= p_idx <= total_pages:
                     new_doc.insert_pdf(pdf_doc, from_page=p_idx - 1, to_page=p_idx - 1)
-            new_doc.save(target_path)
+            new_doc.save(target_path, garbage=4, deflate=True, clean=True)
     else:
         if os.path.abspath(src_path) != os.path.abspath(target_path):
             shutil.move(src_path, target_path)
