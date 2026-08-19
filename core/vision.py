@@ -102,6 +102,20 @@ class LLMExtractor:
         self._backend: LLMBackend = get_backend(config)  # Backend is lazily initialized
         self._doc_types_cache: dict | None = None
 
+    def preload(self) -> None:
+        """Preloads LLM backend weights into memory ahead of time."""
+        try:
+            self._backend.preload()
+        except Exception as e:
+            logger.warning("[!] Backend preload error: %s", e)
+
+    def unload_backend(self) -> None:
+        """Unloads LLM backend weights from memory."""
+        try:
+            self._backend.unload()
+        except Exception as e:
+            logger.warning("[!] Backend unload error: %s", e)
+
     def invalidate_cache(self) -> None:
         """Clears the document types cache after a configuration change."""
         self._doc_types_cache = None

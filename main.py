@@ -189,6 +189,16 @@ def main() -> None:
 
     logger.info("[*] Skill Queue Manager active (Single Source of Execution).")
 
+    # 2. Warm up Vision-LLM in background so first file processes instantly
+    try:
+        threading.Thread(
+            target=processor.extraction_pipeline.llm_extractor.preload,
+            daemon=True,
+            name="ModelWarmupWorker",
+        ).start()
+    except Exception as e:
+        logger.warning("[!] Could not initiate model preload: %s", e)
+
     shutdown_event = DashboardState.shutdown_event
     while not shutdown_event.is_set():
         if shutdown_event.wait(timeout=1.0):
@@ -197,6 +207,11 @@ def main() -> None:
 
     logger.info("[*] Stopping Skill Queue Manager...")
     queue_manager.stop_queue()
+    logger.info("[*] Unloading AI models from memory...")
+    try:
+        processor.extraction_pipeline.llm_extractor.unload_backend()
+    except Exception as e:
+        logger.warning("[!] Error unloading models during shutdown: %s", e)
     processor.log_stats()
     logger.info("[*] Service terminated successfully.")
     time.sleep(0.5)
