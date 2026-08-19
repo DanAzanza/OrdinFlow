@@ -37,7 +37,7 @@ class LLMBackend(ABC):
 
 # Global module caching for the Llama instance
 _GLOBAL_LLM_INSTANCE: object = None
-_GLOBAL_LLM_KEY: tuple[str, str, int, int] | None = None
+_GLOBAL_LLM_KEY: tuple[Any, ...] | None = None
 _LLM_LOCK = threading.Lock()
 
 
@@ -86,13 +86,20 @@ class _LlamaCppBackend(LLMBackend):
                 if candidates:
                     mmproj_raw = candidates[0]
 
-        n_gpu_layers = getattr(config, "n_gpu_layers", 32)
-        if n_gpu_layers is None or n_gpu_layers < 0:
-            n_gpu_layers = 32
+        n_gpu_layers = getattr(config, "n_gpu_layers", -1)
+        if n_gpu_layers is None:
+            n_gpu_layers = -1
 
         n_ctx = getattr(config, "n_ctx", 16384) or 16384
+        n_batch = getattr(config, "n_batch", 2048) or 2048
+        n_ubatch = getattr(config, "n_ubatch", 512) or 512
+        flash_attn = bool(getattr(config, "flash_attn", True))
 
-        cache_key = (model_path, mmproj_raw, n_gpu_layers, n_ctx)
+        n_threads = getattr(config, "n_threads", 0)
+        if not n_threads or n_threads <= 0:
+            n_threads = max(4, (os.cpu_count() or 4) - 2)
+
+        cache_key = (model_path, mmproj_raw, n_gpu_layers, n_ctx, n_batch, n_ubatch, flash_attn)
 
         # Check if global instance is already loaded
         if _GLOBAL_LLM_INSTANCE is not None and _GLOBAL_LLM_KEY == cache_key:
@@ -154,7 +161,13 @@ class _LlamaCppBackend(LLMBackend):
                 raise FileNotFoundError(f"Model not found: {model_path}")
 
             logger.info("[*] Loading local VL model from '%s' ...", os.path.basename(model_path))
-            logger.info("[*] GPU acceleration enabled: %d Layer(s) on GPU", n_gpu_layers)
+            logger.info(
+                "[*] GPU acceleration: %s Layer(s) on GPU, n_batch=%d, n_ubatch=%d, flash_attn=%s",
+                "ALL" if n_gpu_layers < 0 else str(n_gpu_layers),
+                n_batch,
+                n_ubatch,
+                flash_attn,
+            )
 
             chat_handler = None
             if mmproj_raw and os.path.isfile(mmproj_raw):
@@ -166,14 +179,25 @@ class _LlamaCppBackend(LLMBackend):
             else:
                 logger.warning("[-] No valid mmproj path found. Model loading without vision support.")
 
-            kwargs = {
+            kwargs: dict[str, Any] = {
                 "model_path": model_path,
                 "n_ctx": n_ctx,
+                "n_batch": n_batch,
+                "n_ubatch": n_ubatch,
                 "chat_handler": chat_handler,
                 "verbose": False,
                 "n_gpu_layers": n_gpu_layers,
+                "n_threads": n_threads,
+                "flash_attn": flash_attn,
             }
-            self._llm = Llama(**kwargs)  # type: ignore[assignment]
+            try:
+                self._llm = Llama(**kwargs)  # type: ignore[assignment]
+            except TypeError:
+                # Fallback if older llama-cpp wheel doesn't support flash_attn / n_ubatch
+                kwargs.pop("flash_attn", None)
+                kwargs.pop("n_ubatch", None)
+                self._llm = Llama(**kwargs)  # type: ignore[assignment]
+
             _GLOBAL_LLM_INSTANCE = self._llm
             _GLOBAL_LLM_KEY = cache_key
             logger.info("[+] Local VL model loaded successfully and cached in memory.")
