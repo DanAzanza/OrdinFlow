@@ -3141,6 +3141,51 @@ color: #fff;
     padding: 14px 16px;
     margin-bottom: 10px;
     border-radius: 10px;
+    transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+    position: relative;
+}
+
+.step-card-box:hover {
+    background: rgba(13, 18, 28, 0.85);
+    border-color: rgba(255, 255, 255, 0.14);
+}
+
+.step-card-box.collapsed {
+    padding: 9px 14px;
+    margin-bottom: 6px;
+}
+
+/* Action Themes & Left Accent Borders */
+.step-theme-focus {
+    border-left: 3.5px solid #818cf8;
+}
+
+.step-theme-click {
+    border-left: 3.5px solid #38bdf8;
+}
+
+.step-theme-dblclick {
+    border-left: 3.5px solid #0284c7;
+}
+
+.step-theme-type {
+    border-left: 3.5px solid #34d399;
+}
+
+.step-theme-filepath {
+    border-left: 3.5px solid #10b981;
+}
+
+.step-theme-verify {
+    border-left: 3.5px solid #fbbf24;
+}
+
+.step-theme-skill {
+    border-left: 3.5px solid #f472b6;
+}
+
+.step-theme-default {
+    border-left: 3.5px solid #94a3b8;
 }
 
 .step-card-header {
@@ -3150,12 +3195,58 @@ color: #fff;
     border-bottom: 1px solid rgba(255, 255, 255, 0.06);
     padding-bottom: 10px;
     margin-bottom: 12px;
+    cursor: pointer;
+    user-select: none;
+    border-radius: 6px;
+    transition: background 0.15s ease;
+}
+
+.step-card-header:hover {
+    background: rgba(255, 255, 255, 0.02);
+}
+
+.step-card-box.collapsed .step-card-header {
+    border-bottom: none;
+    margin-bottom: 0;
+    padding-bottom: 0;
+}
+
+.step-header-left {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+}
+
+.step-chevron {
+    font-size: 0.68rem;
+    color: var(--text-dim);
+    transition: transform 0.2s ease;
+    user-select: none;
+    flex-shrink: 0;
+    width: 14px;
+    text-align: center;
+}
+
+.step-summary-text {
+    font-size: 0.8rem;
+    color: #94a3b8;
+    font-weight: 500;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    flex: 1;
+    min-width: 0;
+    margin-left: 4px;
 }
 
 .step-card-num {
     font-size: 0.82rem;
     font-weight: 700;
     color: var(--text-dim);
+    flex-shrink: 0;
 }
 
 .step-card-id {
@@ -3167,7 +3258,8 @@ color: #fff;
 .step-card-tools {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: 4px;
+    flex-shrink: 0;
 }
 
 .step-empty-box {
@@ -3179,6 +3271,75 @@ color: #fff;
     border-radius: 10px;
     font-style: italic;
     font-size: 0.85rem;
+}
+
+.workflow-stats-badge {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #a5b4fc;
+    background: rgba(99, 102, 241, 0.12);
+    border: 1px solid rgba(99, 102, 241, 0.3);
+    padding: 3px 10px;
+    border-radius: 12px;
+}
+
+/* Categorized Variable Chips */
+.variable-chip-group {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-bottom: 6px;
+}
+
+.variable-group-label {
+    font-size: 0.72rem;
+    font-weight: 700;
+    color: var(--text-dim);
+    min-width: 115px;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    flex-shrink: 0;
+}
+
+.variable-chip-list {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    align-items: center;
+}
+
+.variable-badge {
+    padding: 3px 8px;
+    font-size: 0.75rem;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    font-family: var(--font-mono, monospace);
+    font-weight: 600;
+}
+
+.variable-badge:hover {
+    transform: translateY(-1px);
+    filter: brightness(1.25);
+}
+
+.variable-badge-case {
+    background: rgba(56, 189, 248, 0.12);
+    border: 1px solid rgba(56, 189, 248, 0.35);
+    color: #7dd3fc;
+}
+
+.variable-badge-extracted {
+    background: rgba(52, 211, 153, 0.12);
+    border: 1px solid rgba(52, 211, 153, 0.35);
+    color: #6ee7b7;
+}
+
+.variable-badge-system {
+    background: rgba(167, 139, 250, 0.12);
+    border: 1px solid rgba(167, 139, 250, 0.35);
+    color: #c4b5fd;
 }
 
 .step-type-row {
@@ -3290,6 +3451,22 @@ color: #fff;
 }
 
 .badge-action-click {
+    background: rgba(14, 165, 233, 0.2);
+    color: #38bdf8;
+    border: 1px solid rgba(14, 165, 233, 0.4);
+    font-weight: 700;
+    font-size: 0.72rem;
+}
+
+.badge-action-dblclick {
+    background: rgba(2, 132, 199, 0.25);
+    color: #7dd3fc;
+    border: 1px solid rgba(2, 132, 199, 0.45);
+    font-weight: 700;
+    font-size: 0.72rem;
+}
+
+.badge-action-type {
     background: rgba(16, 185, 129, 0.2);
     color: #34d399;
     border: 1px solid rgba(16, 185, 129, 0.4);
@@ -3297,15 +3474,15 @@ color: #fff;
     font-size: 0.72rem;
 }
 
-.badge-action-dblclick {
-    background: rgba(16, 185, 129, 0.3);
+.badge-action-filepath {
+    background: rgba(16, 185, 129, 0.25);
     color: #6ee7b7;
-    border: 1px solid rgba(16, 185, 129, 0.5);
+    border: 1px solid rgba(16, 185, 129, 0.45);
     font-weight: 700;
     font-size: 0.72rem;
 }
 
-.badge-action-type {
+.badge-action-verify {
     background: rgba(245, 158, 11, 0.2);
     color: #fbbf24;
     border: 1px solid rgba(245, 158, 11, 0.4);
@@ -3313,26 +3490,10 @@ color: #fff;
     font-size: 0.72rem;
 }
 
-.badge-action-filepath {
+.badge-action-skill {
     background: rgba(236, 72, 153, 0.2);
     color: #f472b6;
     border: 1px solid rgba(236, 72, 153, 0.4);
-    font-weight: 700;
-    font-size: 0.72rem;
-}
-
-.badge-action-verify {
-    background: rgba(168, 85, 247, 0.2);
-    color: #c084fc;
-    border: 1px solid rgba(168, 85, 247, 0.4);
-    font-weight: 700;
-    font-size: 0.72rem;
-}
-
-.badge-action-skill {
-    background: rgba(14, 165, 233, 0.2);
-    color: #38bdf8;
-    border: 1px solid rgba(14, 165, 233, 0.4);
     font-weight: 700;
     font-size: 0.72rem;
 }
