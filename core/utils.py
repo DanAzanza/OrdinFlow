@@ -289,6 +289,74 @@ def deduplicate_path(target_filepath: str) -> str:
     return target_filepath
 
 
+def send_to_trash(path: str) -> bool:
+    """Moves a file or directory to the OS recycle bin (Windows Recycle Bin / trash).
+
+    Returns True if successfully trashed or False if path does not exist or failed.
+    """
+    if not os.path.exists(path):
+        return False
+
+    if os.name == "nt":
+        import ctypes
+        from ctypes import wintypes
+
+        class SHFILEOPSTRUCTW(ctypes.Structure):
+            _fields_ = [
+                ("hwnd", wintypes.HWND),
+                ("wFunc", wintypes.UINT),
+                ("pFrom", wintypes.LPCWSTR),
+                ("pTo", wintypes.LPCWSTR),
+                ("fFlags", wintypes.WORD),
+                ("fAnyOperationsAborted", wintypes.BOOL),
+                ("hNameMappings", wintypes.LPVOID),
+                ("lpszProgressTitle", wintypes.LPCWSTR),
+            ]
+
+        fo_delete = 0x0003
+        fof_allowundo = 0x0040
+        fof_noconfirmation = 0x0010
+        fof_silent = 0x0004
+        fof_noerrorui = 0x0400
+
+        abs_path = os.path.abspath(path)
+        p_from = abs_path + "\0\0"
+        fileop = SHFILEOPSTRUCTW()
+        fileop.hwnd = None
+        fileop.wFunc = fo_delete
+        fileop.pFrom = p_from
+        fileop.pTo = None
+        fileop.fFlags = fof_allowundo | fof_noconfirmation | fof_silent | fof_noerrorui
+        res = ctypes.windll.shell32.SHFileOperationW(ctypes.byref(fileop))
+        return res == 0
+    else:
+        try:
+            import send2trash
+
+            send2trash.send2trash(path)
+            return True
+        except ImportError:
+            if os.path.isdir(path):
+                import shutil
+
+                shutil.rmtree(path)
+            else:
+                os.remove(path)
+            return True
+
+
+def trash_source_with_meta(filepath: str) -> None:
+    """Moves the source file and its associated .meta sidecar file to the Recycle Bin."""
+    try:
+        if os.path.exists(filepath):
+            send_to_trash(filepath)
+        meta_path = filepath + ".meta"
+        if os.path.exists(meta_path):
+            send_to_trash(meta_path)
+    except Exception as e:
+        logger.warning(f"[!] Error moving source file to trash '{filepath}': {e}")
+
+
 def remove_source_with_meta(filepath: str) -> None:
     """Deletes the source file and its associated .meta sidecar file."""
     try:
@@ -304,3 +372,4 @@ def remove_source_with_meta(filepath: str) -> None:
 # Backward-compatible aliases
 _deduplicate_path = deduplicate_path
 _remove_source_with_meta = remove_source_with_meta
+_send_to_trash = send_to_trash

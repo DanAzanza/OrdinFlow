@@ -1,5 +1,3 @@
-if (!state.selectedInbox) state.selectedInbox = new Set();
-
 async function fetchInbox() {
 	try {
 		state.inbox = await api("/api/inbox");
@@ -34,30 +32,6 @@ function togglePruefenFilter() {
 	const btn = document.getElementById("filterPruefen");
 	btn.classList.toggle("btn-warning", state.pruefenOnly);
 	renderInbox();
-}
-
-function updateBatchBar() {
-	const bar = document.getElementById("batchActionBar");
-	const countLabel = document.getElementById("batchSelectCount");
-	const count = state.selectedInbox.size;
-	if (bar && countLabel) {
-		if (count > 0) {
-			bar.style.display = "flex";
-			countLabel.textContent = `${count} selected`;
-		} else {
-			bar.style.display = "none";
-		}
-	}
-}
-
-function toggleSelectAllInbox(checked) {
-	if (checked) {
-		state.inbox.forEach((f) => state.selectedInbox.add(f.path));
-	} else {
-		state.selectedInbox.clear();
-	}
-	renderInbox();
-	updateBatchBar();
 }
 
 let inboxThumbObserver = null;
@@ -135,34 +109,16 @@ function initInboxDelegation(list) {
 			return;
 		}
 	});
-
-	list.addEventListener("change", (e) => {
-		const chk = e.target.closest("input[data-selectfile]");
-		if (chk) {
-			e.stopPropagation();
-			const path = decodeURIComponent(chk.dataset.selectfile);
-			if (chk.checked) {
-				state.selectedInbox.add(path);
-			} else {
-				state.selectedInbox.delete(path);
-			}
-			updateBatchBar();
-		}
-	});
 }
 
 function renderFileCardHtml(f) {
 	const hasPreview = !!f.preview_url;
-	const isChecked = state.selectedInbox.has(f.path);
 
 	// Check if filename has all information for auto assign
 	const parts = splitByDelimiter(f.name.split(".")[0]);
 	const hasAllInfo = parts.length === 4;
 
 	return `<div class="file-card ${f.is_pruefen ? "pruefen" : ""}">
-      <div class="inbox-card-checkbox-wrap" onclick="event.stopPropagation();">
-        <input type="checkbox" class="file-select-checkbox inbox-select-checkbox" data-selectfile="${encodeURIComponent(f.path)}" ${isChecked ? "checked" : ""}>
-      </div>
       <div class="preview clickable-preview" data-inspect="${encodeURIComponent(f.path)}">
         ${
 					hasPreview
@@ -270,12 +226,6 @@ function renderInbox() {
 		data.map((f) => `${f.path}:${f.is_pruefen}:${f.grund || ""}:${f.size}`).join("|");
 
 	if (currentHash === lastInboxRenderHash) {
-		// Sync checkboxes only without DOM rebuild
-		list.querySelectorAll("input[data-selectfile]").forEach((chk) => {
-			const path = decodeURIComponent(chk.dataset.selectfile);
-			chk.checked = state.selectedInbox.has(path);
-		});
-		updateBatchBar();
 		return;
 	}
 
@@ -290,7 +240,6 @@ function renderInbox() {
 	}
 	list.innerHTML = html;
 
-	updateBatchBar();
 	setupInboxThumbObserver(list);
 	setupSentinelObserver();
 }
@@ -321,10 +270,6 @@ async function retryFile(filename) {
 		toast("Error: " + e.message, "error");
 	}
 }
-
-/* ═══════════════════════════════════════════════════════════
-   DELETE WITH CONFIRM
-   ═══════════════════════════════════════════════════════════ */
 
 /* ═══════════════════════════════════════════════════════════
    MANUAL ASSIGNMENT & FILE EDITING
@@ -407,74 +352,6 @@ function openAssign(type, folder, filename) {
 function closeAssign() {
 	document.getElementById("assignModal").classList.remove("show");
 	state.assignFile = null;
-}
-
-/* ═══════════════════════════════════════════════════════════
-   BATCH INBOX OPERATIONS
-   ═══════════════════════════════════════════════════════════ */
-
-async function batchAutoAssignInbox() {
-	const files = Array.from(state.selectedInbox);
-	if (files.length === 0) return;
-
-	let successCount = 0;
-	for (const filename of files) {
-		try {
-			const safePath = filename.split("/").map(encodeURIComponent).join("/");
-			await api("/api/inbox/" + safePath + "/auto_assign", {
-				method: "POST",
-			});
-			successCount++;
-		} catch (e) {
-			console.error("Batch assign error for " + filename, e);
-		}
-	}
-	toast(`${successCount} of ${files.length} file(s) assigned successfully.`);
-	state.selectedInbox.clear();
-	AppEvents.emit("inbox:refresh");
-	AppEvents.emit("cases:refresh");
-}
-
-async function batchDeleteInbox() {
-	const files = Array.from(state.selectedInbox);
-	if (files.length === 0) return;
-	if (!confirm(`Do you really want to delete ${files.length} file(s)?`))
-		return;
-
-	let deleteCount = 0;
-	for (const filename of files) {
-		try {
-			const safePath = filename.split("/").map(encodeURIComponent).join("/");
-			await api("/api/inbox/" + safePath, { method: "DELETE" });
-			deleteCount++;
-		} catch (e) {
-			console.error("Batch delete error for " + filename, e);
-		}
-	}
-	toast(`${deleteCount} file(s) deleted.`);
-	state.selectedInbox.clear();
-	AppEvents.emit("inbox:refresh");
-}
-
-async function batchReprocessInbox() {
-	const files = Array.from(state.selectedInbox);
-	if (files.length === 0) return;
-
-	let successCount = 0;
-	for (const filename of files) {
-		try {
-			const safePath = filename.split("/").map(encodeURIComponent).join("/");
-			await api("/api/inbox/" + safePath + "/retry", {
-				method: "POST",
-			});
-			successCount++;
-		} catch (e) {
-			console.error("Batch retry error for " + filename, e);
-		}
-	}
-	toast(`${successCount} of ${files.length} file(s) queued for reprocessing.`);
-	state.selectedInbox.clear();
-	AppEvents.emit("inbox:refresh");
 }
 
 // Side drawer & Split Inspector functions are modularized in inbox_drawer.js

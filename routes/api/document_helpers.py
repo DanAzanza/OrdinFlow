@@ -19,7 +19,7 @@ from core.routing import (
     render_filename,
     render_folder_name,
 )
-from core.utils import is_missing_value
+from core.utils import is_missing_value, send_to_trash
 from routes.state import DashboardState
 
 logger = logging.getLogger(__name__)
@@ -39,12 +39,15 @@ def _is_within_base(path: str, base_dir: str) -> bool:
     return os.path.abspath(path).startswith(os.path.abspath(base_dir))
 
 
-def _remove_meta_sidecar(filepath: str) -> None:
-    """Deletes the .meta sidecar file if present."""
+def _remove_meta_sidecar(filepath: str, use_trash: bool = True) -> None:
+    """Deletes or trashes the .meta sidecar file if present."""
     meta_path = filepath + ".meta"
     if os.path.exists(meta_path):
         try:
-            os.remove(meta_path)
+            if use_trash:
+                send_to_trash(meta_path)
+            else:
+                os.remove(meta_path)
         except OSError as e:
             logger.debug("[DocumentHelpers] Could not remove sidecar %s: %s", meta_path, e)
 
