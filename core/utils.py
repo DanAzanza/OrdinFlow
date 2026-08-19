@@ -80,6 +80,8 @@ class MemoryLogHandler(logging.Handler):
     def clear(self) -> None:
         with self._lock:
             self.records.clear()
+            self.seq_id = 0
+            self._initialized_from_file = True
 
 
 memory_log_handler = MemoryLogHandler()

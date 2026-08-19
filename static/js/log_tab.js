@@ -358,8 +358,14 @@ function toggleAutoScroll() {
 async function clearLog() {
 	try {
 		await api("/api/log/clear", { method: "POST" });
-	} catch (_) {}
-	state.logRecords = [];
-	state.lastLogId = 0;
-	renderLogLines();
+		state.logRecords = [];
+		state.lastLogId = 0;
+		renderLogLines();
+		toast("Log geleert.");
+	} catch (e) {
+		state.logRecords = [];
+		state.lastLogId = 0;
+		renderLogLines();
+		toast("Fehler beim Leeren des Logs auf dem Server: " + e.message, "error");
+	}
 }

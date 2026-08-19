@@ -204,13 +204,28 @@ def api_get_logs():
 @system_api_bp.route("/api/log/clear", methods=["POST"])
 def api_clear_logs():
     memory_log_handler.clear()
-    log_path = "main.log" if os.path.exists("main.log") else "document_router.log"
-    if os.path.exists(log_path):
-        try:
-            with open(log_path, "w", encoding="utf-8") as f:
-                f.truncate(0)
-        except OSError:
-            pass
+
+    # Safely truncate active FileHandlers without file-lock collisions
+    root = logging.getLogger()
+    for handler in root.handlers:
+        if isinstance(handler, logging.FileHandler):
+            handler.acquire()
+            try:
+                if handler.stream and not getattr(handler.stream, "closed", False):
+                    handler.stream.seek(0)
+                    handler.stream.truncate(0)
+                    handler.flush()
+            finally:
+                handler.release()
+
+    for log_name in ["main.log", "document_router.log", "crash.log"]:
+        if os.path.exists(log_name):
+            try:
+                with open(log_name, "w", encoding="utf-8") as f:
+                    f.truncate(0)
+            except OSError:
+                pass
+
     return jsonify({"status": "cleared"})
 
 
