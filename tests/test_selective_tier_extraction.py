@@ -51,7 +51,7 @@ def test_run_extraction_tier_skips_pages_without_matching_target_fields(mock_pre
     results = pipeline.run_extraction_tier(
         group_pages,
         doc_type="Document",
-        dimension=1512,
+        dimension=config.tier2_dimension,
         label="Vision-LLM Tier 2",
         target_fields=["Signed"],
     )
@@ -99,7 +99,7 @@ def test_run_extraction_tier_skips_page_when_no_signature_needed(mock_preprocess
     results = pipeline.run_extraction_tier(
         group_pages,
         doc_type="Document",
-        dimension=1512,
+        dimension=config.tier2_dimension,
         label="Vision-LLM Tier 2",
         target_fields=["Geburtsdatum"],
     )

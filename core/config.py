@@ -35,6 +35,9 @@ class AppConfig:
     min_contour_area: int = 10
 
     classify_dimension: int = 1008
+    tier1_dimension: int = 1260
+    tier2_dimension: int = 1512
+    tier3_dimension: int = 1764
     vision_api_timeout: float = 120.0
     vision_api_retries: int = 3
 

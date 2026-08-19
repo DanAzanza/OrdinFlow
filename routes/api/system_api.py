@@ -331,11 +331,11 @@ def _compute_log_stats(lines: list[str]) -> dict[str, Any]:
         ):
             tier1_count += 1
 
-        # Tier 2 (High-Res Verification): Escalation to 1512px for pending fields
+        # Tier 2 (High-Res Verification): Escalation for pending fields
         if "Starting Vision-LLM Tier 2 for pending fields" in line or "Starting Tier 2" in line:
             tier2_count += 1
 
-        # Tier 3 (Tiebreaker Audit): Escalation to 1764px for conflicting fields
+        # Tier 3 (Tiebreaker Audit): Escalation for conflicting fields
         if (
             "Starting Vision-LLM Tier 3 Tiebreaker" in line
             or "Disagreement in field(s)" in line

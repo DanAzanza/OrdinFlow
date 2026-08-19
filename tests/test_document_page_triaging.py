@@ -45,13 +45,13 @@ def test_config():
 
 
 def test_scale_and_encode_image_upscales_low_res_image_with_lanczos(test_config):
-    """Verifies that low-res inputs (< 1260px) are actively upscaled to different tier sizes."""
+    """Verifies that low-res inputs are actively upscaled to different tier sizes."""
     preprocessor = ImagePreprocessor(test_config)
     low_res_img = Image.new("RGB", (600, 800), color="blue")
 
-    b64_t1 = preprocessor.scale_and_encode_image(low_res_img, max_dim=1260)
-    b64_t2 = preprocessor.scale_and_encode_image(low_res_img, max_dim=1512)
-    b64_t3 = preprocessor.scale_and_encode_image(low_res_img, max_dim=1764)
+    b64_t1 = preprocessor.scale_and_encode_image(low_res_img, max_dim=test_config.tier1_dimension)
+    b64_t2 = preprocessor.scale_and_encode_image(low_res_img, max_dim=test_config.tier2_dimension)
+    b64_t3 = preprocessor.scale_and_encode_image(low_res_img, max_dim=test_config.tier3_dimension)
 
     # Decode and check dimensions
     img_t1 = Image.open(io.BytesIO(base64.b64decode(b64_t1)))
@@ -59,9 +59,9 @@ def test_scale_and_encode_image_upscales_low_res_image_with_lanczos(test_config)
     img_t3 = Image.open(io.BytesIO(base64.b64decode(b64_t3)))
 
     # Longest dimension should match target dimension exactly
-    assert max(img_t1.size) == 1260
-    assert max(img_t2.size) == 1512
-    assert max(img_t3.size) == 1764
+    assert max(img_t1.size) == test_config.tier1_dimension
+    assert max(img_t2.size) == test_config.tier2_dimension
+    assert max(img_t3.size) == test_config.tier3_dimension
 
     # Ensure the three tiers produce distinct base64 payloads to avoid voting collapse
     assert b64_t1 != b64_t2
@@ -69,23 +69,23 @@ def test_scale_and_encode_image_upscales_low_res_image_with_lanczos(test_config)
 
 
 def test_scale_and_encode_image_downscales_large_image(test_config):
-    """Verifies that large 300 DPI images (> 2000px) are cleanly downscaled."""
+    """Verifies that large 300 DPI images are cleanly downscaled."""
     preprocessor = ImagePreprocessor(test_config)
     large_img = Image.new("RGB", (2480, 3508), color="white")
 
-    b64_img = preprocessor.scale_and_encode_image(large_img, max_dim=1260)
+    b64_img = preprocessor.scale_and_encode_image(large_img, max_dim=test_config.tier1_dimension)
     img_result = Image.open(io.BytesIO(base64.b64decode(b64_img)))
 
-    assert max(img_result.size) == 1260
+    assert max(img_result.size) == test_config.tier1_dimension
 
 
-def test_encode_pil_fallback_upscales_and_adds_border():
+def test_encode_pil_fallback_upscales_and_adds_border(test_config):
     """Verifies Pillow fallback handles upscaling, downscaling, and white border correctly."""
     small_img = Image.new("RGB", (400, 300), color="red")
-    b64_encoded = _encode_pil_fallback(small_img, max_dim=1260, white_border=15, upscale=True)
+    b64_encoded = _encode_pil_fallback(small_img, max_dim=test_config.tier1_dimension, white_border=15, upscale=True)
 
     img_result = Image.open(io.BytesIO(base64.b64decode(b64_encoded)))
-    assert max(img_result.size) == 1260
+    assert max(img_result.size) == test_config.tier1_dimension
 
 
 def test_apply_pdf_rotation():

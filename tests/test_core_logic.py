@@ -623,7 +623,7 @@ def test_boolean_field_voting_consensus():
     from core.extraction_pipeline import _evaluate_field_consensus
 
     winner, k_score, counts = _evaluate_field_consensus(
-        "Signed", [[{"Signed": True}], [{"Signed": False}], [{"Signed": False}]], [1260, 1512, 1764]
+        "Signed", [[{"Signed": True}], [{"Signed": False}], [{"Signed": False}]], ["tier1", "tier2", "tier3"]
     )
     assert winner is False
     assert isinstance(winner, bool)
@@ -639,7 +639,7 @@ def test_ocr_validation_dates_and_phrases():
     winner_d, k_score_d, counts_d = _evaluate_field_consensus(
         "Datum",
         [[{"Datum": "15.03.2026"}], [{"Datum": "15.03.2026"}]],
-        [1260, "text"],
+        ["tier1", "text"],
     )
     assert winner_d == "15.03.2026"
     assert counts_d.get("15.03.2026") == 2.0
@@ -649,7 +649,7 @@ def test_ocr_validation_dates_and_phrases():
     winner_n, k_score_n, counts_n = _evaluate_field_consensus(
         "Nachname",
         [[{"Nachname": "Max Mustermann"}], [{"Nachname": "Max Mustermann"}]],
-        [1260, "text"],
+        ["tier1", "text"],
     )
     assert winner_n == "Max Mustermann"
     assert counts_n.get("Max Mustermann") == 2.0
@@ -726,7 +726,7 @@ def test_stage2_target_fields_only():
     recorded_target_fields = []
 
     def mock_run_tier(group_pages, doc_type, dimension, label, target_fields=None):
-        if dimension in (1512, 1750):  # Stufe 2
+        if dimension == config.tier2_dimension:  # Stufe 2
             recorded_target_fields.append(target_fields)
             return [{"Geburtsdatum": "15.03.1990"}]
         return [{"Vorname": "Max", "Nachname": "Mustermann", "Geburtsdatum": "----"}]

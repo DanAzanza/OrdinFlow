@@ -161,13 +161,16 @@ def _to_bool_value(val: Any) -> bool:
 
 
 # ──────────────────────────────────────────────────────────────
-# Empirical weighting (based on log data)
-# Dual-Source Tier 1: 1260px (weight 1.0) + Spatial Text (weight 1.0)
-# Tier 2: 1512px (weight 1.25), Tier 3: 1764px (weight 1.5)
+# Empirical weighting for multi-tier extraction
+# Dual-Source Tier 1 (weight 1.0) + Spatial Text (weight 1.0)
+# Tier 2 (weight 1.25), Tier 3 (weight 1.5)
 # ──────────────────────────────────────────────────────────────
 TIER_WEIGHTS: dict[int | str, float] = {
-    1260: 1.0,
+    "tier1": 1.0,
     "text": 1.0,
+    "tier2": 1.25,
+    "tier3": 1.5,
+    1260: 1.0,
     1512: 1.25,
     1764: 1.5,
     0: 1.0,
@@ -403,7 +406,7 @@ class ExtractionPipeline:
 
         Optionally queries only specific conflict fields via target_fields.
         """
-        logging.info(f"[*] Starting {label} ({dimension}px)...")
+        logging.info(f"[*] Starting {label}...")
         tier_page_results = []
         for p in group_pages:
             p_num = p.get("page_num", 1)
@@ -536,11 +539,15 @@ class ExtractionPipeline:
                 "_confidence": {},
             }
 
+        t1_dim = getattr(self.config, "tier1_dimension", 1260)
+        t2_dim = getattr(self.config, "tier2_dimension", 1512)
+        t3_dim = getattr(self.config, "tier3_dimension", 1764)
+
         # ── Step 1: Spatial OCR-LLM Pass (Layout-Aware Text) ──
         text_pass_results = self.run_text_extraction_tier(document_pages, "Document", "Spatial OCR-LLM Pass")
 
         # ── Step 2: Vision-LLM Tier 1 ──
-        t1_vision_results = self.run_extraction_tier(document_pages, "Document", 1260, "Vision-LLM Tier 1")
+        t1_vision_results = self.run_extraction_tier(document_pages, "Document", t1_dim, "Vision-LLM Tier 1")
 
         # ── Evaluate individual field consensus after Tier 1 ──
         all_keys_after_t1 = set()
@@ -573,7 +580,7 @@ class ExtractionPipeline:
                 winner, k_score, counts = _evaluate_field_consensus(
                     field_name,
                     [t1_vision_results, text_pass_results],
-                    [1260, "text"],
+                    [t1_dim, "text"],
                 )
                 w_weight = counts.get(winner, 0.0)
                 confidences[field_name] = k_score
@@ -616,7 +623,7 @@ class ExtractionPipeline:
         t2_page_results = self.run_extraction_tier(
             document_pages,
             "Document",
-            1512,
+            t2_dim,
             "Vision-LLM Tier 2",
             target_fields=t2_target_fields,
         )
@@ -654,7 +661,7 @@ class ExtractionPipeline:
                 winner, k_score, counts = _evaluate_field_consensus(
                     field_name,
                     [t1_vision_results, text_pass_results, t2_page_results],
-                    [1260, "text", 1512],
+                    [t1_dim, "text", t2_dim],
                 )
                 w_weight = counts.get(winner, 0.0)
                 confidences[field_name] = k_score
@@ -670,7 +677,7 @@ class ExtractionPipeline:
             t3_page_results = self.run_extraction_tier(
                 document_pages,
                 "Document",
-                1764,
+                t3_dim,
                 "Vision-LLM Tier 3 Tiebreaker",
                 target_fields=conflicts,
             )
@@ -684,7 +691,7 @@ class ExtractionPipeline:
                         t2_page_results,
                         t3_page_results,
                     ],
-                    [1260, "text", 1512, 1764],
+                    [t1_dim, "text", t2_dim, t3_dim],
                 )
                 confidences[field_name] = k_score
                 if winner and not is_missing_value(winner):
