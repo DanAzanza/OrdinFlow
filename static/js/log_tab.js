@@ -119,6 +119,7 @@ function calculateLogStatistics() {
 	const records = state.logRecords || [];
 	let completedFiles = 0;
 	let manualReviewFiles = 0;
+	let abortedFiles = 0;
 	let totalProcessingTime = 0;
 	let maxProcessingTime = 0;
 	let totalPages = 0;
@@ -127,7 +128,6 @@ function calculateLogStatistics() {
 	let tier1Count = 0;
 	let tier2Count = 0;
 	let tier3Count = 0;
-	let earlyStopCount = 0;
 
 	let infoCount = 0;
 	let warnCount = 0;
@@ -141,7 +141,7 @@ function calculateLogStatistics() {
 		else if (lvl === "WARNING" || lvl === "WARN") warnCount++;
 		else if (lvl === "ERROR" || lvl === "CRITICAL") errorCount++;
 
-		const matchTime = msg.match(/Processing of .* completed successfully after ([\d\.]+) seconds/i);
+		const matchTime = msg.match(/completed successfully after ([\d\.]+) seconds/i);
 		if (matchTime) {
 			completedFiles++;
 			const secs = parseFloat(matchTime[1]);
@@ -149,14 +149,22 @@ function calculateLogStatistics() {
 			if (secs > maxProcessingTime) maxProcessingTime = secs;
 		}
 
-		const matchIncomplete = msg.match(/Processing of .* incomplete \(([\d\.]+)s\)/i) || msg.includes("manual review required");
+		const matchIncomplete = msg.match(/incomplete \(([\d\.]+)s\)/i) || msg.includes("manual review required") || msg.includes("manual assignment required");
 		if (matchIncomplete) {
 			manualReviewFiles++;
-			if (matchIncomplete[1] && !isNaN(parseFloat(matchIncomplete[1]))) {
+			if (Array.isArray(matchIncomplete) && matchIncomplete[1] && !isNaN(parseFloat(matchIncomplete[1]))) {
 				const secs = parseFloat(matchIncomplete[1]);
 				totalProcessingTime += secs;
 				if (secs > maxProcessingTime) maxProcessingTime = secs;
 			}
+		}
+
+		const matchAbort = msg.match(/aborted due to error after ([\d\.]+) seconds/i);
+		if (matchAbort) {
+			abortedFiles++;
+			const secs = parseFloat(matchAbort[1]);
+			totalProcessingTime += secs;
+			if (secs > maxProcessingTime) maxProcessingTime = secs;
 		}
 
 		const matchClass = msg.match(/Page \d+ classification:\s*(.+)/i);
@@ -166,13 +174,29 @@ function calculateLogStatistics() {
 			categoryCounts[cat] = (categoryCounts[cat] || 0) + 1;
 		}
 
-		if (msg.includes("Early stop after Tier 1")) earlyStopCount++;
-		if (msg.includes("Starting Tier 1")) tier1Count++;
-		if (msg.includes("Starting Tier 2")) tier2Count++;
-		if (msg.includes("Starting Tier 3")) tier3Count++;
+		if (
+			msg.includes("validated with >= 2 measurements") ||
+			msg.includes("Finalizing document") ||
+			msg.includes("Early stop after Tier 1")
+		) {
+			tier1Count++;
+		}
+		if (
+			msg.includes("Starting Vision-LLM Tier 2 for pending fields") ||
+			msg.includes("Starting Tier 2")
+		) {
+			tier2Count++;
+		}
+		if (
+			msg.includes("Starting Vision-LLM Tier 3 Tiebreaker") ||
+			msg.includes("Disagreement in field(s)") ||
+			msg.includes("Starting Tier 3")
+		) {
+			tier3Count++;
+		}
 	});
 
-	const totalFiles = completedFiles + manualReviewFiles;
+	const totalFiles = completedFiles + manualReviewFiles + abortedFiles;
 	const avgTimePerFile = totalFiles > 0 ? (totalProcessingTime / totalFiles).toFixed(1) : "0.0";
 	const avgTimePerPage = totalPages > 0 ? (totalProcessingTime / totalPages).toFixed(1) : "0.0";
 	const successRate = totalFiles > 0 ? (((totalFiles - manualReviewFiles) / totalFiles) * 100).toFixed(1) : "100.0";
@@ -182,6 +206,7 @@ function calculateLogStatistics() {
 		totalFiles,
 		completedFiles,
 		manualReviewFiles,
+		abortedFiles,
 		totalProcessingTime: totalProcessingTime.toFixed(1),
 		maxProcessingTime: maxProcessingTime.toFixed(1),
 		avgTimePerFile,
@@ -191,7 +216,7 @@ function calculateLogStatistics() {
 		tier1Count,
 		tier2Count,
 		tier3Count,
-		earlyStopCount,
+		earlyStopCount: tier1Count,
 		successRate,
 		infoCount,
 		warnCount,
@@ -211,6 +236,13 @@ async function updateLogInspectorAnalytics() {
 		stats = calculateLogStatistics();
 	}
 	
+	const elInfo = document.getElementById("badgeHealthInfo");
+	const elWarn = document.getElementById("badgeHealthWarn");
+	const elErr = document.getElementById("badgeHealthErr");
+	if (elInfo) elInfo.textContent = `INFO: ${stats.infoCount || 0}`;
+	if (elWarn) elWarn.textContent = `WARN: ${stats.warnCount || 0}`;
+	if (elErr) elErr.textContent = `ERR: ${stats.errorCount || 0}`;
+
 	const icon = document.getElementById("inspectorHeaderIcon");
 	const title = document.getElementById("inspectorHeaderTitle");
 	const subtitle = document.getElementById("inspectorHeaderSubtitle");
@@ -290,7 +322,7 @@ async function updateLogInspectorAnalytics() {
 			<div class="inspector-field-group">
 				<div class="inspector-field-row">
 					<span class="inspector-field-label">🟢 Tier 1 (Direct Consensus)</span>
-					<span class="inspector-field-value stat-tier1-val">${stats.earlyStopCount > 0 ? stats.earlyStopCount : stats.tier1Count} Multi-Pass</span>
+					<span class="inspector-field-value stat-tier1-val">${stats.tier1Count}</span>
 				</div>
 				<div class="inspector-field-row">
 					<span class="inspector-field-label">🟡 Tier 2 (High-Res Verification)</span>
@@ -300,18 +332,6 @@ async function updateLogInspectorAnalytics() {
 					<span class="inspector-field-label">🔴 Tier 3 (Tiebreaker Audit)</span>
 					<span class="inspector-field-value stat-tier3-val">${stats.tier3Count}</span>
 				</div>
-			</div>
-		</div>
-
-		<!-- Log Health Card -->
-		<div class="inspector-card">
-			<h4 class="inspector-section-title">
-				<span>📡</span> Stream Health & Log Level
-			</h4>
-			<div class="health-badge-row">
-				<span class="badge badge-health-info">INFO: ${stats.infoCount}</span>
-				<span class="badge badge-health-warn">WARN: ${stats.warnCount}</span>
-				<span class="badge badge-health-err">ERR: ${stats.errorCount}</span>
 			</div>
 		</div>
 	`;

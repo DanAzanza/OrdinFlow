@@ -371,3 +371,65 @@ def test_api_skills_queue_pause_resume(client):
     res_stop = client.post("/api/skills/queue/stop")
     assert res_stop.status_code == 200
     assert res_stop.get_json()["is_running"] is False
+
+
+def test_api_log_stats_computation():
+    from routes.api.system_api import _compute_log_stats
+
+    dummy_lines = [
+        "2026-08-19 10:00:01,100 [INFO] Starting Vision-LLM Tier 1 (1396px)...",
+        "2026-08-19 10:00:02,100 [INFO] [+] Page 1 classification: Rezept",
+        "2026-08-19 10:00:03,100 [INFO] [+] Page 2 classification: Befundbogen",
+        "2026-08-19 10:00:04,100 [INFO] [+] All 5 field(s) validated with >= 2 measurements. Finalizing document.",
+        "2026-08-19 10:00:05,100 [INFO] [+] Processing of 'doc1.pdf' completed successfully after 4.20 seconds.",
+        "2026-08-19 10:00:10,100 [INFO] Starting Vision-LLM Tier 1 (1396px)...",
+        "2026-08-19 10:00:11,100 [INFO] [+] Page 1 classification: Rezept",
+        "2026-08-19 10:00:12,100 [INFO] [*] Starting Vision-LLM Tier 2 for pending fields: ['Signed']...",
+        "2026-08-19 10:00:14,100 [INFO] [+] Processing of 'doc2.pdf' completed successfully after 8.50 seconds.",
+        "2026-08-19 10:00:20,100 [INFO] Starting Vision-LLM Tier 1 (1396px)...",
+        "2026-08-19 10:00:21,100 [INFO] [+] Page 1 classification: Notiz",
+        "2026-08-19 10:00:22,100 [INFO] [*] Starting Vision-LLM Tier 2 for pending fields: ['Datum']...",
+        "2026-08-19 10:00:23,100 [INFO] [*] Disagreement in field(s) ['Datum'] detected. Starting Vision-LLM Tier 3 Tiebreaker...",
+        "2026-08-19 10:00:25,100 [WARNING] [-] Processing of 'doc3.pdf' incomplete (5.10s) — Reason: Validation failed.",
+    ]
+
+    stats = _compute_log_stats(dummy_lines)
+
+    assert stats["totalFiles"] == 3
+    assert stats["completedFiles"] == 2
+    assert stats["manualReviewFiles"] == 1
+    assert stats["totalPages"] == 4
+    assert stats["categoryCounts"]["Rezept"] == 2
+    assert stats["categoryCounts"]["Befundbogen"] == 1
+    assert stats["categoryCounts"]["Notiz"] == 1
+    assert stats["tier1Count"] == 1  # 1 document finalized directly in Tier 1
+    assert stats["tier2Count"] == 2  # 2 documents escalated to Tier 2
+    assert stats["tier3Count"] == 1  # 1 document escalated to Tier 3 Tiebreaker
+    assert stats["infoCount"] == 13
+    assert stats["warnCount"] == 1
+    assert stats["errorCount"] == 0
+    assert float(stats["totalProcessingTime"]) == 17.8
+
+
+def test_api_log_endpoints(client, tmp_path, monkeypatch):
+    import os
+
+    log_file = tmp_path / "main.log"
+    log_file.write_text("2026-08-19 10:00:01 [INFO] Test line\n", encoding="utf-8")
+
+    monkeypatch.chdir(tmp_path)
+
+    # Test GET /api/log/stats
+    res = client.get("/api/log/stats")
+    assert res.status_code == 200
+    data = res.get_json()
+    assert data["recordsCount"] == 1
+    assert data["infoCount"] == 1
+
+    # Test POST /api/log/clear
+    res_clear = client.post("/api/log/clear")
+    assert res_clear.status_code == 200
+    assert res_clear.get_json()["status"] == "cleared"
+
+    # Verify log file is empty
+    assert os.path.getsize(str(log_file)) == 0
