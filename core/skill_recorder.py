@@ -25,7 +25,7 @@ try:
     from rapidocr_onnxruntime import RapidOCR  # type: ignore[import-untyped]
 
     rapid_ocr = RapidOCR()
-except (ImportError, RuntimeError, OSError, Exception):
+except Exception:
     rapid_ocr = None
 
 

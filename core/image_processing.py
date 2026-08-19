@@ -213,8 +213,8 @@ class ImagePreprocessor:
                             if (img_area / page_area) < 0.60:
                                 # Small logo / header image on a digital page -> render full page instead
                                 return None
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        logger.debug("Could not inspect image rects: %s", e)
 
                 xref = image_list[0][0]
                 base_img = doc.extract_image(xref)

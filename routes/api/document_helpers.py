@@ -1,5 +1,4 @@
-"""Helper functions and thumbnail cache for Document API endpoints."""
-
+import json
 import logging
 import os
 import shutil
@@ -19,7 +18,7 @@ from core.routing import (
     render_filename,
     render_folder_name,
 )
-from core.utils import is_missing_value, send_to_trash
+from core.utils import deduplicate_path, is_missing_value, send_to_trash
 from routes.state import DashboardState
 
 logger = logging.getLogger(__name__)
@@ -39,9 +38,21 @@ def _is_within_base(path: str, base_dir: str) -> bool:
     return os.path.abspath(path).startswith(os.path.abspath(base_dir))
 
 
+def load_meta_sidecar(filepath: str) -> dict[str, Any] | None:
+    """Reads and parses the accompanying .meta JSON sidecar file if present."""
+    meta_path = filepath if filepath.endswith(".meta") else filepath + ".meta"
+    if os.path.isfile(meta_path):
+        try:
+            with open(meta_path, encoding="utf-8") as f:
+                return json.load(f)
+        except (OSError, UnicodeError, json.JSONDecodeError, ValueError, TypeError) as e:
+            logger.debug("[DocumentHelpers] Could not load sidecar %s: %s", meta_path, e)
+    return None
+
+
 def _remove_meta_sidecar(filepath: str, use_trash: bool = True) -> None:
     """Deletes or trashes the .meta sidecar file if present."""
-    meta_path = filepath + ".meta"
+    meta_path = filepath if filepath.endswith(".meta") else filepath + ".meta"
     if os.path.exists(meta_path):
         try:
             if use_trash:
@@ -73,16 +84,8 @@ def _get_config_delimiter() -> str:
 
 
 def _deduplicate_filename(target_dir: str, target_filename: str) -> tuple[str, str]:
-    target_path = os.path.join(target_dir, target_filename)
-    if not os.path.exists(target_path):
-        return target_filename, target_path
-    base_name, ext = os.path.splitext(target_filename)
-    counter = 1
-    while os.path.exists(target_path):
-        target_filename = f"{base_name}_{counter}{ext}"
-        target_path = os.path.join(target_dir, target_filename)
-        counter += 1
-    return target_filename, target_path
+    target_path = deduplicate_path(os.path.join(target_dir, target_filename))
+    return os.path.basename(target_path), target_path
 
 
 def _get_doc_routing_cfg(doc_type: str) -> dict:
@@ -94,16 +97,13 @@ def _get_doc_routing_cfg(doc_type: str) -> dict:
     return {}
 
 
-def _resolve_and_guard(subpath: str, base_dir: str) -> "tuple[str | None, Any]":
-    """Resolves subpath against base_dir and applies standard security guards.
-
-    Returns (full_path, None) on success, or (None, error_response_tuple) on failure.
-    """
-    full_path = os.path.join(base_dir, subpath)
-    if not os.path.isfile(full_path):
-        return None, (jsonify({"error": "File not found"}), 404)
+def _resolve_and_guard(subpath: str, base_dir: str) -> tuple[str | None, tuple[Any, int] | None]:
+    """Resolves subpath against base_dir and applies security and existence guards."""
+    full_path = os.path.abspath(os.path.join(base_dir, subpath))
     if not _is_within_base(full_path, base_dir):
         return None, (jsonify({"error": "Access denied"}), 403)
+    if not os.path.isfile(full_path):
+        return None, (jsonify({"error": "File not found"}), 404)
     return full_path, None
 
 

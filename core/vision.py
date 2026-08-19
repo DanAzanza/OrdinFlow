@@ -430,7 +430,9 @@ class LLMExtractor:
 
         if target_fields is not None:
             target_set = {f.lower() for f in target_fields}
-            extraction_fields = {k: v for k, v in extraction_fields.items() if k.lower() in target_set and k != "Signed"}
+            extraction_fields = {
+                k: v for k, v in extraction_fields.items() if k.lower() in target_set and k != "Signed"
+            }
 
         if not extraction_fields:
             return {}

@@ -10,7 +10,7 @@ from typing import Any
 from flask import Blueprint, jsonify, request, send_file
 
 from core.skills.manager import SkillManager
-from core.utils import send_to_trash
+from core.utils import cleanup_empty_folder, send_to_trash
 from routes.api.document_helpers import (
     _MIME_MAP,
     _deduplicate_filename,
@@ -22,6 +22,7 @@ from routes.api.document_helpers import (
     _render_target_folder,
     _resolve_and_guard,
     _validate_required_api_fields,
+    load_meta_sidecar,
     safe_move_with_meta,
 )
 from routes.api.system_api import (
@@ -115,24 +116,9 @@ def api_cases():
         files_with_any_export = 0
 
         for fname in files:
-            full_fp = os.path.join(item_path, fname)
-            meta_fp = full_fp + ".meta"
-            f_meta: dict[str, Any] = {}
-            f_doc_type = "UNKNOWN"
-            if os.path.exists(meta_fp):
-                try:
-                    with open(meta_fp, encoding="utf-8") as mf:
-                        loaded = json.load(mf)
-                        if isinstance(loaded, dict):
-                            f_meta = loaded
-                            f_doc_type = (
-                                loaded.get("Document")
-                                or loaded.get("Dokument")
-                                or loaded.get("document_type")
-                                or "UNKNOWN"
-                            )
-                except (json.JSONDecodeError, OSError):
-                    pass
+            meta_fp = os.path.join(item_path, fname + ".meta")
+            f_meta: dict[str, Any] = load_meta_sidecar(meta_fp) or {}
+            f_doc_type = f_meta.get("Document") or f_meta.get("Dokument") or f_meta.get("document_type") or "UNKNOWN"
 
             if f_doc_type == "UNKNOWN" and "__" in fname:
                 parts = fname.split("__")
@@ -332,23 +318,15 @@ def api_cases_edit(folder_name: str):
 def api_file_meta_cases(folder: str, filename: str):
     if not DashboardState.config:
         return jsonify({"error": "Config not available"}), 503
-    filepath = os.path.abspath(os.path.join(DashboardState.config.target_base_dir, folder, filename))
-    if not _is_within_base(filepath, DashboardState.config.target_base_dir):
-        return jsonify({"error": "Access denied"}), 403
-    meta_path = filepath + ".meta"
-    if os.path.isfile(meta_path):
-        try:
-            with open(meta_path, encoding="utf-8") as mf:
-                data = json.load(mf)
-            return jsonify(data)
-        except (
-            OSError,
-            UnicodeError,
-            json.JSONDecodeError,
-            ValueError,
-            TypeError,
-        ) as e:
-            return jsonify({"error": str(e)}), 500
+    filepath, err = _resolve_and_guard(os.path.join(folder, filename), DashboardState.config.target_base_dir)
+    if err is not None:
+        return err[0], err[1]
+    if not filepath:
+        return jsonify({"error": "File not found"}), 404
+
+    data = load_meta_sidecar(filepath)
+    if data is not None:
+        return jsonify(data)
     return jsonify({"error": "No meta file found"}), 404
 
 
@@ -366,11 +344,11 @@ def api_cases_edit_file(folder_name: str, filename: str):
     if err:
         return jsonify({"error": err}), 400
 
-    src_path = os.path.join(DashboardState.config.target_base_dir, folder_name, filename)
-    if not os.path.isfile(src_path):
+    src_path, guard_err = _resolve_and_guard(os.path.join(folder_name, filename), DashboardState.config.target_base_dir)
+    if guard_err is not None:
+        return guard_err[0], guard_err[1]
+    if not src_path:
         return jsonify({"error": "File not found"}), 404
-    if not _is_within_base(src_path, DashboardState.config.target_base_dir):
-        return jsonify({"error": "Access denied"}), 403
 
     move = data.get("move", True)
     if move:
@@ -396,12 +374,7 @@ def api_cases_edit_file(folder_name: str, filename: str):
             new_folder_name,
             target_filename,
         )
-        src_dir = os.path.dirname(src_path)
-        try:
-            if not os.listdir(src_dir):
-                os.rmdir(src_dir)
-        except OSError as e:
-            logger.debug("[Dashboard] Could not remove empty source folder %s: %s", src_dir, e)
+        cleanup_empty_folder(os.path.dirname(src_path), stop_at=DashboardState.config.target_base_dir)
         return jsonify({"status": "ok", "folder": new_folder_name, "file": target_filename})
     except OSError as e:
         return jsonify({"error": str(e)}), 500
@@ -411,15 +384,16 @@ def api_cases_edit_file(folder_name: str, filename: str):
 def api_cases_delete_file(folder_name: str, filename: str):
     if not DashboardState.config:
         return jsonify({"error": "Config not available"}), 503
-    filepath = os.path.join(DashboardState.config.target_base_dir, folder_name, filename)
-    if not os.path.isfile(filepath):
+    filepath, err = _resolve_and_guard(os.path.join(folder_name, filename), DashboardState.config.target_base_dir)
+    if err is not None:
+        return err[0], err[1]
+    if not filepath:
         return jsonify({"error": "File not found"}), 404
-    if not _is_within_base(filepath, DashboardState.config.target_base_dir):
-        return jsonify({"error": "Access denied"}), 403
 
     try:
         send_to_trash(filepath)
         _remove_meta_sidecar(filepath, use_trash=True)
+        cleanup_empty_folder(os.path.dirname(filepath), stop_at=DashboardState.config.target_base_dir)
         logger.info("[Dashboard] Moved file to trash: %s", filepath)
         return jsonify({"status": "ok"})
     except OSError as e:

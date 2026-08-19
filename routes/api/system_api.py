@@ -388,7 +388,8 @@ def api_get_log_stats():
     try:
         with open(log_path, encoding="utf-8", errors="replace") as f:
             lines = f.readlines()
-    except OSError:
+    except OSError as e:
+        logger.debug("[SystemApi] Could not read log file %s: %s", log_path, e)
         lines = []
 
     return jsonify(_compute_log_stats(lines))

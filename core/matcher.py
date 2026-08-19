@@ -2,7 +2,7 @@ import logging
 import os
 
 from core.config import AppConfig
-from core.utils import is_missing_value
+from core.utils import cleanup_empty_folder, is_missing_value
 
 logger = logging.getLogger(__name__)
 
@@ -38,25 +38,6 @@ class FileSystemRouter:
                     return item_path
         return None
 
-    def cleanup_empty_directories(self, directory: str):
+    def cleanup_empty_directories(self, directory: str) -> None:
         """Recursively deletes empty folders upwards, stopping at watch_dir."""
-        try:
-            watch_dir_abs = os.path.abspath(self.config.watch_dir)
-            dir_path_abs = os.path.abspath(directory)
-
-            while dir_path_abs and dir_path_abs != watch_dir_abs and dir_path_abs.startswith(watch_dir_abs):
-                if not os.path.exists(dir_path_abs):
-                    break
-                if not os.listdir(dir_path_abs):
-                    try:
-                        os.rmdir(dir_path_abs)
-                        logger.info(f"[+] Deleted empty folder: {dir_path_abs}")
-                    except OSError:
-                        # Under Windows, folders are often temporarily locked by Explorer or file watchers.
-                        logger.info(f"[*] Empty folder could not be cleaned up (locked): {dir_path_abs}")
-                        break
-                    dir_path_abs = os.path.dirname(dir_path_abs)
-                else:
-                    break
-        except (OSError, ValueError) as e:
-            logger.debug(f"Error in cleanup_empty_directories: {e}")
+        cleanup_empty_folder(directory, stop_at=self.config.watch_dir)
