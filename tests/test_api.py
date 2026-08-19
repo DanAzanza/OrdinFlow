@@ -377,16 +377,16 @@ def test_api_log_stats_computation():
     from routes.api.system_api import _compute_log_stats
 
     dummy_lines = [
-        "2026-08-19 10:00:01,100 [INFO] Starting Vision-LLM Tier 1 (1260px)...",
+        "2026-08-19 10:00:01,100 [INFO] [*] Starting Vision-LLM Tier 1...",
         "2026-08-19 10:00:02,100 [INFO] [+] Page 1 classification: Rezept",
         "2026-08-19 10:00:03,100 [INFO] [+] Page 2 classification: Befundbogen",
         "2026-08-19 10:00:04,100 [INFO] [+] All 5 field(s) validated with >= 2 measurements. Finalizing document.",
         "2026-08-19 10:00:05,100 [INFO] [+] Processing of 'doc1.pdf' completed successfully after 4.20 seconds.",
-        "2026-08-19 10:00:10,100 [INFO] Starting Vision-LLM Tier 1 (1260px)...",
+        "2026-08-19 10:00:10,100 [INFO] [*] Starting Vision-LLM Tier 1...",
         "2026-08-19 10:00:11,100 [INFO] [+] Page 1 classification: Rezept",
         "2026-08-19 10:00:12,100 [INFO] [*] Starting Vision-LLM Tier 2 for pending fields: ['Signed']...",
         "2026-08-19 10:00:14,100 [INFO] [+] Processing of 'doc2.pdf' completed successfully after 8.50 seconds.",
-        "2026-08-19 10:00:20,100 [INFO] Starting Vision-LLM Tier 1 (1260px)...",
+        "2026-08-19 10:00:20,100 [INFO] [*] Starting Vision-LLM Tier 1...",
         "2026-08-19 10:00:21,100 [INFO] [+] Page 1 classification: Notiz",
         "2026-08-19 10:00:22,100 [INFO] [*] Starting Vision-LLM Tier 2 for pending fields: ['Datum']...",
         "2026-08-19 10:00:23,100 [INFO] [*] Disagreement in field(s) ['Datum'] detected. Starting Vision-LLM Tier 3 Tiebreaker...",
