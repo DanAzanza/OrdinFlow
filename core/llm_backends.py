@@ -223,8 +223,8 @@ class _LlamaCppBackend(LLMBackend):
             if hasattr(self, "_llm") and self._llm is not None:
                 try:
                     del self._llm
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug("Error deallocating local LLM: %s", e)
                 self._llm = None
             _GLOBAL_LLM_INSTANCE = None
             _GLOBAL_LLM_KEY = None

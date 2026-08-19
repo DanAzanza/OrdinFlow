@@ -20,6 +20,7 @@ from routes.api.document_helpers import (
     _render_target_folder,
     _resolve_and_guard,
     _validate_required_api_fields,
+    load_meta_sidecar,
 )
 from routes.api.system_api import (
     AssignDocumentSchema,
@@ -50,24 +51,10 @@ def api_inbox():
                 stat = os.stat(fp)
                 rel_path = os.path.relpath(fp, watch_dir).replace("\\", "/")
 
-                meta_path = fp + ".meta"
-                reason = ""
-                extracted = {}
-                is_review = os.path.isfile(meta_path)
-                if is_review:
-                    try:
-                        with open(meta_path, encoding="utf-8") as mf:
-                            meta_data = json.load(mf)
-                        reason = meta_data.get("grund", meta_data.get("reason", ""))
-                        extracted = meta_data.get("extracted", {})
-                    except (
-                        OSError,
-                        UnicodeError,
-                        json.JSONDecodeError,
-                        ValueError,
-                        TypeError,
-                    ):
-                        logger.debug("Could not load inbox metadata from %s", meta_path)
+                meta_data = load_meta_sidecar(fp)
+                is_review = meta_data is not None
+                reason = meta_data.get("grund", meta_data.get("reason", "")) if meta_data else ""
+                extracted = meta_data.get("extracted", {}) if meta_data else {}
 
                 result.append(
                     {
@@ -91,23 +78,15 @@ def api_inbox():
 def api_file_meta_inbox(filename: str):
     if not DashboardState.config:
         return jsonify({"error": "Config not available"}), 503
-    filepath = os.path.abspath(os.path.join(DashboardState.config.watch_dir, filename))
-    if not _is_within_base(filepath, DashboardState.config.watch_dir):
-        return jsonify({"error": "Access denied"}), 403
-    meta_path = filepath + ".meta"
-    if os.path.isfile(meta_path):
-        try:
-            with open(meta_path, encoding="utf-8") as mf:
-                data = json.load(mf)
-            return jsonify(data)
-        except (
-            OSError,
-            UnicodeError,
-            json.JSONDecodeError,
-            ValueError,
-            TypeError,
-        ) as e:
-            return jsonify({"error": str(e)}), 500
+    filepath, err = _resolve_and_guard(filename, DashboardState.config.watch_dir)
+    if err is not None:
+        return err[0], err[1]
+    if not filepath:
+        return jsonify({"error": "File not found"}), 404
+
+    data = load_meta_sidecar(filepath)
+    if data is not None:
+        return jsonify(data)
     return jsonify({"error": "No meta file found"}), 404
 
 
@@ -116,11 +95,10 @@ def api_inbox_retry(filename: str):
     if not DashboardState.config:
         return jsonify({"error": "Not available"}), 503
 
-    filepath = os.path.abspath(os.path.join(DashboardState.config.watch_dir, filename))
-    if not _is_within_base(filepath, DashboardState.config.watch_dir):
-        return jsonify({"error": "Access denied"}), 403
-
-    if not os.path.isfile(filepath):
+    filepath, err = _resolve_and_guard(filename, DashboardState.config.watch_dir)
+    if err is not None:
+        return err[0], err[1]
+    if not filepath:
         return jsonify({"error": "File not found"}), 404
 
     _remove_meta_sidecar(filepath)
@@ -147,11 +125,11 @@ def api_inbox_retry(filename: str):
 def api_inbox_delete(filename: str):
     if not DashboardState.config:
         return jsonify({"error": "Config not available"}), 503
-    filepath = os.path.join(DashboardState.config.watch_dir, filename)
-    if not os.path.isfile(filepath):
+    filepath, err = _resolve_and_guard(filename, DashboardState.config.watch_dir)
+    if err is not None:
+        return err[0], err[1]
+    if not filepath:
         return jsonify({"error": "File not found"}), 404
-    if not _is_within_base(filepath, DashboardState.config.watch_dir):
-        return jsonify({"error": "Access denied"}), 403
 
     try:
         send_to_trash(filepath)

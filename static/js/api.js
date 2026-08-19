@@ -166,22 +166,6 @@ async function fetchStatus() {
 			state.skillQueue = d.skill_queue;
 			if (typeof updateSkillsSidebarBadge === "function") {
 				updateSkillsSidebarBadge(d.skill_queue);
-			} else {
-				const badge = document.getElementById("badgeSkills") || document.querySelector(".nav-item[data-tab='skills'] .nav-badge");
-				if (badge) {
-					if (d.skill_queue.is_running && !d.skill_queue.is_paused) {
-						badge.textContent = "▶";
-						badge.className = "badge nav-badge badge-running";
-						badge.style.display = "inline-flex";
-					} else if (d.skill_queue.is_paused) {
-						badge.textContent = "⏸";
-						badge.className = "badge nav-badge badge-paused";
-						badge.style.display = "inline-flex";
-					} else {
-						badge.textContent = "";
-						badge.style.display = "none";
-					}
-				}
 			}
 			if (typeof updateQueueInspectorIfOpen === "function") {
 				updateQueueInspectorIfOpen(d.skill_queue);

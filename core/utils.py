@@ -371,7 +371,31 @@ def remove_source_with_meta(filepath: str) -> None:
         logger.warning(f"[!] Error deleting source file '{filepath}': {e}")
 
 
-# Backward-compatible aliases
-_deduplicate_path = deduplicate_path
-_remove_source_with_meta = remove_source_with_meta
-_send_to_trash = send_to_trash
+def cleanup_empty_folder(folder_path: str, stop_at: str | None = None) -> None:
+    """Recursively deletes empty directory and parent directories upwards up to stop_at."""
+    if not os.path.exists(folder_path):
+        return
+
+    stop_abs = os.path.abspath(stop_at) if stop_at else None
+    cur_path = os.path.abspath(folder_path)
+
+    while cur_path and os.path.exists(cur_path):
+        if stop_abs and (cur_path == stop_abs or not cur_path.startswith(stop_abs)):
+            break
+        try:
+            entries = os.listdir(cur_path)
+            doc_files = [f for f in entries if not f.lower().endswith(".meta") and f.lower() != "desktop.ini"]
+            if not doc_files:
+                for f in entries:
+                    try:
+                        os.remove(os.path.join(cur_path, f))
+                    except OSError as e:
+                        logger.debug("[Utils] Could not remove auxiliary file %s: %s", f, e)
+                os.rmdir(cur_path)
+                logger.info(f"[+] Deleted empty folder: {cur_path}")
+                cur_path = os.path.dirname(cur_path)
+            else:
+                break
+        except OSError as e:
+            logger.debug("[Utils] Could not clean folder %s: %s", cur_path, e)
+            break

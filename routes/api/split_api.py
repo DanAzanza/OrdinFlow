@@ -12,6 +12,7 @@ try:
 except ImportError:
     fitz = None
 
+from core.utils import cleanup_empty_folder
 from routes.api.document_helpers import (
     _deduplicate_filename,
     _is_within_base,
@@ -114,25 +115,6 @@ def _slice_or_move_document(
     return {"folder": target_folder, "file": target_filename}
 
 
-def _cleanup_empty_case_folder(folder: str) -> None:
-    """Removes empty process folder if no remaining documents exist."""
-    src_dir = os.path.join(DashboardState.config.target_base_dir, folder)
-    if not os.path.exists(src_dir):
-        return
-    try:
-        remaining = os.listdir(src_dir)
-        doc_files = [f for f in remaining if not f.lower().endswith(".meta") and f.lower() != "desktop.ini"]
-        if not doc_files:
-            for f in remaining:
-                try:
-                    os.remove(os.path.join(src_dir, f))
-                except OSError as e:
-                    logger.debug("Could not remove auxiliary file %s during cleanup: %s", f, e)
-            os.rmdir(src_dir)
-    except OSError as e:
-        logger.warning("Could not remove empty process folder %s: %s", src_dir, e)
-
-
 @split_api_bp.route("/api/split_inspector/submit", methods=["POST"])
 def api_split_inspector_submit():
     if not DashboardState.config:
@@ -203,7 +185,10 @@ def api_split_inspector_submit():
                 logger.debug("Could not remove src_path %s: %s", src_path, e)
 
         if context == "cases" and folder:
-            _cleanup_empty_case_folder(folder)
+            cleanup_empty_folder(
+                os.path.join(DashboardState.config.target_base_dir, folder),
+                stop_at=DashboardState.config.target_base_dir,
+            )
 
         logger.info(
             "[Dashboard] Inspector submit (%s): %s -> %d document(s) processed.",

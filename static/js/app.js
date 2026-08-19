@@ -583,7 +583,9 @@ async function pollJobs() {
 				fetchInbox();
 			}
 		}
-	} catch (e) {}
+	} catch (e) {
+		console.debug("[pollJobs] Network issue or polling aborted:", e);
+	}
 }
 
 

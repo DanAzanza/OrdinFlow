@@ -9,8 +9,6 @@ import threading
 import time
 from typing import Any
 
-logger = logging.getLogger(__name__)
-
 from core.config import AppConfig
 from core.extraction_pipeline import ExtractionPipeline
 from core.file_service import FileService
@@ -27,6 +25,8 @@ from core.utils import (
 )
 from core.vision import LLMExtractor
 
+logger = logging.getLogger(__name__)
+
 
 class AllPagesEmptyError(Exception):
     """Raised when a document consists entirely of empty/blank pages."""
@@ -35,15 +35,23 @@ class AllPagesEmptyError(Exception):
 class DocumentProcessor:
     """Central orchestrator for document processing by combining specialized services."""
 
-    def __init__(self, config: AppConfig):
+    def __init__(
+        self,
+        config: AppConfig,
+        image_preprocessor: ImagePreprocessor | None = None,
+        llm_extractor: LLMExtractor | None = None,
+        fs_router: FileSystemRouter | None = None,
+        file_service: FileService | None = None,
+        extraction_pipeline: ExtractionPipeline | None = None,
+    ):
         self.config = config
-        self.image_preprocessor = ImagePreprocessor(config)
-        self.llm_extractor = LLMExtractor(config)
-        self.fs_router = FileSystemRouter(config)
-
-        # Specialized sub-services
-        self.file_service = FileService(config, self.fs_router)
-        self.extraction_pipeline = ExtractionPipeline(config, self.image_preprocessor, self.llm_extractor)
+        self.image_preprocessor = image_preprocessor or ImagePreprocessor(config)
+        self.llm_extractor = llm_extractor or LLMExtractor(config)
+        self.fs_router = fs_router or FileSystemRouter(config)
+        self.file_service = file_service or FileService(config, self.fs_router)
+        self.extraction_pipeline = extraction_pipeline or ExtractionPipeline(
+            config, self.image_preprocessor, self.llm_extractor
+        )
 
         # Processing locks & thread control
         self.processing_lock = threading.Lock()
