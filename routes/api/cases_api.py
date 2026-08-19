@@ -3,7 +3,6 @@
 import json
 import logging
 import os
-import shutil
 import time
 import urllib.parse
 from typing import Any
@@ -11,6 +10,7 @@ from typing import Any
 from flask import Blueprint, jsonify, request, send_file
 
 from core.skills.manager import SkillManager
+from core.utils import send_to_trash
 from routes.api.document_helpers import (
     _MIME_MAP,
     _deduplicate_filename,
@@ -418,9 +418,9 @@ def api_cases_delete_file(folder_name: str, filename: str):
         return jsonify({"error": "Access denied"}), 403
 
     try:
-        os.remove(filepath)
-        _remove_meta_sidecar(filepath)
-        logger.info("[Dashboard] Deleted file: %s", filepath)
+        send_to_trash(filepath)
+        _remove_meta_sidecar(filepath, use_trash=True)
+        logger.info("[Dashboard] Moved file to trash: %s", filepath)
         return jsonify({"status": "ok"})
     except OSError as e:
         return jsonify({"error": str(e)}), 500
@@ -437,8 +437,8 @@ def api_cases_delete_folder(folder_name: str):
         return jsonify({"error": "Access denied"}), 403
 
     try:
-        shutil.rmtree(folder_path)
-        logger.info("[Dashboard] Deleted process folder: %s", folder_path)
+        send_to_trash(folder_path)
+        logger.info("[Dashboard] Moved process folder to trash: %s", folder_path)
         return jsonify({"status": "ok"})
     except OSError as e:
         return jsonify({"error": str(e)}), 500

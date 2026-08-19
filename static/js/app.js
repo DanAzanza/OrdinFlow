@@ -143,34 +143,7 @@ function openAppInspector(data) {
 	}
 }
 
-function deleteFile(type, folder, filename) {
-	state.pendingConfirm = { type, folder, filename };
-	document.getElementById("confirmMessage").textContent =
-		"Are you sure you want to delete this file?";
-	document.getElementById("confirmFilename").textContent = filename;
-	document.getElementById("confirmModal").classList.add("show");
-}
-
-function deleteFolder(folder) {
-	state.pendingConfirm = {
-		type: "folder",
-		folder: folder,
-		filename: folder,
-	};
-	document.getElementById("confirmMessage").textContent =
-		"Are you sure you want to delete this case folder and ALL contained files permanently?";
-	document.getElementById("confirmFilename").textContent = folder;
-	document.getElementById("confirmModal").classList.add("show");
-}
-
-function closeConfirm() {
-	document.getElementById("confirmModal").classList.remove("show");
-	state.pendingConfirm = null;
-}
-
-async function confirmAction() {
-	const { type, folder, filename } = state.pendingConfirm;
-	closeConfirm();
+async function deleteFile(type, folder, filename) {
 	try {
 		if (type === "cases") {
 			await api(
@@ -185,8 +158,47 @@ async function confirmAction() {
 				state.expandedFiles = d.files || [];
 			}
 			fetchCases();
-			toast("Deleted: " + filename);
-		} else if (type === "folder") {
+			toast("🗑️ In den Papierkorb verschoben: " + filename);
+		} else {
+			const safePath = filename.split("/").map(encodeURIComponent).join("/");
+			await api("/api/inbox/" + safePath, {
+				method: "DELETE",
+			});
+			fetchInbox();
+			toast("🗑️ In den Papierkorb verschoben: " + filename);
+		}
+		const curInspect = document.getElementById("inspectorHeaderSubtitle")?.textContent;
+		if (curInspect && curInspect.includes(filename)) {
+			closeInspector();
+		}
+	} catch (e) {
+		toast("Fehler beim Löschen: " + e.message, "error");
+	}
+}
+
+function deleteFolder(folder) {
+	state.pendingConfirm = {
+		type: "folder",
+		folder: folder,
+		filename: folder,
+	};
+	document.getElementById("confirmMessage").textContent =
+		"Möchten Sie diesen Vorgangs-Ordner und alle enthaltenen Dokumente wirklich in den Papierkorb verschieben?";
+	document.getElementById("confirmFilename").textContent = folder;
+	document.getElementById("confirmModal").classList.add("show");
+}
+
+function closeConfirm() {
+	document.getElementById("confirmModal").classList.remove("show");
+	state.pendingConfirm = null;
+}
+
+async function confirmAction() {
+	if (!state.pendingConfirm) return;
+	const { type, folder } = state.pendingConfirm;
+	closeConfirm();
+	try {
+		if (type === "folder") {
 			await api("/api/cases/" + encodeURIComponent(folder), {
 				method: "DELETE",
 			});
@@ -195,17 +207,11 @@ async function confirmAction() {
 				state.expandedFiles = [];
 			}
 			fetchCases();
-			toast("Folder deleted: " + folder);
-		} else {
-			const safePath = filename.split("/").map(encodeURIComponent).join("/");
-			await api("/api/inbox/" + safePath, {
-				method: "DELETE",
-			});
-			fetchInbox();
-			toast("Deleted: " + filename);
+			toast("🗑️ Ordner in den Papierkorb verschoben: " + folder);
+			closeInspector();
 		}
 	} catch (e) {
-		toast("Error deleting: " + e.message, "error");
+		toast("Fehler beim Löschen: " + e.message, "error");
 	}
 }
 

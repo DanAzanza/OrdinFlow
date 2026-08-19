@@ -9,6 +9,7 @@ import urllib.parse
 
 from flask import Blueprint, jsonify, request, send_file
 
+from core.utils import send_to_trash
 from routes.api.document_helpers import (
     _MIME_MAP,
     _deduplicate_filename,
@@ -153,14 +154,14 @@ def api_inbox_delete(filename: str):
         return jsonify({"error": "Access denied"}), 403
 
     try:
-        os.remove(filepath)
-        _remove_meta_sidecar(filepath)
+        send_to_trash(filepath)
+        _remove_meta_sidecar(filepath, use_trash=True)
 
         if DashboardState.processor:
             with DashboardState.processor.processing_lock:
                 DashboardState.processor.processing_files.discard(filepath)
 
-        logger.info("[Dashboard] Deleted inbox file (incl. .meta): %s", filepath)
+        logger.info("[Dashboard] Moved inbox file (incl. .meta) to trash: %s", filepath)
         return jsonify({"status": "ok"})
     except OSError as e:
         return jsonify({"error": str(e)}), 500
