@@ -309,13 +309,24 @@
                                     </div>
 
                                     <div class="doc-editor-section">
-                                        <div class="steps-header">
-                                            <h4 class="steps-title">📋 Workflow Steps</h4>
+                                        <div class="steps-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; flex-wrap: wrap; gap: 8px;">
+                                            <div style="display: flex; align-items: center; gap: 10px;">
+                                                <h4 class="steps-title" style="margin: 0;">📋 Workflow Steps</h4>
+                                                <div id="workflowStatsBadge" class="workflow-stats-badge"></div>
+                                            </div>
+                                            <div class="steps-global-controls" style="display: flex; gap: 6px;">
+                                                <button type="button" class="btn btn-sm btn-secondary" onclick="expandAllSteps()" title="Expand all steps">
+                                                    <span>➕</span> Expand all
+                                                </button>
+                                                <button type="button" class="btn btn-sm btn-secondary" onclick="collapseAllSteps()" title="Collapse all steps">
+                                                    <span>➖</span> Collapse all
+                                                </button>
+                                            </div>
                                         </div>
-                                        <div id="editorStepsList" class="steps-list">
+                                        <div id="editorStepsList" class="steps-list steps-timeline-container">
                                             <!-- Step Items rendered dynamically via JS -->
                                         </div>
-                                        <div class="steps-bottom-actions" style="display: flex; gap: 8px; margin-top: 12px;">
+                                        <div class="steps-bottom-actions" style="display: flex; gap: 8px; margin-top: 14px;">
                                             <button type="button" class="btn btn-sm btn-danger" onclick="startLiveRecording(currentEditingSkill ? currentEditingSkill.name : 'New Workflow')" style="font-weight: 700;">
                                                 <span>🔴</span> Record workflow
                                             </button>

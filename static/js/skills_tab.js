@@ -5,6 +5,7 @@
 let selectedSkillId = null;
 let currentEditingSkill = null;
 let currentEditingSteps = [];
+let stepExpandedMap = {};
 let activeInputField = null;
 let isNewSkillCreation = false;
 
@@ -178,6 +179,10 @@ async function selectSkill(skillId) {
 	selectedSkillId = skillId;
 	currentEditingSkill = skillObj;
 	currentEditingSteps = skillObj.steps ? JSON.parse(JSON.stringify(skillObj.steps)) : [];
+	stepExpandedMap = {};
+	if (currentEditingSteps.length === 1) {
+		stepExpandedMap[currentEditingSteps[0].id] = true;
+	}
 	isNewSkillCreation = false;
 
 	renderSkillsSidebar(state.skills || []);
@@ -229,8 +234,9 @@ function renderVariableBadges() {
 	const container = document.getElementById("variableBadges");
 	if (!container) return;
 
-	const dynamicVars = new Set();
-	dynamicVars.add("{document_fullpath}");
+	const caseVars = new Set();
+	const extractedVars = new Set();
+	const systemVars = new Set(["{document_fullpath}"]);
 
 	// Extract variables from configured folder structure (e.g. {Datum}, {Produkt}, {Person})
 	if (state.config && Array.isArray(state.config.folder_structure)) {
@@ -238,7 +244,7 @@ function renderVariableBadges() {
 			const cleaned = String(part).trim();
 			if (cleaned) {
 				const formatted = cleaned.startsWith("{") && cleaned.endsWith("}") ? cleaned : `{${cleaned}}`;
-				dynamicVars.add(formatted);
+				caseVars.add(formatted);
 			}
 		});
 	}
@@ -248,26 +254,42 @@ function renderVariableBadges() {
 		Object.values(state.config.document_types).forEach((doc) => {
 			if (doc && doc.extraction_fields) {
 				Object.keys(doc.extraction_fields).forEach((f) => {
-					dynamicVars.add(`{${f}}`);
+					extractedVars.add(`{${f}}`);
 				});
 			}
 		});
 	}
 
-	if (dynamicVars.size === 0) {
-		container.innerHTML = `<span class="variables-empty-note">No variables configured.</span>`;
-		return;
+	let html = "";
+
+	if (caseVars.size > 0) {
+		html += `<div class="variable-chip-group">
+			<span class="variable-group-label">📁 Case / Folder:</span>
+			<div class="variable-chip-list">
+				${Array.from(caseVars).map((v) => `<span class="badge variable-badge variable-badge-case" onclick="insertVariable('${escapeHtml(v)}')" title="Insert ${escapeHtml(v)} into active field">${escapeHtml(v)}</span>`).join("")}
+			</div>
+		</div>`;
 	}
 
-	container.innerHTML = Array.from(dynamicVars)
-		.map(
-			(v) => `
-			<span class="badge variable-badge" onclick="insertVariable('${escapeHtml(v)}')" title="Click to insert into active input field">
-				${escapeHtml(v)}
-			</span>
-		`
-		)
-		.join("");
+	if (extractedVars.size > 0) {
+		html += `<div class="variable-chip-group">
+			<span class="variable-group-label">📑 Extracted Fields:</span>
+			<div class="variable-chip-list">
+				${Array.from(extractedVars).map((v) => `<span class="badge variable-badge variable-badge-extracted" onclick="insertVariable('${escapeHtml(v)}')" title="Insert ${escapeHtml(v)} into active field">${escapeHtml(v)}</span>`).join("")}
+			</div>
+		</div>`;
+	}
+
+	if (systemVars.size > 0) {
+		html += `<div class="variable-chip-group">
+			<span class="variable-group-label">⚙️ System Paths:</span>
+			<div class="variable-chip-list">
+				${Array.from(systemVars).map((v) => `<span class="badge variable-badge variable-badge-system" onclick="insertVariable('${escapeHtml(v)}')" title="Insert ${escapeHtml(v)} into active field">${escapeHtml(v)}</span>`).join("")}
+			</div>
+		</div>`;
+	}
+
+	container.innerHTML = html || `<span class="variables-empty-note">No variables configured.</span>`;
 }
 
 function onSkillTypeChange(type) {
@@ -336,6 +358,7 @@ function createNewSkill() {
 	selectedSkillId = newSkill.id;
 	currentEditingSkill = newSkill;
 	currentEditingSteps = JSON.parse(JSON.stringify(newSkill.steps));
+	stepExpandedMap = { "step_1": true };
 
 	renderSkillsSidebar(state.skills || []);
 
@@ -382,6 +405,35 @@ function insertVariable(varName) {
 	}
 }
 
+function toggleStepCollapse(stepId) {
+	stepExpandedMap[stepId] = !stepExpandedMap[stepId];
+	const card = document.getElementById(`stepCard_${stepId}`);
+	if (card) {
+		const isExpanded = !!stepExpandedMap[stepId];
+		card.classList.toggle("collapsed", !isExpanded);
+		const chevron = card.querySelector(".step-chevron");
+		if (chevron) chevron.textContent = isExpanded ? "▼" : "▶";
+		const body = card.querySelector(".step-card-body");
+		if (body) body.style.display = isExpanded ? "block" : "none";
+		const summary = card.querySelector(".step-summary-text");
+		if (summary) summary.style.display = isExpanded ? "none" : "inline-block";
+	}
+}
+
+function expandAllSteps() {
+	currentEditingSteps.forEach((s) => {
+		stepExpandedMap[s.id] = true;
+	});
+	renderEditorSteps();
+}
+
+function collapseAllSteps() {
+	currentEditingSteps.forEach((s) => {
+		stepExpandedMap[s.id] = false;
+	});
+	renderEditorSteps();
+}
+
 function addEditorStep(stepObj = null) {
 	const step = stepObj || {
 		id: "step_" + (currentEditingSteps.length + 1),
@@ -390,12 +442,32 @@ function addEditorStep(stepObj = null) {
 		locator: { type: "som_vlm", prompt: "" },
 		delay_ms: 500,
 	};
+	stepExpandedMap[step.id] = true;
 	currentEditingSteps.push(step);
 	renderEditorSteps();
 	updateHeaderStepBadge();
 }
 
+function duplicateEditorStep(index) {
+	if (index < 0 || index >= currentEditingSteps.length) return;
+	const original = currentEditingSteps[index];
+	const cloned = JSON.parse(JSON.stringify(original));
+	cloned.id = "step_" + (currentEditingSteps.length + 1);
+	if (cloned.description) {
+		cloned.description = `${cloned.description} (Copy)`;
+	}
+	stepExpandedMap[cloned.id] = true;
+	currentEditingSteps.splice(index + 1, 0, cloned);
+	renderEditorSteps();
+	updateHeaderStepBadge();
+	toast("Step duplicated.");
+}
+
 function removeEditorStep(index) {
+	if (index >= 0 && index < currentEditingSteps.length) {
+		const s = currentEditingSteps[index];
+		delete stepExpandedMap[s.id];
+	}
 	currentEditingSteps.splice(index, 1);
 	renderEditorSteps();
 	updateHeaderStepBadge();
@@ -425,30 +497,108 @@ function updateHeaderStepBadge() {
 	}
 }
 
+function getStepSummaryText(step) {
+	if (!step) return "";
+	const desc = (step.description || "").trim();
+	const targetVal = (step.locator && (step.locator.prompt || step.locator.value || step.locator.target)) || "";
+
+	switch (step.action_type) {
+		case "FOCUS_WINDOW": {
+			const win = step.window_title || "Remote Desktop*";
+			return desc ? `${desc} · "${win}"` : `Window: "${win}"`;
+		}
+		case "CLICK": {
+			const val = targetVal || "Element";
+			return desc ? `${desc} · Target: "${val}"` : `Click "${val}"`;
+		}
+		case "DOUBLE_CLICK": {
+			const val = targetVal || "Element";
+			return desc ? `${desc} · Target: "${val}"` : `Double-Click "${val}"`;
+		}
+		case "TYPE_TEXT": {
+			const txt = step.text || "";
+			const enterNote = step.press_enter ? " ↵" : "";
+			return desc ? `${desc} · "${txt}"${enterNote}` : `Type "${txt}"${enterNote}`;
+		}
+		case "TYPE_FILE_PATH": {
+			const p = step.file_path || "{document_fullpath}";
+			const enterNote = step.press_enter !== false ? " ↵" : "";
+			return desc ? `${desc} · ${p}${enterNote}` : `Path: ${p}${enterNote}`;
+		}
+		case "VERIFY_SCREEN": {
+			const val = targetVal || "Screen Text";
+			const fallbackAction = step.on_failure_action || (step.on_failure_skill ? "run_skill" : "skip");
+			const fallbackNote = fallbackAction === "run_skill" ? ` ➔ ⚡ ${step.on_failure_skill || "Routine"}` : fallbackAction === "pause_prompt" ? " ➔ 🔔 Pause" : " ➔ ⏭️ Skip";
+			return desc ? `${desc} · Verify "${val}"${fallbackNote}` : `Verify "${val}"${fallbackNote}`;
+		}
+		case "CALL_SKILL": {
+			const sk = step.skill_id || "Sub-Routine";
+			return desc ? `${desc} · ⚡ ${sk}` : `Run ⚡ ${sk}`;
+		}
+		default:
+			return desc || step.action_type || "";
+	}
+}
+
+function renderWorkflowStats(steps) {
+	const container = document.getElementById("workflowStatsBadge");
+	if (!container) return;
+	if (!steps || steps.length === 0) {
+		container.innerHTML = "";
+		return;
+	}
+
+	let clicks = 0;
+	let types = 0;
+	let verifies = 0;
+	let focus = 0;
+	let skills = 0;
+
+	steps.forEach((s) => {
+		if (["CLICK", "DOUBLE_CLICK"].includes(s.action_type)) clicks++;
+		else if (["TYPE_TEXT", "TYPE_FILE_PATH"].includes(s.action_type)) types++;
+		else if (s.action_type === "VERIFY_SCREEN") verifies++;
+		else if (s.action_type === "FOCUS_WINDOW") focus++;
+		else if (s.action_type === "CALL_SKILL") skills++;
+	});
+
+	const items = [];
+	items.push(`<strong>${steps.length}</strong> ${steps.length === 1 ? "Step" : "Steps"}`);
+	if (clicks > 0) items.push(`🎯 ${clicks}`);
+	if (types > 0) items.push(`⌨️ ${types}`);
+	if (verifies > 0) items.push(`👁️ ${verifies}`);
+	if (focus > 0) items.push(`🪟 ${focus}`);
+	if (skills > 0) items.push(`⚡ ${skills}`);
+
+	container.innerHTML = items.join(" · ");
+}
+
 function getActionBadgeStyle(actionType) {
 	switch (actionType) {
 		case "FOCUS_WINDOW":
-			return { label: "🪟 FOCUS WINDOW", badgeClass: "badge-action-focus" };
+			return { label: "🪟 FOCUS WINDOW", badgeClass: "badge-action-focus", themeClass: "step-theme-focus" };
 		case "CLICK":
-			return { label: "🎯 CLICK", badgeClass: "badge-action-click" };
+			return { label: "🎯 CLICK", badgeClass: "badge-action-click", themeClass: "step-theme-click" };
 		case "DOUBLE_CLICK":
-			return { label: "🖱️ DOUBLE CLICK", badgeClass: "badge-action-dblclick" };
+			return { label: "🖱️ DOUBLE CLICK", badgeClass: "badge-action-dblclick", themeClass: "step-theme-dblclick" };
 		case "TYPE_TEXT":
-			return { label: "⌨️ TYPE TEXT", badgeClass: "badge-action-type" };
+			return { label: "⌨️ TYPE TEXT", badgeClass: "badge-action-type", themeClass: "step-theme-type" };
 		case "TYPE_FILE_PATH":
-			return { label: "📄 FILE PATH", badgeClass: "badge-action-filepath" };
+			return { label: "📄 FILE PATH", badgeClass: "badge-action-filepath", themeClass: "step-theme-filepath" };
 		case "VERIFY_SCREEN":
-			return { label: "👁️ VERIFY SCREEN", badgeClass: "badge-action-verify" };
+			return { label: "👁️ VERIFY SCREEN", badgeClass: "badge-action-verify", themeClass: "step-theme-verify" };
 		case "CALL_SKILL":
-			return { label: "⚡ SUB SKILL", badgeClass: "badge-action-skill" };
+			return { label: "⚡ SUB SKILL", badgeClass: "badge-action-skill", themeClass: "step-theme-skill" };
 		default:
-			return { label: actionType || "STEP", badgeClass: "badge-action-default" };
+			return { label: actionType || "STEP", badgeClass: "badge-action-default", themeClass: "step-theme-default" };
 	}
 }
 
 function renderEditorSteps() {
 	const container = document.getElementById("editorStepsList");
 	if (!container) return;
+
+	renderWorkflowStats(currentEditingSteps);
 
 	if (currentEditingSteps.length === 0) {
 		container.innerHTML = `
@@ -465,6 +615,8 @@ function renderEditorSteps() {
 			const isFirst = idx === 0;
 			const isLast = idx === currentEditingSteps.length - 1;
 			const targetVal = (step.locator && (step.locator.prompt || step.locator.value || step.locator.target)) || "";
+			const isExpanded = stepExpandedMap[step.id] !== undefined ? !!stepExpandedMap[step.id] : false;
+			const summaryText = getStepSummaryText(step);
 
 			let actionSpecificHtml = "";
 
@@ -564,51 +716,56 @@ function renderEditorSteps() {
 			}
 
 			return `
-				<div class="doc-editor-section step-card-box">
-					<!-- Step Header -->
-					<div class="step-card-header">
+				<div class="doc-editor-section step-card-box ${badgeStyle.themeClass} ${isExpanded ? "" : "collapsed"}" id="stepCard_${step.id}">
+					<!-- Step Header (Clickable Accordion) -->
+					<div class="step-card-header" onclick="toggleStepCollapse('${escapeHtml(step.id)}')">
 						<div class="step-header-left">
+							<span class="step-chevron">${isExpanded ? "▼" : "▶"}</span>
 							<span class="step-card-num">#${idx + 1}</span>
 							<span class="badge ${badgeStyle.badgeClass}">
 								${badgeStyle.label}
 							</span>
-							<code class="step-card-id">${escapeHtml(step.id)}</code>
+							<span class="step-summary-text" style="${isExpanded ? "display: none;" : "display: inline-block;"}">${escapeHtml(summaryText)}</span>
 						</div>
-						<div class="step-card-tools">
-							<button type="button" class="btn btn-sm btn-icon ${isFirst ? "step-btn-disabled" : ""}" onclick="moveStepUp(${idx})" ${isFirst ? "disabled" : ""} title="Move up">⬆️</button>
-							<button type="button" class="btn btn-sm btn-icon ${isLast ? "step-btn-disabled" : ""}" onclick="moveStepDown(${idx})" ${isLast ? "disabled" : ""} title="Move down">⬇️</button>
-							<button type="button" class="btn btn-sm btn-danger step-btn-remove" onclick="removeEditorStep(${idx})" title="Remove step">🗑️</button>
-						</div>
-					</div>
-
-					<!-- Primary Action & Description -->
-					<div class="grid-2col">
-						<div class="form-group zero-margin">
-							<label class="doc-editor-label">Action Type</label>
-							<select class="doc-editor-input" onchange="currentEditingSteps[${idx}].action_type = this.value; renderEditorSteps();">
-								<option value="CLICK" ${step.action_type === "CLICK" ? "selected" : ""}>🎯 Click Element</option>
-								<option value="DOUBLE_CLICK" ${step.action_type === "DOUBLE_CLICK" ? "selected" : ""}>🖱️ Double-Click Element</option>
-								<option value="TYPE_TEXT" ${step.action_type === "TYPE_TEXT" ? "selected" : ""}>⌨️ Type Text / Variables</option>
-								<option value="TYPE_FILE_PATH" ${step.action_type === "TYPE_FILE_PATH" ? "selected" : ""}>📄 Enter File Path</option>
-								<option value="VERIFY_SCREEN" ${step.action_type === "VERIFY_SCREEN" ? "selected" : ""}>👁️ Wait / Verify Screen</option>
-								<option value="FOCUS_WINDOW" ${step.action_type === "FOCUS_WINDOW" ? "selected" : ""}>🪟 Focus Window</option>
-								<option value="CALL_SKILL" ${step.action_type === "CALL_SKILL" ? "selected" : ""}>⚡ Call Sub-Skill</option>
-							</select>
-						</div>
-						<div class="form-group zero-margin">
-							<label class="doc-editor-label">Description (Optional)</label>
-							<input type="text" class="doc-editor-input" value="${escapeHtml(step.description || "")}" placeholder="e.g. Click search field" onchange="currentEditingSteps[${idx}].description = this.value" />
+						<div class="step-card-tools" onclick="event.stopPropagation();">
+							<button type="button" class="btn-icon-subtle" onclick="moveStepUp(${idx})" ${isFirst ? "disabled" : ""} title="Move up">⬆️</button>
+							<button type="button" class="btn-icon-subtle" onclick="moveStepDown(${idx})" ${isLast ? "disabled" : ""} title="Move down">⬇️</button>
+							<button type="button" class="btn-icon-subtle" onclick="duplicateEditorStep(${idx})" title="Duplicate step">📋</button>
+							<button type="button" class="btn-icon-subtle btn-icon-danger" onclick="removeEditorStep(${idx})" title="Remove step">🗑️</button>
 						</div>
 					</div>
 
-					<!-- Action Specific Fields -->
-					${actionSpecificHtml}
+					<!-- Step Body (Collapsible) -->
+					<div class="step-card-body" style="${isExpanded ? "display: block;" : "display: none;"}">
+						<!-- Primary Action & Description -->
+						<div class="grid-2col">
+							<div class="form-group zero-margin">
+								<label class="doc-editor-label">Action Type</label>
+								<select class="doc-editor-input" onchange="currentEditingSteps[${idx}].action_type = this.value; renderEditorSteps();">
+									<option value="CLICK" ${step.action_type === "CLICK" ? "selected" : ""}>🎯 Click Element</option>
+									<option value="DOUBLE_CLICK" ${step.action_type === "DOUBLE_CLICK" ? "selected" : ""}>🖱️ Double-Click Element</option>
+									<option value="TYPE_TEXT" ${step.action_type === "TYPE_TEXT" ? "selected" : ""}>⌨️ Type Text / Variables</option>
+									<option value="TYPE_FILE_PATH" ${step.action_type === "TYPE_FILE_PATH" ? "selected" : ""}>📄 Enter File Path</option>
+									<option value="VERIFY_SCREEN" ${step.action_type === "VERIFY_SCREEN" ? "selected" : ""}>👁️ Wait / Verify Screen</option>
+									<option value="FOCUS_WINDOW" ${step.action_type === "FOCUS_WINDOW" ? "selected" : ""}>🪟 Focus Window</option>
+									<option value="CALL_SKILL" ${step.action_type === "CALL_SKILL" ? "selected" : ""}>⚡ Call Sub-Skill</option>
+								</select>
+							</div>
+							<div class="form-group zero-margin">
+								<label class="doc-editor-label">Description (Optional)</label>
+								<input type="text" class="doc-editor-input" value="${escapeHtml(step.description || "")}" placeholder="e.g. Click search field" onchange="currentEditingSteps[${idx}].description = this.value" />
+							</div>
+						</div>
 
-					<!-- Inline AI Step Refinement -->
-					<div class="step-ai-refine-box">
-						<span class="ai-assistant-icon" title="AI Step Assistant">✨</span>
-						<input type="text" id="aiRefineInput_${idx}" class="doc-editor-input step-ai-refine-input" placeholder="Adjust step with AI: e.g. 'Type {LastName} and press Enter' or 'Click search button'" onkeydown="if(event.key==='Enter') refineStepWithAI(${idx})" />
-						<button type="button" class="btn btn-sm btn-accent step-btn-refine" onclick="refineStepWithAI(${idx})">✨ Refine</button>
+						<!-- Action Specific Fields -->
+						${actionSpecificHtml}
+
+						<!-- Inline AI Step Refinement -->
+						<div class="step-ai-refine-box">
+							<span class="ai-assistant-icon" title="AI Step Assistant">✨</span>
+							<input type="text" id="aiRefineInput_${idx}" class="doc-editor-input step-ai-refine-input" placeholder="Adjust step with AI: e.g. 'Type {LastName} and press Enter' or 'Click search button'" onkeydown="if(event.key==='Enter') refineStepWithAI(${idx})" />
+							<button type="button" class="btn btn-sm btn-accent step-btn-refine" onclick="refineStepWithAI(${idx})">✨ Refine</button>
+						</div>
 					</div>
 				</div>
 			`;
