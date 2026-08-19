@@ -44,7 +44,7 @@ async function fetchLogDelta() {
 	}
 }
 
-function setLogLevelFilter(level) {
+function setLogFilter(level) {
 	state.logLevelFilter = level;
 	["All", "Info", "Warn", "Error"].forEach((lvl) => {
 		const btn = document.getElementById("logFilter" + lvl);
@@ -55,7 +55,7 @@ function setLogLevelFilter(level) {
 					(level === "WARN" || level === "WARNING")) ||
 				lvl.toUpperCase() === level
 			) {
-				btn.className = "btn btn-sm btn-accent";
+				btn.className = "btn btn-sm active";
 			} else {
 				btn.className = "btn btn-sm";
 			}
@@ -64,14 +64,20 @@ function setLogLevelFilter(level) {
 	renderLogLines();
 }
 
+function filterLogs() {
+	renderLogLines();
+}
+
+const setLogLevelFilter = setLogFilter;
+
 function renderLogLines() {
 	const container = document.getElementById("logLines");
 	if (!container) return;
 
 	const q = (
 		document.getElementById("logSearchInput")?.value || ""
-	).toLowerCase();
-	const filter = state.logLevelFilter;
+	).toLowerCase().trim();
+	const filter = state.logLevelFilter || "ALL";
 
 	const filtered = state.logRecords.filter((item) => {
 		const lvl = (item.level || "").toUpperCase();
@@ -81,8 +87,8 @@ function renderLogLines() {
 			return false;
 
 		if (q) {
-			const msg = (item.message || "").toLowerCase();
-			return msg.includes(q);
+			const full = `${item.time || ""} ${item.level || ""} ${item.message || ""}`.toLowerCase();
+			return full.includes(q);
 		}
 		return true;
 	});
