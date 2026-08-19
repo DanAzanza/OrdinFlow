@@ -17,6 +17,7 @@ class DMSService:
     """Service wrapper for DMS runtime components."""
 
     def __init__(self):
+        self._lock = threading.Lock()
         self.config: Any = None
         self.processor: Any = None
         self.file_queue: Any = None
@@ -24,10 +25,12 @@ class DMSService:
         self._shutdown_event = threading.Event()
 
     def is_ready(self) -> bool:
-        return self.processor is not None and self.config is not None
+        with self._lock:
+            return self.processor is not None and self.config is not None
 
     def heartbeat(self):
-        self._last_heartbeat = time.time()
+        with self._lock:
+            self._last_heartbeat = time.time()
 
     def submit_background_job(self, name: str, func, *args, **kwargs) -> str:
         """Submits a job to the sequential FIFO queue."""
@@ -38,12 +41,18 @@ class DMSService:
 dms_service = DMSService()
 
 
+def get_dms_service() -> DMSService:
+    """Returns the central DMS service container instance."""
+    return dms_service
+
+
 # Static interception for direct attribute access on DashboardState
 class _DashboardStateMeta(type):
     @property
     def config(cls):
         if dms_service.config is None:
             from core.config import AppConfig
+
             dms_service.config = AppConfig()
         return dms_service.config
 
@@ -82,5 +91,3 @@ class _DashboardStateMeta(type):
 
 class DashboardState(metaclass=_DashboardStateMeta):
     pass
-
-

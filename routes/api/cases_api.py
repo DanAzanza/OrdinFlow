@@ -40,9 +40,7 @@ _SKILL_MANAGER: SkillManager | None = None
 def _get_skill_manager() -> SkillManager:
     global _SKILL_MANAGER
     if _SKILL_MANAGER is None:
-        base_dir = (
-            DashboardState.config.base_dir if DashboardState.config else os.getcwd()
-        )
+        base_dir = DashboardState.config.base_dir if DashboardState.config else os.getcwd()
         skills_dir = os.path.join(base_dir, "settings", "skills")
         _SKILL_MANAGER = SkillManager(skills_dir=skills_dir)
     return _SKILL_MANAGER
@@ -59,15 +57,14 @@ def api_cases():
     delimiter = getattr(DashboardState.config, "folder_delimiter", "--") or "--"
     skill_mgr = _get_skill_manager()
     export_skills = [
-        s
-        for s in skill_mgr.list_skills()
-        if s.get("type", "export") == "export" and s.get("enabled", True)
+        s for s in skill_mgr.list_skills() if s.get("type", "export") == "export" and s.get("enabled", True)
     ]
 
     result = []
     try:
         entries = sorted(os.scandir(base_dir), key=lambda e: e.name)
-    except OSError:
+    except OSError as e:
+        logger.debug("[Dashboard] Could not scandir %s: %s", base_dir, e)
         return jsonify([])
 
     for entry in entries:
@@ -86,7 +83,8 @@ def api_cases():
 
         try:
             folder_entries = os.scandir(item_path)
-        except OSError:
+        except OSError as e:
+            logger.debug("[Dashboard] Could not scandir folder %s: %s", item_path, e)
             folder_entries = []
 
         for fe in folder_entries:
@@ -153,16 +151,8 @@ def api_cases():
             # Determine applicable export skills for this file
             applicable_skills = []
             for s in export_skills:
-                s_types = [
-                    t.lower().strip()
-                    for t in s.get("document_types", ["*"])
-                    if isinstance(t, str)
-                ]
-                if (
-                    "*" in s_types
-                    or "all" in s_types
-                    or f_doc_type.lower() in s_types
-                ):
+                s_types = [t.lower().strip() for t in s.get("document_types", ["*"]) if isinstance(t, str)]
+                if "*" in s_types or "all" in s_types or f_doc_type.lower() in s_types:
                     applicable_skills.append(s.get("id"))
 
             for app_skill_id in applicable_skills:
@@ -172,10 +162,7 @@ def api_cases():
 
         if not is_approved:
             export_status = "pending_approval"
-        elif (
-            total_applicable_tasks > 0
-            and completed_applicable_tasks >= total_applicable_tasks
-        ):
+        elif total_applicable_tasks > 0 and completed_applicable_tasks >= total_applicable_tasks:
             export_status = "completed"
         elif files_with_any_export > 0 or completed_applicable_tasks > 0:
             export_status = "partially_exported"
@@ -237,9 +224,7 @@ def api_cases_approve():
             }
         )
     except OSError as e:
-        logger.error(
-            "[Dashboard] Failed to toggle approval for %s: %s", folder_name, e
-        )
+        logger.error("[Dashboard] Failed to toggle approval for %s: %s", folder_name, e)
         return jsonify({"error": str(e)}), 500
 
 
@@ -296,16 +281,12 @@ def api_cases_detail(folder_name: str):
                 {
                     "name": f,
                     "size": stat.st_size,
-                    "modified": time.strftime(
-                        "%Y-%m-%d %H:%M", time.localtime(stat.st_mtime)
-                    ),
+                    "modified": time.strftime("%Y-%m-%d %H:%M", time.localtime(stat.st_mtime)),
                     "has_preview": has_preview,
                     "preview_url": preview_url,
                     "is_preview": False,
                     "doc_type": doc_type,
-                    "executed_skills": executed_skills
-                    if isinstance(executed_skills, list)
-                    else [],
+                    "executed_skills": executed_skills if isinstance(executed_skills, list) else [],
                     "meta": meta_data,
                 }
             )
@@ -341,9 +322,7 @@ def api_cases_edit(folder_name: str):
 
     try:
         os.rename(folder_path, new_path)
-        logger.info(
-            "[Dashboard] Renamed folder: %s -> %s", folder_name, new_folder_name
-        )
+        logger.info("[Dashboard] Renamed folder: %s -> %s", folder_name, new_folder_name)
         return jsonify({"status": "ok", "folder": new_folder_name})
     except OSError as e:
         return jsonify({"error": str(e)}), 500
@@ -353,9 +332,7 @@ def api_cases_edit(folder_name: str):
 def api_file_meta_cases(folder: str, filename: str):
     if not DashboardState.config:
         return jsonify({"error": "Config not available"}), 503
-    filepath = os.path.abspath(
-        os.path.join(DashboardState.config.target_base_dir, folder, filename)
-    )
+    filepath = os.path.abspath(os.path.join(DashboardState.config.target_base_dir, folder, filename))
     if not _is_within_base(filepath, DashboardState.config.target_base_dir):
         return jsonify({"error": "Access denied"}), 403
     meta_path = filepath + ".meta"
@@ -375,9 +352,7 @@ def api_file_meta_cases(folder: str, filename: str):
     return jsonify({"error": "No meta file found"}), 404
 
 
-@cases_api_bp.route(
-    "/api/cases/<path:folder_name>/<filename>/edit", methods=["POST"]
-)
+@cases_api_bp.route("/api/cases/<path:folder_name>/<filename>/edit", methods=["POST"])
 def api_cases_edit_file(folder_name: str, filename: str):
     if not DashboardState.config:
         return jsonify({"error": "Config not available"}), 503
@@ -391,9 +366,7 @@ def api_cases_edit_file(folder_name: str, filename: str):
     if err:
         return jsonify({"error": err}), 400
 
-    src_path = os.path.join(
-        DashboardState.config.target_base_dir, folder_name, filename
-    )
+    src_path = os.path.join(DashboardState.config.target_base_dir, folder_name, filename)
     if not os.path.isfile(src_path):
         return jsonify({"error": "File not found"}), 404
     if not _is_within_base(src_path, DashboardState.config.target_base_dir):
@@ -427,11 +400,9 @@ def api_cases_edit_file(folder_name: str, filename: str):
         try:
             if not os.listdir(src_dir):
                 os.rmdir(src_dir)
-        except OSError:
-            pass
-        return jsonify(
-            {"status": "ok", "folder": new_folder_name, "file": target_filename}
-        )
+        except OSError as e:
+            logger.debug("[Dashboard] Could not remove empty source folder %s: %s", src_dir, e)
+        return jsonify({"status": "ok", "folder": new_folder_name, "file": target_filename})
     except OSError as e:
         return jsonify({"error": str(e)}), 500
 
@@ -440,9 +411,7 @@ def api_cases_edit_file(folder_name: str, filename: str):
 def api_cases_delete_file(folder_name: str, filename: str):
     if not DashboardState.config:
         return jsonify({"error": "Config not available"}), 503
-    filepath = os.path.join(
-        DashboardState.config.target_base_dir, folder_name, filename
-    )
+    filepath = os.path.join(DashboardState.config.target_base_dir, folder_name, filename)
     if not os.path.isfile(filepath):
         return jsonify({"error": "File not found"}), 404
     if not _is_within_base(filepath, DashboardState.config.target_base_dir):

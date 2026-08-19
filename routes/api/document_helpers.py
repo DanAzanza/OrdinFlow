@@ -40,13 +40,13 @@ def _is_within_base(path: str, base_dir: str) -> bool:
 
 
 def _remove_meta_sidecar(filepath: str) -> None:
-    """Deletes the .meta sidecar file if present (idempotent, suppresses errors)."""
+    """Deletes the .meta sidecar file if present."""
     meta_path = filepath + ".meta"
     if os.path.exists(meta_path):
         try:
             os.remove(meta_path)
-        except OSError:
-            pass
+        except OSError as e:
+            logger.debug("[DocumentHelpers] Could not remove sidecar %s: %s", meta_path, e)
 
 
 def safe_move_with_meta(src_path: str, dst_path: str) -> None:

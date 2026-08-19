@@ -2,7 +2,8 @@ import os
 
 from flask import Blueprint, render_template
 
-ui_bp = Blueprint('ui', __name__)
+ui_bp = Blueprint("ui", __name__)
+
 
 @ui_bp.route("/")
 def index():
@@ -15,6 +16,7 @@ def favicon():
 
 
 #  STATUS & PROCESS CONTROL
+
 
 @ui_bp.route("/api/legal/<doc_name>")
 def api_legal(doc_name: str):

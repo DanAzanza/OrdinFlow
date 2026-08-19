@@ -24,9 +24,6 @@ def test_run_ocr_without_image_returns_empty():
 # ──────────────────────────────────────────────────────────────
 
 
-
-
-
 # ──────────────────────────────────────────────────────────────
 # HIGH VALUE: Vision-Klassifizierungsregeln für neue Dokumenttypen
 # ──────────────────────────────────────────────────────────────
@@ -72,11 +69,8 @@ def test_vision_befundbogen_rules_extracted():
                 "classify_temperature": 0.0,
                 "num_predict": 128,
                 "document_types": {
-                    "befundbogen": {
-                        "classification_desc": "befundbogen desc",
-                        "specific_rules": "B" * 60
-                    }
-                }
+                    "befundbogen": {"classification_desc": "befundbogen desc", "specific_rules": "B" * 60}
+                },
             },
         )()
         extractor.config = fake_config  # type: ignore[assignment]
@@ -99,7 +93,7 @@ def test_vision_unknown_type_returns_empty_rules():
                 "num_ctx": 4096,
                 "classify_temperature": 0.0,
                 "num_predict": 128,
-                "document_types": {}
+                "document_types": {},
             },
         )()
         extractor.config = fake_config  # type: ignore[assignment]
@@ -125,9 +119,7 @@ def test_image_preprocessor_scale_and_encode_returns_base64(processor):
         np.ones((1200, 1600), dtype=np.uint8) * 128,
         cv2.COLOR_GRAY2BGR,
     )
-    b64 = processor.image_preprocessor.scale_and_encode_image(
-        Image.fromarray(dummy_img), max_dim=800
-    )
+    b64 = processor.image_preprocessor.scale_and_encode_image(Image.fromarray(dummy_img), max_dim=800)
     assert isinstance(b64, str)
     assert len(b64) > 0
 
@@ -152,7 +144,7 @@ def test_routing_without_signature_marks_pruefen(processor, tmp_path):
     processor.config.target_base_dir = str(target_dir)
     processor.config.document_types["Vertrag"] = {
         "validation": {"signature_required": True},
-        "routing": {"archive": True, "filename_template": "Vertrag__{Produkt}__{Datum}"}
+        "routing": {"archive": True, "filename_template": "Vertrag__{Produkt}__{Datum}"},
     }
 
     dummy_file = watch_dir / "no_sign.pdf"
@@ -169,9 +161,7 @@ def test_routing_without_signature_marks_pruefen(processor, tmp_path):
         "page_results": [],
     }
 
-    with patch.object(
-        processor, "extract_hybrid_voting", return_value=mock_extracted
-    ):
+    with patch.object(processor, "extract_hybrid_voting", return_value=mock_extracted):
         processor.process_and_route_file(str(dummy_file))
 
     # Nach dem Verarbeitungsversuch sollte die Datei im Eingang bleiben (.meta vorhanden)
@@ -216,9 +206,7 @@ def test_routing_with_missing_name_keeps_in_watch(processor, tmp_path):
         "page_results": [],
     }
 
-    with patch.object(
-        processor, "extract_hybrid_voting", return_value=mock_extracted
-    ):
+    with patch.object(processor, "extract_hybrid_voting", return_value=mock_extracted):
         processor.process_and_route_file(str(dummy_file))
 
     # Kein Zielordner sollte erstellt worden sein (kein plausibler Name)
@@ -230,12 +218,9 @@ def test_routing_with_missing_name_keeps_in_watch(processor, tmp_path):
 # ──────────────────────────────────────────────────────────────
 
 
-
-
 # ──────────────────────────────────────────────────────────────
 # MEDIUM VALUE: Produkt-Normalisierung – Leerzeichen & Sonderzeichen
 # ──────────────────────────────────────────────────────────────
-
 
 
 def test_extract_hybrid_voting_two_phase_grouping(processor):
@@ -257,6 +242,7 @@ def test_extract_hybrid_voting_two_phase_grouping(processor):
         }
 
     doc_calls = []
+
     def mock_process_doc(document_pages):
         doc_calls.append([p["page_num"] for p in document_pages])
         return {
@@ -265,12 +251,14 @@ def test_extract_hybrid_voting_two_phase_grouping(processor):
             "Datum": "2026-07-07",
             "Produkt": "Software",
             "Signed": True,
-            "_confidence": {"Vorname": 1.0, "Nachname": 1.0}
+            "_confidence": {"Vorname": 1.0, "Nachname": 1.0},
         }
 
-    with patch.object(processor.image_preprocessor, "create_source_images", return_value=mock_images), \
-         patch.object(processor, "_classify_single_page", side_effect=mock_classify), \
-         patch.object(processor, "_process_document_pages", side_effect=mock_process_doc):
+    with (
+        patch.object(processor.image_preprocessor, "create_source_images", return_value=mock_images),
+        patch.object(processor, "_classify_single_page", side_effect=mock_classify),
+        patch.object(processor, "_process_document_pages", side_effect=mock_process_doc),
+    ):
         final_doc = processor.extract_hybrid_voting("dummy.pdf")
 
     assert len(doc_calls) == 1
@@ -285,13 +273,7 @@ def test_optional_field_fehlt_is_cleared_to_empty_string():
     from core.vision import LLMExtractor
 
     config = AppConfig()
-    config.document_types = {
-        "Lieferschein": {
-            "validation": {
-                "optional_fields": ["Titel"]
-            }
-        }
-    }
+    config.document_types = {"Lieferschein": {"validation": {"optional_fields": ["Titel"]}}}
     extractor = LLMExtractor(config)
 
     with patch.object(

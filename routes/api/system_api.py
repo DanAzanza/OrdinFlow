@@ -19,19 +19,36 @@ logger = logging.getLogger(__name__)
 
 # Allowed configuration keys for GET and PUT /api/config
 _CONFIG_SAFE_KEYS = [
-    "watch_dir", "target_base_dir",
-    "delay_seconds", "dashboard_port", "document_types", "folder_structure",
-    "folder_delimiter", "match_folder_by", "model_name", "vision_api_timeout", "vision_api_retries",
-    "folder_match_threshold", "crop_edge_threshold", "min_contour_area",
-    "max_dimension", "crop_padding", "white_border", "contrast_limit",
-    "classify_dimension", "vision_base_rules",
+    "watch_dir",
+    "target_base_dir",
+    "dashboard_port",
+    "document_types",
+    "folder_structure",
+    "folder_delimiter",
+    "match_folder_by",
+    "llm_backend",
+    "server_url",
+    "server_api_key",
+    "llm_model_path",
+    "mmproj_path",
+    "vision_api_timeout",
+    "vision_api_retries",
+    "crop_edge_threshold",
+    "min_contour_area",
+    "max_dimension",
+    "crop_padding",
+    "white_border",
+    "contrast_limit",
+    "classify_dimension",
 ]
 
 
 # ── Pydantic Validation Schemas ──
 
+
 class FlexibleDocumentPayload(BaseModel):
     """Base schema for document metadata with dynamic extra fields."""
+
     model_config = ConfigDict(extra="allow", populate_by_name=True)
 
     document: str | None = Field(
@@ -60,24 +77,21 @@ class AssignDocumentSchema(FlexibleDocumentPayload):
 
 class FolderEditSchema(BaseModel):
     """Schema for PUT /api/cases/<folder_name>."""
+
     model_config = ConfigDict(extra="allow")
 
     def to_clean_dict(self) -> dict[str, Any]:
-        return {
-            k: v.strip() if isinstance(v, str) else v
-            for k, v in self.model_dump().items()
-        }
+        return {k: v.strip() if isinstance(v, str) else v for k, v in self.model_dump().items()}
 
 
 class ConfigUpdateSchema(BaseModel):
     """Schema for PUT /api/config."""
+
     model_config = ConfigDict(extra="allow")
 
     folder_delimiter: str | None = None
     folder_structure: list[Any] | None = None
     document_types: dict[str, Any] | None = None
-    vision_base_rules: str | None = None
-    signature_base_rules: str | None = None
 
 
 def validate_schema(schema_cls, data: dict[str, Any] | None) -> tuple[Any | None, str | None]:
@@ -100,6 +114,7 @@ def validate_schema(schema_cls, data: dict[str, Any] | None) -> tuple[Any | None
 
 # ── System & Status Endpoints ──
 
+
 @system_api_bp.route("/api/status")
 def api_status():
     DashboardState.last_heartbeat = time.time()
@@ -111,6 +126,7 @@ def api_status():
 
     try:
         from core.skills.queue import get_skill_queue_manager
+
         qm = get_skill_queue_manager()
         stats["skill_queue"] = qm.get_queue_state()
     except Exception as e:
@@ -174,6 +190,7 @@ def api_heartbeat():
 
 
 # ── Log Endpoints ──
+
 
 @system_api_bp.route("/api/log", methods=["GET"])
 def api_get_logs():
@@ -273,21 +290,9 @@ def _compute_log_stats(lines: list[str]) -> dict[str, Any]:
             tier3_count += 1
 
     total_files = completed_files + manual_review_files
-    success_rate = (
-        f"{((completed_files / total_files) * 100):.1f}"
-        if total_files > 0
-        else "100.0"
-    )
-    avg_time_file = (
-        f"{(total_processing_time / total_files):.1f}"
-        if total_files > 0
-        else "0.0"
-    )
-    avg_time_page = (
-        f"{(total_processing_time / total_pages):.1f}"
-        if total_pages > 0
-        else "0.0"
-    )
+    success_rate = f"{((completed_files / total_files) * 100):.1f}" if total_files > 0 else "100.0"
+    avg_time_file = f"{(total_processing_time / total_files):.1f}" if total_files > 0 else "0.0"
+    avg_time_page = f"{(total_processing_time / total_pages):.1f}" if total_pages > 0 else "0.0"
 
     return {
         "recordsCount": len(lines),
@@ -330,6 +335,7 @@ def api_get_log_stats():
 
 # ── Configuration Endpoints ──
 
+
 @system_api_bp.route("/api/config", methods=["GET"])
 def api_config_get():
     if not DashboardState.config:
@@ -368,4 +374,3 @@ def api_config_put():
             return jsonify({"error": str(e)}), 500
 
     return jsonify({"status": "ok", "changed": changed})
-

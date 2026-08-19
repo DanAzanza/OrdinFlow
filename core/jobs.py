@@ -80,9 +80,7 @@ class BackgroundJobQueue:
         if self._worker_thread and self._worker_thread.is_alive():
             return
         self._shutdown = False
-        self._worker_thread = threading.Thread(
-            target=self._worker_loop, name="DMS-JobWorker", daemon=True
-        )
+        self._worker_thread = threading.Thread(target=self._worker_loop, name="DMS-JobWorker", daemon=True)
         self._worker_thread.start()
         logger.info("[JobQueue] Background worker started (FIFO, sequential).")
 
@@ -99,11 +97,7 @@ class BackgroundJobQueue:
         with self._lock:
             # Evict completed jobs when the list grows too large
             if len(self._jobs) > 200:
-                completed = [
-                    (jid, t)
-                    for jid, t in self._jobs.items()
-                    if t.status in _TERMINAL_STATUSES
-                ]
+                completed = [(jid, t) for jid, t in self._jobs.items() if t.status in _TERMINAL_STATUSES]
                 if len(completed) > 100:
                     completed.sort(key=lambda x: x[1].created_at)
                     for jid, _ in completed[:50]:
@@ -121,9 +115,7 @@ class BackgroundJobQueue:
 
     def list_jobs(self, limit: int = 50) -> list[dict[str, Any]]:
         with self._lock:
-            sorted_jobs = sorted(
-                self._jobs.values(), key=lambda j: j.created_at, reverse=True
-            )
+            sorted_jobs = sorted(self._jobs.values(), key=lambda j: j.created_at, reverse=True)
             return [j.to_dict() for j in sorted_jobs[:limit]]
 
     def _worker_loop(self):

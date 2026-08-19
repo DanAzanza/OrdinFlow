@@ -158,8 +158,8 @@ class SkillManager:
             try:
                 mtime = os.path.getmtime(filepath)
                 self._cache[filepath] = (mtime, skill_data)
-            except OSError:
-                pass
+            except OSError as e:
+                logger.debug("[SkillManager] Could not get mtime for %s: %s", filepath, e)
 
         logger.info("[SkillManager] Skill '%s' saved to %s", skill_id, filepath)
         return skill_id

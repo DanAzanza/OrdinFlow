@@ -21,10 +21,10 @@ from core.matcher import FileSystemRouter
 from core.routing import render_filename, render_folder_name
 from core.utils import (
     MISSING_PLACEHOLDER,
-    _deduplicate_path,
-    _remove_source_with_meta,
     clean_path_component,
+    deduplicate_path,
     is_missing_value,
+    remove_source_with_meta,
     safe_move,
 )
 
@@ -49,11 +49,7 @@ class FileService:
         optional_fields = optional_fields or set()
         extraction_fields = extraction_fields or set()
 
-        match_folder_by = (
-            routing_cfg.get("match_folder_by")
-            or getattr(self.config, "match_folder_by", None)
-            or []
-        )
+        match_folder_by = routing_cfg.get("match_folder_by") or getattr(self.config, "match_folder_by", None) or []
         existing_folder = None
         if match_folder_by:
             match_keywords = [
@@ -79,18 +75,12 @@ class FileService:
 
         if existing_folder:
             existing_folder_name = os.path.basename(existing_folder)
-            existing_fehlt_count = (
-                existing_folder_name.upper().count("MISSING")
-                + existing_folder_name.count("----")
-            )
-            target_fehlt_count = (
-                target_folder_name.upper().count("MISSING")
-                + target_folder_name.count("----")
-            )
+            existing_fehlt_count = existing_folder_name.upper().count("MISSING") + existing_folder_name.count("----")
+            target_fehlt_count = target_folder_name.upper().count("MISSING") + target_folder_name.count("----")
 
-            if target_fehlt_count < existing_fehlt_count and os.path.abspath(
-                existing_folder
-            ) != os.path.abspath(target_dir):
+            if target_fehlt_count < existing_fehlt_count and os.path.abspath(existing_folder) != os.path.abspath(
+                target_dir
+            ):
                 try:
                     logger.info(
                         f"[+] Renaming existing case folder: '{existing_folder_name}' -> '{target_folder_name}'"
@@ -108,10 +98,8 @@ class FileService:
 
     def move_file(self, filepath: str, target_dir: str, target_filename: str) -> str:
         """Safely moves a file into the target directory."""
-        target_filepath = _deduplicate_path(os.path.join(target_dir, target_filename))
-        logger.info(
-            f"[+] Moving file '{os.path.basename(filepath)}' -> '{target_filepath}'"
-        )
+        target_filepath = deduplicate_path(os.path.join(target_dir, target_filename))
+        logger.info(f"[+] Moving file '{os.path.basename(filepath)}' -> '{target_filepath}'")
         safe_move(filepath, target_filepath)
         return target_filepath
 
@@ -126,9 +114,7 @@ class FileService:
         meta: dict[str, Any] = {
             "status": "pruefen",
             "grund": grund,
-            "zeit": datetime.datetime.now(datetime.timezone.utc).isoformat(
-                timespec="seconds"
-            ),
+            "zeit": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds"),
             "dateiname": os.path.basename(filepath),
         }
         if extracted:
@@ -142,11 +128,7 @@ class FileService:
                     else:
                         extracted_raw[str(k)] = str(v)
             meta_extracted: dict[str, Any] = {"raw": extracted_raw}
-            desc = (
-                extracted.get("description")
-                or extracted.get("vision_description")
-                or ""
-            )
+            desc = extracted.get("description") or extracted.get("vision_description") or ""
             if isinstance(desc, str) and desc.strip():
                 meta_extracted["description"] = desc.strip()
             meta["extracted"] = meta_extracted
@@ -172,9 +154,7 @@ class FileService:
             return False
 
         filename = os.path.basename(filepath)
-        logger.info(
-            f"[*] Splitting batch PDF '{filename}' into {len(page_results)} separate files..."
-        )
+        logger.info(f"[*] Splitting batch PDF '{filename}' into {len(page_results)} separate files...")
         optional_fields = optional_fields or set()
         extraction_fields = extraction_fields or set()
 
@@ -193,9 +173,7 @@ class FileService:
                         "page_results",
                         "vision_description",
                     } and (
-                        k not in part_extracted
-                        or not part_extracted[k]
-                        or part_extracted[k] == MISSING_PLACEHOLDER
+                        k not in part_extracted or not part_extracted[k] or part_extracted[k] == MISSING_PLACEHOLDER
                     ):
                         part_extracted[k] = v
 
@@ -205,9 +183,7 @@ class FileService:
                 g_opt = set(g_val.get("optional_fields", []))
                 g_ext_fields = g_info.get("extraction_fields", {}) if g_info else {}
 
-                g_is_dependent = (
-                    bool(g_info.get("dependent", False)) if g_info else False
-                )
+                g_is_dependent = bool(g_info.get("dependent", False)) if g_info else False
                 if g_is_dependent:
                     g_opt = g_opt | optional_fields
                     g_ext_fields_keys = set(g_ext_fields.keys()) | extraction_fields
@@ -235,19 +211,15 @@ class FileService:
                     for p_idx in g_pages:
                         new_doc.insert_pdf(doc, from_page=p_idx - 1, to_page=p_idx - 1)
 
-                    target_filepath = _deduplicate_path(
-                        os.path.join(target_dir, target_filename)
-                    )
+                    target_filepath = deduplicate_path(os.path.join(target_dir, target_filename))
                     new_doc.save(target_filepath)
                 logger.info(
                     f"[+] Partial PDF '{os.path.basename(target_filepath)}' (pages {g_pages}) saved successfully."
                 )
-        _remove_source_with_meta(filepath)
+        remove_source_with_meta(filepath)
         return True
 
-    def save_filtered_pdf(
-        self, src_path: str, dst_path: str, kept_pages: list[int]
-    ) -> bool:
+    def save_filtered_pdf(self, src_path: str, dst_path: str, kept_pages: list[int]) -> bool:
         """Saves a PDF without empty pages."""
         if not self.can_split_pdf:
             return False
@@ -256,5 +228,5 @@ class FileService:
                 for p_idx in kept_pages:
                     new_doc.insert_pdf(doc, from_page=p_idx - 1, to_page=p_idx - 1)
                 new_doc.save(dst_path)
-        _remove_source_with_meta(src_path)
+        remove_source_with_meta(src_path)
         return True

@@ -149,11 +149,11 @@ def refine_step():
         try:
             prompt = (
                 f"You configure robotic UI automation steps. Convert this user instruction into a step JSON.\n"
-                f"Instruction: \"{instruction}\"\n"
+                f'Instruction: "{instruction}"\n'
                 f"Current step: {json.dumps(existing_step)}\n\n"
                 f"Schema:\n"
                 f"- description: string (summary in English)\n"
-                f"- action_type: \"CLICK\" | \"DOUBLE_CLICK\" | \"TYPE_TEXT\" | \"TYPE_FILE_PATH\" | \"VERIFY_SCREEN\" | \"FOCUS_WINDOW\" | \"CALL_SKILL\"\n"
+                f'- action_type: "CLICK" | "DOUBLE_CLICK" | "TYPE_TEXT" | "TYPE_FILE_PATH" | "VERIFY_SCREEN" | "FOCUS_WINDOW" | "CALL_SKILL"\n'
                 f"- target: string (element name to locate on screen if click/verify)\n"
                 f"- text: string (text or placeholder if typing)\n"
                 f"- press_enter: boolean (true if enter should be pressed)\n"
@@ -189,13 +189,30 @@ def refine_step():
                 refined["text"] = quotes[0] if quotes else instruction
         elif any(k in lower for k in ["doppelklick", "double click"]):
             refined["action_type"] = "DOUBLE_CLICK"
-            target = re.sub(r"(?i)^(doppelklick auf|double click on|klicke doppelt auf)\s*", "", instruction).strip("\"' ")
+            target = re.sub(r"(?i)^(doppelklick auf|double click on|klicke doppelt auf)\s*", "", instruction).strip(
+                "\"' "
+            )
             refined["locator"] = {"type": "auto", "prompt": target or instruction}
-        elif any(k in lower for k in ["prüf", "warten", "verify", "check", "erscheint", "sichtbar", "wenn nicht", "falls nicht", "if not"]):
+        elif any(
+            k in lower
+            for k in [
+                "prüf",
+                "warten",
+                "verify",
+                "check",
+                "erscheint",
+                "sichtbar",
+                "wenn nicht",
+                "falls nicht",
+                "if not",
+            ]
+        ):
             refined["action_type"] = "VERIFY_SCREEN"
             parts = re.split(r"(?i)\s*(?:wenn nicht|falls nicht|if not)\s*,?\s*", instruction, maxsplit=1)
             target_part = parts[0]
-            target = re.sub(r"(?i)^(prüfe ob|warten auf|verify|check if|suche nach|finde)\s*", "", target_part).strip("\"' ")
+            target = re.sub(r"(?i)^(prüfe ob|warten auf|verify|check if|suche nach|finde)\s*", "", target_part).strip(
+                "\"' "
+            )
             refined["locator"] = {"type": "auto", "prompt": target or target_part}
 
             if len(parts) > 1:
@@ -376,21 +393,27 @@ def reorder_skill_queue():
 def start_skill_queue():
     qm = _get_configured_queue_manager()
     success = qm.start_queue()
-    return jsonify({"status": "started" if success else "empty_or_failed", "is_running": qm.is_running, "is_paused": qm.is_paused})
+    return jsonify(
+        {"status": "started" if success else "empty_or_failed", "is_running": qm.is_running, "is_paused": qm.is_paused}
+    )
 
 
 @skills_api_bp.route("/api/skills/queue/pause", methods=["POST"])
 def pause_skill_queue():
     qm = _get_configured_queue_manager()
     success = qm.pause_queue()
-    return jsonify({"status": "paused" if success else "not_running", "is_paused": qm.is_paused, "is_running": qm.is_running})
+    return jsonify(
+        {"status": "paused" if success else "not_running", "is_paused": qm.is_paused, "is_running": qm.is_running}
+    )
 
 
 @skills_api_bp.route("/api/skills/queue/resume", methods=["POST"])
 def resume_skill_queue():
     qm = _get_configured_queue_manager()
     success = qm.resume_queue()
-    return jsonify({"status": "resumed" if success else "failed", "is_paused": qm.is_paused, "is_running": qm.is_running})
+    return jsonify(
+        {"status": "resumed" if success else "failed", "is_paused": qm.is_paused, "is_running": qm.is_running}
+    )
 
 
 @skills_api_bp.route("/api/skills/queue/stop", methods=["POST"])

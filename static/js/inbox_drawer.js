@@ -507,7 +507,7 @@ async function submitDrawerInspector() {
 			toast(res.message || "Folder updated successfully!");
 			closeAppInspector();
 			if (state.expandedFolder === folder) state.expandedFolder = res.folder || folder;
-			fetchCases();
+			AppEvents.emit("cases:refresh");
 		} catch (e) {
 			toast("Error saving folder: " + e.message, "error");
 		}
@@ -554,8 +554,8 @@ async function submitDrawerInspector() {
 
 		toast(res.message || "Approved successfully!");
 		closeAppInspector();
-		fetchInbox();
-		fetchCases();
+		AppEvents.emit("inbox:refresh");
+		AppEvents.emit("cases:refresh");
 	} catch (e) {
 		toast("Approval error: " + e.message, "error");
 	}

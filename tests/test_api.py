@@ -24,6 +24,7 @@ def test_api_eingang(client, tmp_path):
     # Überprüfe, ob die URL korrekt URL-encoded wurde
     assert "/api/inbox/preview/test_person.pdf" in data[0]["preview_url"]
 
+
 def test_api_vorgaenge(client, tmp_path):
     # Setze temporäres target_base_dir auf tmp_path
     DashboardState.config.target_base_dir = str(tmp_path)
@@ -55,6 +56,7 @@ def test_api_vorgaenge(client, tmp_path):
     assert data_detail["files"][0]["name"] == "Vertrag__Software__2026-03-13.pdf"
     assert "preview_url" in data_detail["files"][0]
     assert "Muster%2C%20Max" in data_detail["files"][0]["preview_url"]
+
 
 def test_api_eingang_retry_and_delete(client, tmp_path):
     from core.processor import DocumentProcessor
@@ -88,6 +90,7 @@ def test_api_eingang_retry_and_delete(client, tmp_path):
 
 def test_api_config_driven_routing(client, tmp_path):
     from routes.api import _render_target_filename, _render_target_folder
+
     DashboardState.config.folder_structure = ["{Abteilung}", "{Kunde}"]
     DashboardState.config.document_types = {
         "CustomDoc": {
@@ -120,7 +123,7 @@ def test_api_skills_crud(client):
         "enabled": True,
         "steps": [
             {"id": "step_1", "description": "Step 1", "action_type": "FOCUS_WINDOW", "window_title": "Remote Desktop*"}
-        ]
+        ],
     }
     res_save = client.post("/api/skills", json=new_skill)
     assert res_save.status_code == 200
@@ -158,7 +161,9 @@ def test_api_vorgaenge_approval_status(client, tmp_path):
         assert data[0]["export_status"] == "pending_approval"
 
         # Toggle approval via /api/cases/approve
-        res_toggle = client.post("/api/cases/approve", json={"folder": "2026-07-29__Software__Mustermann__Erika", "approved": True})
+        res_toggle = client.post(
+            "/api/cases/approve", json={"folder": "2026-07-29__Software__Mustermann__Erika", "approved": True}
+        )
         assert res_toggle.status_code == 200
         assert res_toggle.get_json()["is_approved"] is True
 
@@ -169,7 +174,9 @@ def test_api_vorgaenge_approval_status(client, tmp_path):
         assert data_approved[0]["export_status"] == "approved"
 
         # Revoke approval
-        res_revoke = client.post("/api/cases/approve", json={"folder": "2026-07-29__Software__Mustermann__Erika", "approved": False})
+        res_revoke = client.post(
+            "/api/cases/approve", json={"folder": "2026-07-29__Software__Mustermann__Erika", "approved": False}
+        )
         assert res_revoke.status_code == 200
         assert res_revoke.get_json()["is_approved"] is False
     finally:
@@ -245,7 +252,7 @@ def test_api_skills_pending_cases_and_run_batch(client, tmp_path):
             "type": "export",
             "enabled": True,
             "document_types": ["Befund"],
-            "steps": []
+            "steps": [],
         }
         client.post("/api/skills", json=skill_payload)
 
@@ -271,10 +278,10 @@ def test_api_skills_pending_cases_and_run_batch(client, tmp_path):
 
 def test_api_skills_refine_step(client):
     # Test typing text with enter
-    res1 = client.post("/api/skills/refine_step", json={
-        "instruction": "Tippe {Nachname} ein und drücke Enter",
-        "step": {"id": "step_1"}
-    })
+    res1 = client.post(
+        "/api/skills/refine_step",
+        json={"instruction": "Tippe {Nachname} ein und drücke Enter", "step": {"id": "step_1"}},
+    )
     assert res1.status_code == 200
     step1 = res1.get_json()["step"]
     assert step1["action_type"] == "TYPE_TEXT"
@@ -282,29 +289,28 @@ def test_api_skills_refine_step(client):
     assert step1["press_enter"] is True
 
     # Test file upload
-    res2 = client.post("/api/skills/refine_step", json={
-        "instruction": "Lade die Datei PDF hoch",
-        "step": {"id": "step_2"}
-    })
+    res2 = client.post(
+        "/api/skills/refine_step", json={"instruction": "Lade die Datei PDF hoch", "step": {"id": "step_2"}}
+    )
     assert res2.status_code == 200
     step2 = res2.get_json()["step"]
     assert step2["action_type"] == "TYPE_FILE_PATH"
 
     # Test clicking button
-    res3 = client.post("/api/skills/refine_step", json={
-        "instruction": "Klicke auf Suchen",
-        "step": {"id": "step_3"}
-    })
+    res3 = client.post("/api/skills/refine_step", json={"instruction": "Klicke auf Suchen", "step": {"id": "step_3"}})
     assert res3.status_code == 200
     step3 = res3.get_json()["step"]
     assert step3["action_type"] == "CLICK"
     assert "Suchen" in str(step3.get("locator", {}).get("prompt", ""))
 
     # Test conditional fallback routine
-    res4 = client.post("/api/skills/refine_step", json={
-        "instruction": "Prüfe ob {Nachname} sichtbar ist, wenn nicht führe routine patient_anlegen aus",
-        "step": {"id": "step_4"}
-    })
+    res4 = client.post(
+        "/api/skills/refine_step",
+        json={
+            "instruction": "Prüfe ob {Nachname} sichtbar ist, wenn nicht führe routine patient_anlegen aus",
+            "step": {"id": "step_4"},
+        },
+    )
     assert res4.status_code == 200
     step4 = res4.get_json()["step"]
     assert step4["action_type"] == "VERIFY_SCREEN"
@@ -365,5 +371,3 @@ def test_api_skills_queue_pause_resume(client):
     res_stop = client.post("/api/skills/queue/stop")
     assert res_stop.status_code == 200
     assert res_stop.get_json()["is_running"] is False
-
-

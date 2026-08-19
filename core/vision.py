@@ -1,5 +1,6 @@
 import json
 import logging
+import re
 import time
 from typing import Any
 
@@ -21,7 +22,6 @@ def _repair_and_parse_json(raw_text: str) -> dict[str, Any]:
         return {}
 
     text = raw_text.strip()
-    import re
 
     if "```" in text:
         text = re.sub(r"^```[a-zA-Z]*\n?", "", text, flags=re.MULTILINE)
@@ -80,11 +80,7 @@ def _repair_and_parse_json(raw_text: str) -> dict[str, Any]:
                 harvested[key] = None
             else:
                 try:
-                    harvested[key] = (
-                        float(val_primitive)
-                        if "." in val_primitive
-                        else int(val_primitive)
-                    )
+                    harvested[key] = float(val_primitive) if "." in val_primitive else int(val_primitive)
                 except ValueError:
                     harvested[key] = val_primitive
         elif val_str is not None:
@@ -146,9 +142,7 @@ class LLMExtractor:
                 result = self._backend.call_vision_api(payload)  # type: ignore[attr-defined]
                 if isinstance(result, str) and len(result.strip()) > 0:
                     return result.strip()
-                logger.debug(
-                    f"[-] Empty response from backend (attempt {attempt + 1}/{retries})"
-                )
+                logger.debug(f"[-] Empty response from backend (attempt {attempt + 1}/{retries})")
             except (
                 ConnectionError,
                 OSError,
@@ -158,9 +152,7 @@ class LLMExtractor:
             ) as e:
                 last_error = str(e)
                 wait_time = 2 ** (attempt + 1)
-                logger.warning(
-                    f"[-] LLM call failed (attempt {attempt + 1}/{retries}): {e}. Waiting {wait_time}s..."
-                )
+                logger.warning(f"[-] LLM call failed (attempt {attempt + 1}/{retries}): {e}. Waiting {wait_time}s...")
                 time.sleep(wait_time)
         if last_error:
             logger.error(f"[!] Vision API error after {retries} attempts: {last_error}")
@@ -175,9 +167,7 @@ class LLMExtractor:
         try:
             return json.loads(raw)
         except json.JSONDecodeError as e:
-            logger.warning(
-                f"[-] JSONDecodeError parsing Vision response: {e}. Attempting auto-repair..."
-            )
+            logger.warning(f"[-] JSONDecodeError parsing Vision response: {e}. Attempting auto-repair...")
             repaired = _repair_and_parse_json(raw)
             if repaired:
                 logger.info(f"[+] Auto-repaired JSON response successfully: {repaired}")
@@ -201,9 +191,7 @@ class LLMExtractor:
             f"Options:\n{type_str}\n\n"
             "Reply ONLY with the exact category name - no JSON, no explanation."
         )
-        payload = {
-            "messages": [{"role": "user", "content": prompt, "images": [b64_image]}]
-        }
+        payload = {"messages": [{"role": "user", "content": prompt, "images": [b64_image]}]}
 
         raw_resp = self.call_vision_api(payload)
         if raw_resp:
@@ -218,11 +206,7 @@ class LLMExtractor:
                     return {"Document": dt}
 
         fallback = next(
-            (
-                k
-                for k, v in doc_types.items()
-                if (v.get("classification_desc") or "").strip()
-            ),
+            (k for k, v in doc_types.items() if (v.get("classification_desc") or "").strip()),
             None,
         )
         if not fallback and doc_types:
@@ -306,9 +290,7 @@ class LLMExtractor:
 
         # Add signature check field if required
         if validation_cfg.get("signature_required", False) and not any(
-            x in str(k).lower()
-            for k in extraction_fields
-            for x in ["signature", "signed"]
+            x in str(k).lower() for k in extraction_fields for x in ["signature", "signed"]
         ):
             sig_loc = validation_cfg.get("signature_location", "")
             desc = "true if handwritten signature/ink is present, otherwise false"
@@ -316,11 +298,11 @@ class LLMExtractor:
                 desc = f"{desc} (condition for this document: {sig_loc})"
             extraction_fields["Signed"] = desc
 
-        if target_fields:
-            target_set = set(target_fields)
-            extraction_fields = {
-                k: v for k, v in extraction_fields.items() if k in target_set
-            }
+        if target_fields is not None:
+            target_set = {f.lower() for f in target_fields}
+            extraction_fields = {k: v for k, v in extraction_fields.items() if k.lower() in target_set}
+            if not extraction_fields:
+                return {}
 
         base_rules_tmpl = (
             f'1. MISSING DATA: If information is missing in the document, enter EXACTLY "{MISSING_PLACEHOLDER}".\n'
@@ -347,9 +329,7 @@ class LLMExtractor:
         json_schema = (
             {
                 "type": "object",
-                "properties": {
-                    field: {"type": "string"} for field in extraction_fields
-                },
+                "properties": {field: {"type": "string"} for field in extraction_fields},
                 "required": list(extraction_fields),
                 "additionalProperties": False,
             }
@@ -375,12 +355,8 @@ class LLMExtractor:
 
         # Case normalization and strict filtering of requested fields
         raw_fields = matched_doc_info.get("extraction_fields", {})
-        optional_list = (
-            matched_doc_info.get("validation", {}).get("optional_fields") or []
-        )
-        sig_req = matched_doc_info.get("validation", {}).get(
-            "signature_required", False
-        )
+        optional_list = matched_doc_info.get("validation", {}).get("optional_fields") or []
+        sig_req = matched_doc_info.get("validation", {}).get("signature_required", False)
 
         if raw_fields or sig_req:
             allowed_keys = set(extraction_fields.keys()) | set(optional_list)
@@ -427,11 +403,7 @@ class LLMExtractor:
         target_fields: list[str] | None = None,
     ) -> dict[str, Any]:
         """Extracts structured data from layout-aware spatial text without image inference."""
-        if (
-            not spatial_text
-            or not isinstance(spatial_text, str)
-            or len(spatial_text.strip()) < 10
-        ):
+        if not spatial_text or not isinstance(spatial_text, str) or len(spatial_text.strip()) < 10:
             return {}
 
         _, matched_doc_info = self.find_doc_type_config(doc_type)
@@ -447,13 +419,9 @@ class LLMExtractor:
         if "Signed" in extraction_fields:
             extraction_fields.pop("Signed", None)
 
-        if target_fields:
-            target_set = set(target_fields)
-            extraction_fields = {
-                k: v
-                for k, v in extraction_fields.items()
-                if k in target_set and k != "Signed"
-            }
+        if target_fields is not None:
+            target_set = {f.lower() for f in target_fields}
+            extraction_fields = {k: v for k, v in extraction_fields.items() if k.lower() in target_set and k != "Signed"}
 
         if not extraction_fields:
             return {}
@@ -474,16 +442,13 @@ class LLMExtractor:
         )
 
         user_content = (
-            f"{prompt_instruction}\n\n"
-            f"<document_spatial_text>\n{spatial_text.strip()}\n</document_spatial_text>"
+            f"{prompt_instruction}\n\n<document_spatial_text>\n{spatial_text.strip()}\n</document_spatial_text>"
         )
 
         json_schema = (
             {
                 "type": "object",
-                "properties": {
-                    field: {"type": "string"} for field in extraction_fields
-                },
+                "properties": {field: {"type": "string"} for field in extraction_fields},
                 "required": list(extraction_fields),
                 "additionalProperties": False,
             }
@@ -508,14 +473,10 @@ class LLMExtractor:
             return {}
 
         raw_fields = matched_doc_info.get("extraction_fields", {})
-        optional_list = (
-            matched_doc_info.get("validation", {}).get("optional_fields") or []
-        )
+        optional_list = matched_doc_info.get("validation", {}).get("optional_fields") or []
 
         allowed_keys = (
-            set(extraction_fields.keys()) | set(optional_list)
-            if raw_fields
-            else set(res.keys()) | set(optional_list)
+            set(extraction_fields.keys()) | set(optional_list) if raw_fields else set(res.keys()) | set(optional_list)
         )
 
         normalized_res: dict[str, Any] = {}
@@ -547,12 +508,8 @@ class LLMExtractor:
 
     def describe_for_unknown(self, b64_image: str) -> dict[str, Any]:
         """Returns a short description of the image (for UNKNOWN cases)."""
-        prompt = (
-            "<instruction>Describe the document briefly in 2-3 sentences.</instruction>"
-        )
-        res_raw = self.call_vision_api(
-            {"messages": [{"role": "user", "content": prompt, "images": [b64_image]}]}
-        )
+        prompt = "<instruction>Describe the document briefly in 2-3 sentences.</instruction>"
+        res_raw = self.call_vision_api({"messages": [{"role": "user", "content": prompt, "images": [b64_image]}]})
         return {
             "description": res_raw.strip() if isinstance(res_raw, str) else "",
             "pages": [],

@@ -21,9 +21,7 @@ class FileSystemRouter:
     def __init__(self, config: AppConfig):
         self.config = config
 
-    def find_existing_folder_by_keywords(
-        self, base_dir: str, keywords: list
-    ) -> str | None:
+    def find_existing_folder_by_keywords(self, base_dir: str, keywords: list) -> str | None:
         """Searches base directory for a matching folder based on a list of keywords."""
         if not os.path.exists(base_dir) or not keywords:
             return None
@@ -46,11 +44,7 @@ class FileSystemRouter:
             watch_dir_abs = os.path.abspath(self.config.watch_dir)
             dir_path_abs = os.path.abspath(directory)
 
-            while (
-                dir_path_abs
-                and dir_path_abs != watch_dir_abs
-                and dir_path_abs.startswith(watch_dir_abs)
-            ):
+            while dir_path_abs and dir_path_abs != watch_dir_abs and dir_path_abs.startswith(watch_dir_abs):
                 if not os.path.exists(dir_path_abs):
                     break
                 if not os.listdir(dir_path_abs):
@@ -59,9 +53,7 @@ class FileSystemRouter:
                         logger.info(f"[+] Deleted empty folder: {dir_path_abs}")
                     except OSError:
                         # Under Windows, folders are often temporarily locked by Explorer or file watchers.
-                        logger.info(
-                            f"[*] Empty folder could not be cleaned up (locked): {dir_path_abs}"
-                        )
+                        logger.info(f"[*] Empty folder could not be cleaned up (locked): {dir_path_abs}")
                         break
                     dir_path_abs = os.path.dirname(dir_path_abs)
                 else:

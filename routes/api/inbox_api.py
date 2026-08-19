@@ -76,9 +76,7 @@ def api_inbox():
                         "extracted": extracted,
                         "is_pruefen": is_review,
                         "size": stat.st_size,
-                        "modified": time.strftime(
-                            "%Y-%m-%d %H:%M", time.localtime(stat.st_mtime)
-                        ),
+                        "modified": time.strftime("%Y-%m-%d %H:%M", time.localtime(stat.st_mtime)),
                         "preview_url": f"/api/inbox/preview/{urllib.parse.quote(rel_path, safe='/')}"
                         if f.lower().endswith(".pdf")
                         else "",
@@ -222,11 +220,7 @@ def api_inbox_auto_assign(filename: str):
     if not _is_within_base(src_path, DashboardState.config.watch_dir):
         return jsonify({"error": "Access denied"}), 403
 
-    delimiter = (
-        DashboardState.config.folder_delimiter
-        if hasattr(DashboardState.config, "folder_delimiter")
-        else "--"
-    )
+    delimiter = DashboardState.config.folder_delimiter if hasattr(DashboardState.config, "folder_delimiter") else "--"
     base_name = os.path.splitext(os.path.basename(filename))[0]
     parts = base_name.split(delimiter)
 
@@ -256,14 +250,8 @@ def api_inbox_auto_assign(filename: str):
             except (OSError, UnicodeError, json.JSONDecodeError, ValueError, TypeError):
                 logger.debug("Could not load sidecar metadata for %s", src_path)
 
-        if not data or not (
-            data.get("Nachname") or data.get("person") or data.get("Vorname") or data.get("Person")
-        ):
-            return jsonify(
-                {
-                    "error": "Filename or metadata does not contain sufficient data for auto-assign"
-                }
-            ), 400
+        if not data or not (data.get("Nachname") or data.get("person") or data.get("Vorname") or data.get("Person")):
+            return jsonify({"error": "Filename or metadata does not contain sufficient data for auto-assign"}), 400
 
     target_folder = _render_target_folder(data, doc_type)
     target_dir = os.path.join(DashboardState.config.target_base_dir, target_folder)

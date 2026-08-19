@@ -372,7 +372,7 @@ async function deleteFolder(folder) {
 					state.expandedFolder = null;
 					state.expandedFiles = [];
 				}
-				fetchCases();
+				AppEvents.emit("cases:refresh");
 			} catch (e) {
 				toast("Error deleting case: " + e.message, "error");
 			}
@@ -435,7 +435,7 @@ async function submitFolderEdit() {
 			if (state.expandedFolder === oldName) {
 				state.expandedFolder = res.folder;
 			}
-			fetchCases();
+			AppEvents.emit("cases:refresh");
 		}
 	} catch (e) {
 		toast("Error updating case folder: " + e.message, "error");

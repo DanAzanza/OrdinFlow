@@ -19,11 +19,11 @@ from core.matcher import FileSystemRouter
 from core.routing import render_filename
 from core.utils import (
     MISSING_PLACEHOLDER,
-    _remove_source_with_meta,
     clean_path_component,
     format_date_robust,
     format_result,
     is_missing_value,
+    remove_source_with_meta,
     wait_until_unlocked,
 )
 from core.vision import LLMExtractor
@@ -44,9 +44,7 @@ class DocumentProcessor:
 
         # Specialized sub-services
         self.file_service = FileService(config, self.fs_router)
-        self.extraction_pipeline = ExtractionPipeline(
-            config, self.image_preprocessor, self.llm_extractor
-        )
+        self.extraction_pipeline = ExtractionPipeline(config, self.image_preprocessor, self.llm_extractor)
 
         # Processing locks & thread control
         self.processing_lock = threading.Lock()
@@ -69,11 +67,6 @@ class DocumentProcessor:
         self.last_context: dict = {}
         self.last_optional_fields: set = set()
         self.last_extraction_fields: set = set()
-
-    @property
-    def last_person_data(self) -> dict | None:
-        """Backward-compatible alias for last_context."""
-        return self.last_context or None
 
     # --- Pause/Resume Control ---
     def pause(self):
@@ -98,11 +91,7 @@ class DocumentProcessor:
     def get_stats(self) -> dict[str, Any]:
         """Returns a thread-safe snapshot of processing statistics."""
         with self._stats_lock:
-            avg = (
-                (self.stats_total_duration / self.stats_total)
-                if self.stats_total > 0
-                else 0.0
-            )
+            avg = (self.stats_total_duration / self.stats_total) if self.stats_total > 0 else 0.0
             queue_count = 0
             try:
                 if os.path.exists(self.config.watch_dir):
@@ -138,12 +127,8 @@ class DocumentProcessor:
         logger.info("=" * 60)
 
     # --- Delegated helper methods for backward compatibility & tests ---
-    def _classify_single_page(
-        self, raw_img: Any, idx: int, pdf_path: str | None = None
-    ) -> dict[str, Any]:
-        return self.extraction_pipeline.classify_single_page(
-            raw_img, idx, pdf_path=pdf_path
-        )
+    def _classify_single_page(self, raw_img: Any, idx: int, pdf_path: str | None = None) -> dict[str, Any]:
+        return self.extraction_pipeline.classify_single_page(raw_img, idx, pdf_path=pdf_path)
 
     def _process_page_group(self, doc_type: str, group_pages: list) -> dict | None:
         """Phase 2: Extraction and signature check on a bundled page group."""
@@ -153,9 +138,7 @@ class DocumentProcessor:
         """Process document pages via extraction pipeline."""
         return self.extraction_pipeline.process_document_pages(document_pages)
 
-    def _validate_extracted_data(
-        self, extracted: dict[str, Any] | None
-    ) -> tuple[bool, str]:
+    def _validate_extracted_data(self, extracted: dict[str, Any] | None) -> tuple[bool, str]:
         return self.extraction_pipeline.validate_extracted_data(extracted)
 
     def _determine_target_directory(
@@ -165,13 +148,9 @@ class DocumentProcessor:
         optional_fields: set | None = None,
         extraction_fields: set | None = None,
     ) -> str:
-        return self.file_service.determine_target_directory(
-            extracted, routing_cfg, optional_fields, extraction_fields
-        )
+        return self.file_service.determine_target_directory(extracted, routing_cfg, optional_fields, extraction_fields)
 
-    def _move_and_compress_file(
-        self, filepath: str, target_dir: str, target_filename: str
-    ) -> str:
+    def _move_and_compress_file(self, filepath: str, target_dir: str, target_filename: str) -> str:
         return self.file_service.move_file(filepath, target_dir, target_filename)
 
     def _mark_as_pruefen(
@@ -183,37 +162,27 @@ class DocumentProcessor:
         self.file_service.mark_as_pruefen(filepath, grund, extracted)
 
     # --- Extraction & Hybrid Voting ---
-    def extract_hybrid_voting(self, filepath: str) -> dict[str, Any] | None:
+    def extract_hybrid_voting(self, filepath: str, save_empty_pages: bool = False) -> dict[str, Any] | None:
         """Analyses and extracts data across all pages of a document."""
-        raw_images = self.image_preprocessor.create_source_images(
-            filepath, return_raw=True
-        )
+        raw_images = self.image_preprocessor.create_source_images(filepath, return_raw=True)
         if not raw_images:
             return None
 
         try:
             classified_pages = [
-                self._classify_single_page(raw_img, idx, pdf_path=filepath)
-                for idx, raw_img in enumerate(raw_images)
+                self._classify_single_page(raw_img, idx, pdf_path=filepath) for idx, raw_img in enumerate(raw_images)
             ]
         except TypeError:
-            classified_pages = [
-                self._classify_single_page(raw_img, idx)
-                for idx, raw_img in enumerate(raw_images)
-            ]
+            classified_pages = [self._classify_single_page(raw_img, idx) for idx, raw_img in enumerate(raw_images)]
 
-        is_all_empty = all(
-            p["matched_name"].upper() == "LEER" for p in classified_pages
-        )
-        if is_all_empty and not getattr(self.config, "save_empty_pages", False):
+        is_all_empty = all(p["matched_name"].upper() == "LEER" for p in classified_pages)
+        if is_all_empty and not save_empty_pages:
             raise AllPagesEmptyError("Document consists entirely of empty pages")
 
-        if getattr(self.config, "save_empty_pages", False):
+        if save_empty_pages:
             non_empty_pages = classified_pages
         else:
-            non_empty_pages = [
-                p for p in classified_pages if p["matched_name"].upper() != "LEER"
-            ]
+            non_empty_pages = [p for p in classified_pages if p["matched_name"].upper() != "LEER"]
 
         if not non_empty_pages:
             return None
@@ -221,9 +190,7 @@ class DocumentProcessor:
         # 1. Unified Tiered Extraction across ALL pages in one pool
         doc_res = self._process_document_pages(non_empty_pages)
         if not doc_res:
-            logger.warning(
-                f"[-] No valid extraction results for '{os.path.basename(filepath)}'."
-            )
+            logger.warning(f"[-] No valid extraction results for '{os.path.basename(filepath)}'.")
             return None
 
         # 2. Group pages by document type for routing and optional PDF splitting
@@ -232,11 +199,7 @@ class DocumentProcessor:
         current_type = None
         for p in non_empty_pages:
             t = p["matched_name"]
-            if (
-                getattr(self.config, "save_empty_pages", False)
-                and t.upper() == "LEER"
-                and current_type is not None
-            ):
+            if save_empty_pages and t.upper() == "LEER" and current_type is not None:
                 t = current_type
                 p = dict(p)
                 p["matched_name"] = current_type
@@ -265,20 +228,19 @@ class DocumentProcessor:
 
         final_doc = dict(doc_res)
         dok_arten = [g[0] for g in groups if not is_missing_value(g[0])]
-        final_doc["Document"] = (
-            "+".join(dok_arten) if dok_arten else MISSING_PLACEHOLDER
-        )
+        final_doc["Document"] = "+".join(dok_arten) if dok_arten else MISSING_PLACEHOLDER
         final_doc["page_results"] = page_results
 
         logger.debug(f"[+] Consolidated final result: {format_result(final_doc)}")
-        logger.info(
-            f"[+] Final extraction result for document: {format_result(final_doc)}"
-        )
+        logger.info(f"[+] Final extraction result for document: {format_result(final_doc)}")
         return final_doc
 
     # --- Main Processing Logic ---
     def process_and_route_file(
-        self, filepath: str, split_multi_documents: bool = True
+        self,
+        filepath: str,
+        split_multi_documents: bool = True,
+        save_empty_pages: bool = False,
     ) -> bool:
         """Classifies, extracts, and routes a document."""
         start_time = time.time()
@@ -294,12 +256,10 @@ class DocumentProcessor:
             self.wait_if_paused()
             logger.info(f"======== Processing: {filename} ========")
             if not wait_until_unlocked(filepath, retries=5, delay=1.0):
-                logger.warning(
-                    f"[!] File '{filename}' remained locked after 5 attempts."
-                )
+                logger.warning(f"[!] File '{filename}' remained locked after 5 attempts.")
                 return False
 
-            extracted = self.extract_hybrid_voting(filepath)
+            extracted = self.extract_hybrid_voting(filepath, save_empty_pages=save_empty_pages)
 
             is_dependent_doc = False
             routing_cfg = {}
@@ -311,25 +271,17 @@ class DocumentProcessor:
 
             if extracted:
                 dok_art_raw = clean_path_component(extracted.get("Document", ""))
-                matched_type, matched_info = self.llm_extractor.find_doc_type_config(
-                    dok_art_raw
-                )
+                matched_type, matched_info = self.llm_extractor.find_doc_type_config(dok_art_raw)
 
                 if matched_info:
                     routing_cfg = matched_info.get("routing") or {}
                     validation_cfg = matched_info.get("validation") or {}
                     optional_fields = set(validation_cfg.get("optional_fields", []))
-                    extraction_fields = set(
-                        matched_info.get("extraction_fields", {}).keys()
-                    )
+                    extraction_fields = set(matched_info.get("extraction_fields", {}).keys())
 
                 if not routing_cfg.get("archive", True):
-                    logger.warning(
-                        f"[-] '{matched_type}' has archive=False and will not be archived."
-                    )
-                    self._mark_as_pruefen(
-                        filepath, f"{matched_type} – manual assignment required"
-                    )
+                    logger.warning(f"[-] '{matched_type}' has archive=False and will not be archived.")
+                    self._mark_as_pruefen(filepath, f"{matched_type} – manual assignment required")
                     return False
 
                 is_dependent_doc = bool(matched_info.get("dependent", False))
@@ -370,9 +322,7 @@ class DocumentProcessor:
                         ext=orig_ext,
                         optional_fields=optional_fields,
                         extraction_fields=extraction_fields,
-                        fallbacks={
-                            "Document": matched_type if matched_type else dok_art_raw
-                        },
+                        fallbacks={"Document": matched_type if matched_type else dok_art_raw},
                     )
                     return td, tf
 
@@ -388,9 +338,7 @@ class DocumentProcessor:
                     )
                     if not success:
                         target_dir, target_filename = _route_single_file()
-                        self._move_and_compress_file(
-                            filepath, target_dir, target_filename
-                        )
+                        self._move_and_compress_file(filepath, target_dir, target_filename)
                 else:
                     target_dir, target_filename = _route_single_file()
                     target_filepath = os.path.join(target_dir, target_filename)
@@ -411,36 +359,24 @@ class DocumentProcessor:
                                     kept_pages.extend(pr.get("pages", []))
                             kept_pages = sorted(set(kept_pages))
                         except (AttributeError, OSError, RuntimeError, ValueError):
-                            logger.debug(
-                                "Unable to determine PDF page list", exc_info=True
-                            )
+                            logger.debug("Unable to determine PDF page list", exc_info=True)
 
                     if self.can_split_pdf and doc_len > 0 and len(kept_pages) < doc_len:
-                        logger.info(
-                            f"[*] Saving PDF without empty pages. Keeping pages {kept_pages} of {doc_len}."
-                        )
-                        self.file_service.save_filtered_pdf(
-                            filepath, target_filepath, kept_pages
-                        )
+                        logger.info(f"[*] Saving PDF without empty pages. Keeping pages {kept_pages} of {doc_len}.")
+                        self.file_service.save_filtered_pdf(filepath, target_filepath, kept_pages)
                     else:
-                        self._move_and_compress_file(
-                            filepath, target_dir, target_filename
-                        )
+                        self._move_and_compress_file(filepath, target_dir, target_filename)
 
                 duration = time.time() - start_time
                 with self._stats_lock:
                     self.stats_total += 1
                     self.stats_success += 1
                     self.stats_total_duration += duration
-                logger.info(
-                    f"[+] Processing of '{filename}' completed successfully after {duration:.2f} seconds."
-                )
+                logger.info(f"[+] Processing of '{filename}' completed successfully after {duration:.2f} seconds.")
                 return True
             else:
                 if not os.path.exists(filepath):
-                    logger.warning(
-                        f"[!] File '{filename}' no longer exists. Skipping sidecar creation."
-                    )
+                    logger.warning(f"[!] File '{filename}' no longer exists. Skipping sidecar creation.")
                     return False
                 self._mark_as_pruefen(filepath, reason, extracted)
 
@@ -449,17 +385,13 @@ class DocumentProcessor:
                     self.stats_total += 1
                     self.stats_failed += 1
                     self.stats_total_duration += duration
-                logger.warning(
-                    f"[-] Processing of '{filename}' incomplete ({duration:.2f}s) — Reason: {reason}."
-                )
+                logger.warning(f"[-] Processing of '{filename}' incomplete ({duration:.2f}s) — Reason: {reason}.")
                 if extracted:
                     logger.debug(f"[-] Raw extracted data: {format_result(extracted)}")
                 return False
         except AllPagesEmptyError:
-            logger.info(
-                f"[-] '{filename}' consists only of empty pages and will be deleted."
-            )
-            _remove_source_with_meta(filepath)
+            logger.info(f"[-] '{filename}' consists only of empty pages and will be deleted.")
+            remove_source_with_meta(filepath)
             with self._stats_lock:
                 self.stats_total += 1
                 self.stats_skipped += 1
@@ -472,13 +404,12 @@ class DocumentProcessor:
         except Exception as e:
             logger.exception(f"[!] Error: {e}")
             duration = time.time() - start_time
-            logger.error(
-                f"[-] Processing of '{filename}' aborted due to error after {duration:.2f} seconds."
-            )
+            logger.error(f"[-] Processing of '{filename}' aborted due to error after {duration:.2f} seconds.")
             return False
         finally:
             with self.processing_lock:
                 self.processing_files.discard(filepath)
             self.fs_router.cleanup_empty_directories(os.path.dirname(filepath))
             import gc
+
             gc.collect()

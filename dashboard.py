@@ -35,6 +35,7 @@ def heartbeat_monitor() -> None:
         # If skill queue is actively running in the background, keep heartbeat alive
         try:
             from core.skills.queue import get_skill_queue_manager
+
             qm = get_skill_queue_manager()
             if qm.is_running and not qm.is_paused:
                 DashboardState.last_heartbeat = time.time()
@@ -73,9 +74,7 @@ def open_browser(port: int) -> None:
     for _ in range(40):
         time.sleep(0.5)
         try:
-            with urllib.request.urlopen(
-                f"http://127.0.0.1:{port}/api/status", timeout=1
-            ) as resp:
+            with urllib.request.urlopen(f"http://127.0.0.1:{port}/api/status", timeout=1) as resp:
                 if resp.status == 200:
                     server_ready = True
                     break
@@ -126,17 +125,13 @@ def start_dashboard(
     threading.Thread(target=heartbeat_monitor, daemon=True).start()
 
     # Open browser in separate thread
-    threading.Thread(
-        target=open_browser, args=(config.dashboard_port,), daemon=True
-    ).start()
+    threading.Thread(target=open_browser, args=(config.dashboard_port,), daemon=True).start()
 
     # Suppress Werkzeug logs in console
     logging.getLogger("werkzeug").setLevel(logging.ERROR)
 
     try:
-        logger.info(
-            f"[Dashboard] WSGI Server started at http://127.0.0.1:{config.dashboard_port}/"
-        )
+        logger.info(f"[Dashboard] WSGI Server started at http://127.0.0.1:{config.dashboard_port}/")
         server = make_server("127.0.0.1", config.dashboard_port, app, threaded=True)
         server.serve_forever()
     except (OSError, RuntimeError, ValueError) as e:

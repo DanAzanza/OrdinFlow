@@ -23,44 +23,35 @@ def processor(tmp_path):
                 "Nachname": "Nachname des Unterzeichners",
                 "Datum": "Ausstellungsdatum im Format YYYY-MM-DD",
                 "Produkt": "Welches Produkt (z.B. Software, Hardware, Dienstleistung)",
-                "Signed": "true, wenn eine handschriftliche Unterschrift vorhanden ist, sonst false"
+                "Signed": "true, wenn eine handschriftliche Unterschrift vorhanden ist, sonst false",
             },
-            "validation": {
-                "signature_required": True
-            },
+            "validation": {"signature_required": True},
             "routing": {
                 "archive": True,
                 "mapping": {
                     "person_vorname": "Vorname",
                     "person_nachname": "Nachname",
                     "datum": "Datum",
-                    "produkt": "Produkt"
+                    "produkt": "Produkt",
                 },
                 "folder_date_fallback": "----",
-                "filename_template": "Vertrag--{Produkt}--{Datum}"
-            }
+                "filename_template": "Vertrag--{Produkt}--{Datum}",
+            },
         },
         "Lieferschein": {
             "classification_desc": "Ein Lieferschein oder Übergabeprotokoll.",
-            "extraction_fields": {
-                "Vorname": "Vorname",
-                "Nachname": "Nachname",
-                "Datum": "Datum",
-                "Produkt": "Produkt"
-            },
-            "validation": {
-                "signature_required": False
-            },
+            "extraction_fields": {"Vorname": "Vorname", "Nachname": "Nachname", "Datum": "Datum", "Produkt": "Produkt"},
+            "validation": {"signature_required": False},
             "routing": {
                 "archive": True,
                 "mapping": {
                     "person_vorname": "Vorname",
                     "person_nachname": "Nachname",
                     "datum": "Datum",
-                    "produkt": "Produkt"
+                    "produkt": "Produkt",
                 },
-                "filename_template": "Lieferschein--{Produkt}--{Datum}"
-            }
+                "filename_template": "Lieferschein--{Produkt}--{Datum}",
+            },
         },
         "Datenschutzerklärung": {
             "classification_desc": "Datenschutzerklärung.",
@@ -69,21 +60,14 @@ def processor(tmp_path):
                 "Vorname": "Vorname",
                 "Nachname": "Nachname",
                 "Datum": "Datum",
-                "Signed": "true/false"
+                "Signed": "true/false",
             },
-            "validation": {
-                "signature_required": True,
-                "signature_only": True
-            },
+            "validation": {"signature_required": True, "signature_only": True},
             "routing": {
                 "archive": True,
-                "mapping": {
-                    "person_vorname": "Vorname",
-                    "person_nachname": "Nachname",
-                    "datum": "Datum"
-                },
-                "filename_template": "Datenschutz--{Nachname}_{Vorname}--{Datum}"
-            }
+                "mapping": {"person_vorname": "Vorname", "person_nachname": "Nachname", "datum": "Datum"},
+                "filename_template": "Datenschutz--{Nachname}_{Vorname}--{Datum}",
+            },
         },
         "Kostenaufstellung": {
             "classification_desc": "Kostenaufstellung.",
@@ -92,21 +76,19 @@ def processor(tmp_path):
                 "Nachname": "Nachname",
                 "Datum": "Datum",
                 "Produkt": "Produkt",
-                "Signed": "true/false"
+                "Signed": "true/false",
             },
-            "validation": {
-                "signature_required": True
-            },
+            "validation": {"signature_required": True},
             "routing": {
                 "archive": True,
                 "mapping": {
                     "person_vorname": "Vorname",
                     "person_nachname": "Nachname",
                     "datum": "Datum",
-                    "produkt": "Produkt"
+                    "produkt": "Produkt",
                 },
-                "filename_template": "Kostenaufstellung--{Produkt}--{Datum}"
-            }
+                "filename_template": "Kostenaufstellung--{Produkt}--{Datum}",
+            },
         },
         "Zuzahlungsaufstellung": {
             "classification_desc": "Zuzahlungsaufstellung.",
@@ -115,78 +97,73 @@ def processor(tmp_path):
                 "Nachname": "Nachname",
                 "Datum": "Datum",
                 "Produkt": "Produkt",
-                "Signed": "true/false"
+                "Signed": "true/false",
             },
-            "validation": {
-                "signature_required": True
-            },
+            "validation": {"signature_required": True},
             "routing": {
                 "archive": True,
                 "mapping": {
                     "person_vorname": "Vorname",
                     "person_nachname": "Nachname",
                     "datum": "Datum",
-                    "produkt": "Produkt"
+                    "produkt": "Produkt",
                 },
-                "filename_template": "Zuzahlungsaufstellung--{Produkt}--{Datum}"
-            }
+                "filename_template": "Zuzahlungsaufstellung--{Produkt}--{Datum}",
+            },
         },
         "Notiz": {
             "classification_desc": "Notiz.",
             "dependent": True,
-            "extraction_fields": {
-                "Vorname": "Vorname",
-                "Nachname": "Nachname",
-                "Datum": "Datum",
-                "Produkt": "Produkt"
-            },
-            "validation": {
-                "signature_required": False
-            },
+            "extraction_fields": {"Vorname": "Vorname", "Nachname": "Nachname", "Datum": "Datum", "Produkt": "Produkt"},
+            "validation": {"signature_required": False},
             "routing": {
                 "archive": True,
                 "mapping": {
                     "person_vorname": "Vorname",
                     "person_nachname": "Nachname",
                     "datum": "Datum",
-                    "produkt": "Produkt"
+                    "produkt": "Produkt",
                 },
-                "filename_template": "Notiz--{Produkt}--{Datum}"
-            }
+                "filename_template": "Notiz--{Produkt}--{Datum}",
+            },
         },
         "Visitenkarte": {
             "classification_desc": "Visitenkarte.",
-            "extraction_fields": {
-                "Vorname": "Vorname",
-                "Nachname": "Nachname",
-                "Datum": "Datum"
-            },
-            "validation": {
-                "signature_required": False
-            },
+            "extraction_fields": {"Vorname": "Vorname", "Nachname": "Nachname", "Datum": "Datum"},
+            "validation": {"signature_required": False},
             "routing": {
                 "archive": True,
-                "mapping": {
-                    "person_vorname": "Vorname",
-                    "person_nachname": "Nachname",
-                    "datum": "Datum"
-                },
-                "filename_template": "Visitenkarte--{Nachname}_{Vorname}--{Datum}"
-            }
-        }
+                "mapping": {"person_vorname": "Vorname", "person_nachname": "Nachname", "datum": "Datum"},
+                "filename_template": "Visitenkarte--{Nachname}_{Vorname}--{Datum}",
+            },
+        },
     }
     return DocumentProcessor(config)
 
 
 def test_vertrag_validation_requires_signature(processor):
     # Vertrag ohne Unterschrift -> Fehlschlag
-    data_no_sign = {"Document": "Vertrag", "Nachname": "Muster", "Vorname": "Max", "Datum": "2026-07-01", "Produkt": "Software", "Signed": False}
+    data_no_sign = {
+        "Document": "Vertrag",
+        "Nachname": "Muster",
+        "Vorname": "Max",
+        "Datum": "2026-07-01",
+        "Produkt": "Software",
+        "Signed": False,
+    }
     valid, reason = processor._validate_extracted_data(data_no_sign)
     assert not valid
     assert "Signature" in reason or "Unterschrift" in reason
 
     # Vertrag mit Unterschrift -> OK
-    data_sign = {"Document": "Vertrag", "Nachname": "Muster", "Vorname": "Max", "Datum": "2026-07-01", "Produkt": "Software", "Signed": True}
+    data_sign = {
+        "Document": "Vertrag",
+        "Nachname": "Muster",
+        "Vorname": "Max",
+        "Datum": "2026-07-01",
+        "Produkt": "Software",
+        "Signed": True,
+    }
     valid, reason = processor._validate_extracted_data(data_sign)
     assert valid
     assert reason == "OK"
@@ -195,20 +172,41 @@ def test_vertrag_validation_requires_signature(processor):
 def test_other_docs_require_signature_only(processor):
     for doc_type in ["Datenschutzerklärung", "Kostenaufstellung", "Zuzahlungsaufstellung"]:
         # Ohne Unterschrift -> Fehlschlag
-        data_no_sign = {"Document": doc_type, "Nachname": "Muster", "Vorname": "Max", "Datum": "2026-07-01", "Produkt": "Software", "Signed": False}
+        data_no_sign = {
+            "Document": doc_type,
+            "Nachname": "Muster",
+            "Vorname": "Max",
+            "Datum": "2026-07-01",
+            "Produkt": "Software",
+            "Signed": False,
+        }
         valid, reason = processor._validate_extracted_data(data_no_sign)
         assert not valid
         assert "Signature" in reason or "Unterschrift" in reason
 
         # Mit Unterschrift -> OK
-        data_sign = {"Document": doc_type, "Nachname": "Muster", "Vorname": "Max", "Datum": "2026-07-01", "Produkt": "Software", "Signed": True}
+        data_sign = {
+            "Document": doc_type,
+            "Nachname": "Muster",
+            "Vorname": "Max",
+            "Datum": "2026-07-01",
+            "Produkt": "Software",
+            "Signed": True,
+        }
         valid, reason = processor._validate_extracted_data(data_sign)
         assert valid
         assert reason == "OK"
 
 
 def test_notiz_no_signature_required(processor):
-    data_notiz = {"Document": "Notiz", "Nachname": "Muster", "Vorname": "Max", "Datum": "2026-07-01", "Produkt": "Software", "Signed": False}
+    data_notiz = {
+        "Document": "Notiz",
+        "Nachname": "Muster",
+        "Vorname": "Max",
+        "Datum": "2026-07-01",
+        "Produkt": "Software",
+        "Signed": False,
+    }
     valid, reason = processor._validate_extracted_data(data_notiz)
     assert valid
     assert reason == "OK"
@@ -228,7 +226,7 @@ def test_person_memory_persists_even_on_validation_failure(processor, tmp_path):
         "Produkt": "Software",
         "Signed": False,
         "ocr_text": "Vertrag für Software Hans Müller",
-        "page_results": []
+        "page_results": [],
     }
 
     with patch.object(processor, "extract_hybrid_voting", return_value=mock_extracted):
@@ -238,10 +236,10 @@ def test_person_memory_persists_even_on_validation_failure(processor, tmp_path):
     pruefen_files = os.listdir(processor.config.watch_dir)
     assert any(f.endswith(".meta") for f in pruefen_files)
 
-    # Aber das Personen-Gedächtnis MUSS trotzdem aktualisiert worden sein!
-    assert processor.last_person_data["Nachname"] == "Müller"
-    assert processor.last_person_data["Vorname"] == "Hans"
-    assert processor.last_person_data["Produkt"] == "Software"
+    # Context memory MUST be updated with extracted fields
+    assert processor.last_context["Nachname"] == "Müller"
+    assert processor.last_context["Vorname"] == "Hans"
+    assert processor.last_context["Produkt"] == "Software"
 
 
 def test_notiz_routes_to_rejected_vertrag_person(processor, tmp_path):
@@ -258,7 +256,7 @@ def test_notiz_routes_to_rejected_vertrag_person(processor, tmp_path):
         "Produkt": "Hardware",
         "Signed": False,
         "ocr_text": "Vertrag Anna Schmidt",
-        "page_results": []
+        "page_results": [],
     }
 
     with patch.object(processor, "extract_hybrid_voting", return_value=mock_vertrag):
@@ -279,7 +277,7 @@ def test_notiz_routes_to_rejected_vertrag_person(processor, tmp_path):
         "Produkt": "[ProductName-MISSING]",
         "Signed": False,
         "ocr_text": "Notiz ohne Namen",
-        "page_results": []
+        "page_results": [],
     }
 
     with patch.object(processor, "extract_hybrid_voting", return_value=mock_notiz):
@@ -300,7 +298,7 @@ def test_unbekannt_doc_type_fails_validation(processor):
         "Vorname": "Max",
         "Datum": "2026-07-01",
         "Produkt": "Software",
-        "Signed": True
+        "Signed": True,
     }
     valid, reason = processor._validate_extracted_data(data_unbekannt)
     assert not valid
@@ -314,10 +312,7 @@ def test_unbekannt_doc_type_fails_validation(processor):
         "Datum": "2026-07-01",
         "Produkt": "Software",
         "Signed": True,
-        "page_results": [
-            {"Document": "Vertrag", "Signed": True},
-            {"Document": "UNKNOWN", "Signed": True}
-        ]
+        "page_results": [{"Document": "Vertrag", "Signed": True}, {"Document": "UNKNOWN", "Signed": True}],
     }
     valid, reason = processor._validate_extracted_data(data_multipage)
     assert not valid
@@ -333,9 +328,7 @@ def test_multipage_datenschutz_only_requires_last_page_signature(processor):
         "Vorname": "Max",
         "Datum": "2026-07-01",
         "Signed": True,
-        "page_results": [
-            {"Document": "Datenschutzerklärung", "Signed": True, "pages": [1, 2]}
-        ]
+        "page_results": [{"Document": "Datenschutzerklärung", "Signed": True, "pages": [1, 2]}],
     }
     valid, reason = processor._validate_extracted_data(data_valid)
     assert valid
@@ -347,9 +340,7 @@ def test_multipage_datenschutz_only_requires_last_page_signature(processor):
         "Vorname": "Max",
         "Datum": "2026-07-01",
         "Signed": False,
-        "page_results": [
-            {"Document": "Datenschutzerklärung", "Signed": False, "pages": [1, 2]}
-        ]
+        "page_results": [{"Document": "Datenschutzerklärung", "Signed": False, "pages": [1, 2]}],
     }
     valid, reason = processor._validate_extracted_data(data_invalid)
     assert not valid
@@ -364,7 +355,7 @@ def test_dependent_document_inherits_parent_optional_fields(processor):
         "Vorname": "Thomas",
         "Datum": "2026-07-15",
         "Produkt": "Software",
-        "Titel": "[MISSING]"
+        "Titel": "[MISSING]",
     }
 
     # Verarbeite Eltern-Dokument, um den Kontext zu belegen
@@ -373,9 +364,7 @@ def test_dependent_document_inherits_parent_optional_fields(processor):
     processor.last_extraction_fields = {"datum", "nachname", "vorname", "titel", "produkt"}
 
     # Simuliere abhängiges Dokument (z. B. Anhang, dependent: true)
-    dependent_extracted = {
-        "Document": "Anhang"
-    }
+    dependent_extracted = {"Document": "Anhang"}
 
     # Simuliere Verarbeitungs-Kontext wie in process_and_route_file
     matched_info = {
@@ -383,8 +372,8 @@ def test_dependent_document_inherits_parent_optional_fields(processor):
         "routing": {
             "archive": True,
             "filename_template": "Anhang--{Nachname}_{Vorname}--{Datum}",
-            "match_folder_by": ["Nachname", "Titel", "Vorname"]
-        }
+            "match_folder_by": ["Nachname", "Titel", "Vorname"],
+        },
     }
 
     # Initialisiere optionale/Extraktions-Felder für das abhängige Dokument (leer vor Vererbung)
@@ -395,6 +384,7 @@ def test_dependent_document_inherits_parent_optional_fields(processor):
     prev_ctx = processor.last_context
     for k, v in prev_ctx.items():
         from core.utils import is_missing_value
+
         if is_missing_value(dependent_extracted.get(k)):
             dependent_extracted[k] = v
 
@@ -409,7 +399,7 @@ def test_dependent_document_inherits_parent_optional_fields(processor):
         extracted=dependent_extracted,
         routing_cfg=matched_info["routing"],
         optional_fields=optional_fields,
-        extraction_fields=extraction_fields
+        extraction_fields=extraction_fields,
     )
 
     # Expected folder structure contains resolved first name without fallback placeholders
@@ -425,12 +415,7 @@ def test_validate_extracted_data_low_confidence(processor):
         "Datum": "2026-05-13",
         "Produkt": "Software",
         "Signed": True,
-        "_confidence": {
-            "Vorname": 1.0,
-            "Nachname": 1.0,
-            "Datum": 0.50,
-            "Signed": 1.0
-        }
+        "_confidence": {"Vorname": 1.0, "Nachname": 1.0, "Datum": 0.50, "Signed": 1.0},
     }
 
     is_valid, reason = processor.extraction_pipeline.validate_extracted_data(extracted_low_conf)
@@ -454,7 +439,7 @@ def test_validate_multidoc_batch_low_confidence(processor):
                 "Nachname": "Wesselmann",
                 "Datum": "2026-04-08",
                 "Signed": True,
-                "_confidence": {"Datum": 0.50, "Vorname": 1.0, "Nachname": 1.0}
+                "_confidence": {"Datum": 0.50, "Vorname": 1.0, "Nachname": 1.0},
             },
             {
                 "Document": "Kostenaufstellung",
@@ -463,9 +448,9 @@ def test_validate_multidoc_batch_low_confidence(processor):
                 "Datum": "2026-04-08",
                 "Produkt": "Software",
                 "Signed": True,
-                "_confidence": {"Datum": 1.0, "Vorname": 1.0, "Nachname": 1.0}
-            }
-        ]
+                "_confidence": {"Datum": 1.0, "Vorname": 1.0, "Nachname": 1.0},
+            },
+        ],
     }
 
     is_valid, reason = processor.extraction_pipeline.validate_extracted_data(extracted_multidoc)
@@ -491,8 +476,8 @@ def test_notiz_skips_llm_vision_extraction(processor):
             "name": "Notiz",
             "dependent": True,
             "extraction_fields": {},
-            "validation": {"signature_required": False}
-        }
+            "validation": {"signature_required": False},
+        },
     }
 
     with patch.object(processor.extraction_pipeline, "run_extraction_tier") as mock_tier:

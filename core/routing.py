@@ -58,13 +58,13 @@ def _resolve_comp(comp: Any, idx: int):
     """Returns (label, template_string) for a component from folder_structure."""
     if isinstance(comp, dict):
         tpl = comp.get("template", "")
-        label = comp.get("label") or tpl.strip("{} ") or f"Column_{idx+1}"
+        label = comp.get("label") or tpl.strip("{} ") or f"Column_{idx + 1}"
         return label, tpl
     elif isinstance(comp, str):
         tpl = comp
-        label = comp.strip("{} ") or f"Column_{idx+1}"
+        label = comp.strip("{} ") or f"Column_{idx + 1}"
         return label, tpl
-    return f"Column_{idx+1}", ""
+    return f"Column_{idx + 1}", ""
 
 
 def render_folder_name(
@@ -82,7 +82,13 @@ def render_folder_name(
         extraction_fields=extraction_fields,
     )
 
-    effective_structure = folder_structure if folder_structure is not None else []
+    if folder_structure is not None:
+        effective_structure = folder_structure
+    elif routing_cfg and isinstance(routing_cfg, dict) and "folder_structure" in routing_cfg:
+        effective_structure = routing_cfg["folder_structure"] or []
+    else:
+        effective_structure = []
+
     parts = []
     for i, comp in enumerate(effective_structure):
         _, tpl = _resolve_comp(comp, i)
@@ -117,10 +123,7 @@ def render_filename(
 ) -> str:
     """Generically generates a filename based on configuration and template."""
     routing_cfg = routing_cfg or {}
-    filename_template = (
-        routing_cfg.get("filename_template")
-        or "{Document}"
-    )
+    filename_template = routing_cfg.get("filename_template") or "{Document}"
     safe_ctx = SafeTemplateDict(
         data, fallbacks=fallbacks, optional_fields=optional_fields, extraction_fields=extraction_fields
     )
@@ -157,6 +160,6 @@ def parse_folder_name(
     else:
         for i, part in enumerate(parts):
             clean_val = "" if is_missing_value(part) else part
-            parsed[f"part_{i+1}"] = clean_val
+            parsed[f"part_{i + 1}"] = clean_val
 
     return parsed

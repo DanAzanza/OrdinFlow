@@ -6,14 +6,16 @@ import yaml
 
 MODEL_URLS = {
     "Qwen3-VL-8B-Instruct-UD-Q4_K_XL.gguf": "https://huggingface.co/unsloth/Qwen3-VL-8B-Instruct-GGUF/resolve/main/Qwen3-VL-8B-Instruct-UD-Q4_K_XL.gguf",
-    "mmproj-BF16.gguf": "https://huggingface.co/unsloth/Qwen3-VL-8B-Instruct-GGUF/resolve/main/mmproj-BF16.gguf"
+    "mmproj-BF16.gguf": "https://huggingface.co/unsloth/Qwen3-VL-8B-Instruct-GGUF/resolve/main/mmproj-BF16.gguf",
 }
+
 
 def resolve_download_url(url: str) -> str:
     """Converts HuggingFace web blob URLs to raw download resolve URLs if needed."""
     if "huggingface.co" in url and "/blob/" in url:
         return url.replace("/blob/", "/resolve/")
     return url
+
 
 def download_file(url: str, dest_path: Path):
     url = resolve_download_url(url)
@@ -35,6 +37,7 @@ def download_file(url: str, dest_path: Path):
     except Exception as e:
         print(f"\n[✗] Failed to download {dest_path.name}: {e}")
 
+
 def main():
     root_dir = Path(__file__).resolve().parent.parent
     config_path = root_dir / "config.yaml"
@@ -48,10 +51,7 @@ def main():
     llm_path_str = config.get("llm_model_path", "models/Qwen3-VL-8B-Instruct-UD-Q4_K_XL.gguf")
     mmproj_path_str = config.get("mmproj_path", "models/mmproj-BF16.gguf")
 
-    models_to_check = [
-        Path(root_dir / llm_path_str),
-        Path(root_dir / mmproj_path_str)
-    ]
+    models_to_check = [Path(root_dir / llm_path_str), Path(root_dir / mmproj_path_str)]
 
     missing = [p for p in models_to_check if not p.exists()]
 
@@ -74,6 +74,7 @@ def main():
                 print(f"Skipped. Please place your GGUF model manually at: {target_path}")
         else:
             print(f"Please place your model manually at: {target_path}")
+
 
 if __name__ == "__main__":
     main()

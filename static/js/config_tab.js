@@ -6,7 +6,6 @@ const CONFIG_LABELS = {
     // 📂 Folders & Paths
     watch_dir: "Central Inbox Folder",
     target_base_dir: "Cases Archive Folder",
-    delay_seconds: "File Detection Delay (seconds)",
     dashboard_port: "Dashboard Web Port",
 
     // 🗂️ Archiving & Directory Structure
@@ -15,7 +14,6 @@ const CONFIG_LABELS = {
 
     // 🤖 AI Detection & Thresholds
     model_name: "AI Vision Model Path / Name (.gguf)",
-    folder_match_threshold: "Folder Matching Threshold (0.0 - 1.0)",
     vision_api_timeout: "AI Response Timeout (seconds)",
     vision_api_retries: "AI Retry Attempts on Error"
 };
@@ -23,7 +21,7 @@ const CONFIG_LABELS = {
 const CONFIG_GROUPS = [
     {
         title: "📂 Folders & System Paths",
-        keys: ["watch_dir", "target_base_dir", "delay_seconds", "dashboard_port"]
+        keys: ["watch_dir", "target_base_dir", "dashboard_port"]
     },
     {
         title: "🗂️ Archiving & Directory Structure",
@@ -31,7 +29,7 @@ const CONFIG_GROUPS = [
     },
     {
         title: "🤖 AI Detection & Thresholds",
-        keys: ["model_name", "folder_match_threshold", "vision_api_timeout", "vision_api_retries"]
+        keys: ["model_name", "vision_api_timeout", "vision_api_retries"]
     }
 ];
 
@@ -130,10 +128,8 @@ async function saveConfigFromForm() {
                 let val = el.value.trim();
                 if (key === "folder_structure") {
                     payload[key] = val ? val.split(",").map(s => s.trim()).filter(Boolean) : [];
-                } else if (["delay_seconds", "vision_api_timeout", "dashboard_port", "vision_api_retries"].includes(key)) {
+                } else if (["vision_api_timeout", "dashboard_port", "vision_api_retries"].includes(key)) {
                     payload[key] = Number(val) || 0;
-                } else if (key === "folder_match_threshold") {
-                    payload[key] = parseFloat(val) || 0.8;
                 } else {
                     payload[key] = val;
                 }
@@ -148,6 +144,7 @@ async function saveConfigFromForm() {
         toast("Settings saved successfully!");
         markConfigDirty(false);
         await loadConfigTab();
+        AppEvents.emit("config:refresh");
     } catch (e) {
         console.error("Error saving config:", e);
         toast("Error saving settings: " + e.message, "error");

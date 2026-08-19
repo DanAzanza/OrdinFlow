@@ -17,10 +17,7 @@ def test_generic_document_naming_and_routing():
         "Kategorie": "Software",
     }
 
-    routing_cfg = {
-        "archive": True,
-        "filename_template": "Rechnung__{Kategorie}__{RechnungsDatum}"
-    }
+    routing_cfg = {"archive": True, "filename_template": "Rechnung__{Kategorie}__{RechnungsDatum}"}
     optional_fields = {"Titel"}
 
     # 2. Render folder name

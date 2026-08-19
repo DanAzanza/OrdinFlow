@@ -29,10 +29,6 @@ class AppConfig:
     white_border: int = 8
     contrast_limit: float = 1.0
 
-    # Processing settings
-    delay_seconds: float = 6.0
-    folder_match_threshold: float = 0.90
-
     # Dashboard settings
     dashboard_port: int = 8080
     crop_edge_threshold: int = 45
@@ -49,14 +45,9 @@ class AppConfig:
 
     # Dynamic prompt & routing document types
     document_types: dict[str, dict[str, Any]] = field(default_factory=dict)
-    vision_base_rules: str = ""
-    signature_base_rules: str = ""
     folder_delimiter: str = "__"
     folder_structure: list[str] = field(default_factory=list)
     match_folder_by: list[str] = field(default_factory=list)
-
-    # Feature toggles
-    save_empty_pages: bool = False
 
     def __post_init__(self):
         if not isinstance(self.document_types, dict):

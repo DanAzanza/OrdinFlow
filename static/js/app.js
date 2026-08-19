@@ -600,6 +600,21 @@ async function syncAppState() {
 	}
 }
 
+// Register global event listeners on AppEvents bus
+AppEvents.on("inbox:refresh", () => {
+	if (typeof fetchInbox === "function") fetchInbox();
+});
+AppEvents.on("cases:refresh", () => {
+	if (typeof fetchCases === "function") fetchCases();
+});
+AppEvents.on("skills:refresh", () => {
+	if (typeof ensureSkillsLoaded === "function") ensureSkillsLoaded(true);
+	if (typeof fetchSkills === "function") fetchSkills();
+});
+AppEvents.on("config:refresh", () => {
+	if (typeof fetchConfig === "function") fetchConfig();
+});
+
 showSkeletons();
 Promise.allSettled([
 	fetchConfig(),
