@@ -207,22 +207,25 @@ def api_clear_logs():
 
     # Safely truncate active FileHandlers without file-lock collisions
     root = logging.getLogger()
-    for handler in root.handlers:
+    for handler in list(root.handlers):
         if isinstance(handler, logging.FileHandler):
             handler.acquire()
             try:
                 if handler.stream and not getattr(handler.stream, "closed", False):
-                    handler.stream.seek(0)
-                    handler.stream.truncate(0)
-                    handler.flush()
+                    try:
+                        handler.stream.seek(0)
+                        handler.stream.truncate(0)
+                        handler.flush()
+                    except OSError:
+                        pass
             finally:
                 handler.release()
 
     for log_name in ["main.log", "document_router.log", "crash.log"]:
         if os.path.exists(log_name):
             try:
-                with open(log_name, "w", encoding="utf-8") as f:
-                    f.truncate(0)
+                with open(log_name, "w", encoding="utf-8"):
+                    pass
             except OSError:
                 pass
 
