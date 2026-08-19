@@ -308,3 +308,21 @@ def test_call_vision_api_json_repairs_truncated_json():
     assert res.get("Vorname") == "Denise"
     assert res.get("Nachname") == "Wesselmann"
     assert res.get("Signed") is True
+
+
+def test_llm_extractor_preload_and_unload():
+    """Tests that LLMExtractor delegates preload and unload cleanly to backend."""
+    from unittest.mock import MagicMock
+
+    from core.config import AppConfig
+    from core.vision import LLMExtractor
+
+    extractor = LLMExtractor(AppConfig())
+    mock_backend = MagicMock()
+    extractor._backend = mock_backend
+
+    extractor.preload()
+    mock_backend.preload.assert_called_once()
+
+    extractor.unload_backend()
+    mock_backend.unload.assert_called_once()

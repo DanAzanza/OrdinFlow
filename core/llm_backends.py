@@ -26,6 +26,14 @@ class LLMBackend(ABC):
     @abstractmethod
     def call_vision_api(self, payload: dict[str, object]) -> str: ...
 
+    def preload(self) -> bool:
+        """Preloads model weights ahead of time."""
+        return True
+
+    def unload(self) -> None:
+        """Unloads model weights from memory."""
+        pass
+
 
 # Global module caching for the Llama instance
 _GLOBAL_LLM_INSTANCE: object = None
@@ -177,6 +185,28 @@ class _LlamaCppBackend(LLMBackend):
 
         self._loaded = True
         return True
+
+    def preload(self) -> bool:
+        """Preloads local VL model into memory ahead of time."""
+        return self._ensure_loaded()
+
+    def unload(self) -> None:
+        """Explicitly unloads local VL model and releases memory/VRAM."""
+        global _GLOBAL_LLM_INSTANCE, _GLOBAL_LLM_KEY
+        import gc
+
+        with _LLM_LOCK:
+            if hasattr(self, "_llm") and self._llm is not None:
+                try:
+                    del self._llm
+                except Exception:
+                    pass
+                self._llm = None
+            _GLOBAL_LLM_INSTANCE = None
+            _GLOBAL_LLM_KEY = None
+            self._loaded = False
+            gc.collect()
+            logger.info("[+] Local VL model unloaded from memory.")
 
     def _convert_messages(self, raw_messages: list[dict[str, object]]) -> list[dict[str, object]]:
         """Converts legacy/custom message formats to standard OpenAI Multimodal format for llama-cpp-python."""
