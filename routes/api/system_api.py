@@ -31,6 +31,10 @@ _CONFIG_SAFE_KEYS = [
     "server_api_key",
     "llm_model_path",
     "mmproj_path",
+    "n_gpu_layers",
+    "n_batch",
+    "n_ubatch",
+    "flash_attn",
     "vision_api_timeout",
     "vision_api_retries",
     "crop_edge_threshold",
@@ -40,6 +44,9 @@ _CONFIG_SAFE_KEYS = [
     "white_border",
     "contrast_limit",
     "classify_dimension",
+    "tier1_dimension",
+    "tier2_dimension",
+    "tier3_dimension",
 ]
 
 
@@ -428,3 +435,54 @@ def api_config_put():
             return jsonify({"error": str(e)}), 500
 
     return jsonify({"status": "ok", "changed": changed})
+
+
+def _pick_path_dialog(picker_type: str = "folder", initial_dir: str = "", title: str = "") -> str | None:
+    """Opens a native GUI picker dialog to choose a folder or file."""
+    selected_path = None
+    try:
+        import tkinter as tk
+        from tkinter import filedialog
+
+        root = tk.Tk()
+        root.withdraw()
+        root.attributes("-topmost", True)
+        init_dir = initial_dir if (initial_dir and os.path.exists(initial_dir)) else os.getcwd()
+
+        if picker_type == "file":
+            filetypes = (
+                [("GGUF Models (*.gguf)", "*.gguf"), ("All Files (*.*)", "*.*")]
+                if any(x in title.lower() for x in ("model", "gguf", "projector", "mmproj"))
+                else [("All Files (*.*)", "*.*")]
+            )
+            selected = filedialog.askopenfilename(
+                initialdir=init_dir,
+                title=title or "Datei auswählen",
+                filetypes=filetypes,
+            )
+        else:
+            selected = filedialog.askdirectory(
+                initialdir=init_dir,
+                title=title or "Ordner auswählen",
+            )
+        root.destroy()
+        if selected:
+            selected_path = os.path.normpath(selected)
+    except Exception as e:
+        logger.warning("[!] Native file/folder dialog failed: %s", e)
+
+    return selected_path
+
+
+@system_api_bp.route("/api/system/browse", methods=["POST"])
+def api_system_browse():
+    """Opens a native system dialog to select a folder or file and returns the selected path."""
+    data = request.get_json() or {}
+    picker_type = str(data.get("picker_type", "folder")).lower()
+    initial_dir = str(data.get("initial_dir", "")).strip()
+    title = str(data.get("title", "")).strip()
+
+    chosen = _pick_path_dialog(picker_type=picker_type, initial_dir=initial_dir, title=title)
+    if chosen:
+        return jsonify({"status": "ok", "path": chosen})
+    return jsonify({"status": "cancelled", "path": None})

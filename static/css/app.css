@@ -3360,3 +3360,46 @@ color: #fff;
     font-size: 0.75rem;
     color: var(--text-dim);
 }
+
+/* ═══════════════════════════════════════════════════════════
+   PATH PICKER COMPONENT (Native Folder & File Browse)
+   ═══════════════════════════════════════════════════════════ */
+.path-input-wrapper {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    width: 100%;
+}
+
+.path-input-field {
+    flex: 1;
+    cursor: pointer;
+    background: var(--surface-container-highest, #1a2234);
+    font-family: var(--font-mono, monospace);
+    font-size: 0.82rem;
+}
+
+.btn-picker {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 7px 14px;
+    background: var(--primary, #3b82f6);
+    color: #ffffff;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: var(--radius-sm, 6px);
+    font-size: 0.80rem;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background 0.15s ease, transform 0.1s ease;
+}
+
+.btn-picker:hover {
+    background: var(--primary-hover, #2563eb);
+    transform: translateY(-1px);
+}
+
+.btn-picker:active {
+    transform: translateY(0);
+}

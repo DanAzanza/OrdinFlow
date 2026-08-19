@@ -12,8 +12,13 @@ const CONFIG_LABELS = {
     folder_structure: "Subfolder Hierarchy (comma separated)",
     folder_delimiter: "Folder Delimiter",
 
-    // 🤖 AI Detection & Thresholds
-    model_name: "AI Vision Model Path / Name (.gguf)",
+    // 🤖 AI Detection & Acceleration
+    llm_backend: "LLM Backend (llama_cpp / server)",
+    llm_model_path: "AI Vision Model Path (.gguf)",
+    mmproj_path: "Vision Projector Path (.gguf)",
+    n_gpu_layers: "GPU Acceleration Layers (-1 = all)",
+    n_batch: "Prompt Batch Size",
+    flash_attn: "Flash Attention v2",
     vision_api_timeout: "AI Response Timeout (seconds)",
     vision_api_retries: "AI Retry Attempts on Error"
 };
@@ -28,10 +33,26 @@ const CONFIG_GROUPS = [
         keys: ["folder_structure", "folder_delimiter"]
     },
     {
-        title: "🤖 AI Detection & Thresholds",
-        keys: ["model_name", "vision_api_timeout", "vision_api_retries"]
+        title: "🤖 AI Detection & Acceleration",
+        keys: [
+            "llm_backend",
+            "llm_model_path",
+            "mmproj_path",
+            "n_gpu_layers",
+            "n_batch",
+            "flash_attn",
+            "vision_api_timeout",
+            "vision_api_retries"
+        ]
     }
 ];
+
+const PATH_CONFIG = {
+    watch_dir: { type: "folder", title: "Inbox-Ordner auswählen" },
+    target_base_dir: { type: "folder", title: "Vorgänge-Archivordner auswählen" },
+    llm_model_path: { type: "file", title: "GGUF Vision-Modelldatei auswählen" },
+    mmproj_path: { type: "file", title: "GGUF mmproj-Projektordatei auswählen" }
+};
 
 function markConfigDirty(dirty = true) {
     state.configDirty = dirty;
@@ -52,6 +73,34 @@ function attachConfigInputListeners() {
         el.addEventListener("input", () => markConfigDirty(true));
         el.addEventListener("change", () => markConfigDirty(true));
     });
+}
+
+async function browseSystemPath(key) {
+    const pCfg = PATH_CONFIG[key];
+    if (!pCfg) return;
+    const inputEl = document.getElementById(`cfg_${key}`);
+    const currentVal = inputEl ? inputEl.value.trim() : "";
+
+    try {
+        const res = await api("/api/system/browse", {
+            method: "POST",
+            body: JSON.stringify({
+                picker_type: pCfg.type,
+                initial_dir: currentVal,
+                title: pCfg.title
+            })
+        });
+
+        if (res && res.status === "ok" && res.path) {
+            if (inputEl) {
+                inputEl.value = res.path;
+                markConfigDirty(true);
+            }
+        }
+    } catch (e) {
+        console.error("Browse path error:", e);
+        toast("Fehler beim Öffnen des Auswahldialogs", "error");
+    }
 }
 
 async function loadConfigTab() {
@@ -76,6 +125,17 @@ async function loadConfigTab() {
                             <div class="config-group config-toggle-group">
                                 <input type="checkbox" id="cfg_${key}" ${val ? "checked" : ""} class="config-checkbox">
                                 <label for="cfg_${key}" class="config-checkbox-label">${escapeHtml(label)}</label>
+                            </div>`;
+                    } else if (key in PATH_CONFIG) {
+                        groupHtml += `
+                            <div class="config-group config-path-group">
+                                <label class="doc-editor-label" for="cfg_${key}">${escapeHtml(label)}</label>
+                                <div class="path-input-wrapper">
+                                    <input type="text" class="doc-editor-input path-input-field" id="cfg_${key}" value="${escapeHtml(strVal)}" readonly onclick="browseSystemPath('${key}')">
+                                    <button type="button" class="btn-picker" onclick="browseSystemPath('${key}')">
+                                        📁 Durchsuchen...
+                                    </button>
+                                </div>
                             </div>`;
                     } else {
                         groupHtml += `
@@ -128,7 +188,7 @@ async function saveConfigFromForm() {
                 let val = el.value.trim();
                 if (key === "folder_structure") {
                     payload[key] = val ? val.split(",").map(s => s.trim()).filter(Boolean) : [];
-                } else if (["vision_api_timeout", "dashboard_port", "vision_api_retries"].includes(key)) {
+                } else if (["vision_api_timeout", "dashboard_port", "vision_api_retries", "n_gpu_layers", "n_batch"].includes(key)) {
                     payload[key] = Number(val) || 0;
                 } else {
                     payload[key] = val;
