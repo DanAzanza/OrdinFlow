@@ -10,7 +10,7 @@ contrast_limit: 1
 dashboard_port: 8080
 crop_edge_threshold: 45
 min_contour_area: 10
-classify_dimension: 1280
+classify_dimension: 1008
 vision_api_timeout: 120
 vision_api_retries: 3
 base_dir: .

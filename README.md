@@ -9,7 +9,7 @@
 
 > ⚠️ **Work in Progress (WIP):** This project is actively under development and may change significantly over time.
 
-> **Autonomous Multimodal Document Management, Visual Information Extraction & Agentic RPA Orchestrator**  
+> **Autonomous Multimodal Document Management, Visual Information Extraction & Agentic RPA Orchestrator**
 > *100% On-Premise · Air-Gapped & GDPR-Compliant · Dual-Engine Text & Vision Fusion · ~98% Empirical Accuracy*
 
 ---
@@ -39,7 +39,7 @@ By fusing two fundamentally distinct perception paradigms—deterministic spatia
                          ┌──────────────────────────────────────────────┐
                          │      MULTI-RESOLUTION CONSENSUS ENGINE       │
                          │  Levenshtein Clustering · Weighted Voting    │
-                         │  Targeted Tier Escalation (1396→1536→1676px) │
+                         │  Targeted Tier Escalation (1260→1512→1764px) │
                          └──────────────────────┬───────────────────────┘
                                                 │
                        ┌────────────────────────┴────────────────────────┐
@@ -72,9 +72,9 @@ To minimize GPU compute overhead and memory pressure on local hardware, OrdinFlo
 
 $$\text{Consensus Metric } K(f) = \frac{\sum_{i \in \text{winner}} w_i}{\sum_{j \in \text{all}} w_j} \ge 0.67$$
 
-- **Tier 1 (Dual-Source Base):** Evaluates spatial OCR text ($w=1.0$) against a 1396px visual image pass ($w=1.0$).
-- **Targeted Tier 2 (1536px, $w=1.25$):** If any field has confidence $K(f) < 0.67$ or low evidence weight, **only the disputed fields** are re-queried at higher resolution.
-- **Targeted Tier 3 Tiebreaker (1676px, $w=1.5$):** Resolves edge-case ambiguities.
+- **Tier 1 (Dual-Source Base):** Evaluates spatial OCR text ($w=1.0$) against a 1260px visual image pass ($w=1.0$).
+- **Targeted Tier 2 (1512px, $w=1.25$):** If any field has confidence $K(f) < 0.67$ or low evidence weight, **only the disputed fields** are re-queried at higher resolution.
+- **Targeted Tier 3 Tiebreaker (1764px, $w=1.5$):** Resolves edge-case ambiguities.
 - **Fuzzy Clustering:** Levenshtein distance clustering with German umlaut normalization (`ä` $\to$ `ae`), phonetic tolerance, and canonical scoring (vote weight $\to$ string length $\to$ casing).
 
 ### 🤖 4. Agentic RPA with Set-of-Mark (SoM) Grounding
@@ -101,15 +101,15 @@ flowchart TD
 
     subgraph DUAL_PERCEPTION ["2. Dual-Modal Perception"]
         PREP --> OCR[Spatial Layout OCR\nPyMuPDF Blocks & RapidOCR ONNX]
-        PREP --> VLM1[Vision-LLM Tier 1\n1396px via llama-cpp-python]
+        PREP --> VLM1[Vision-LLM Tier 1\n1260px via llama-cpp-python]
     end
 
     subgraph CONSENSUS ["3. Multi-Resolution Consensus Engine"]
         OCR & VLM1 --> CLUST[Fuzzy Levenshtein Clustering\nUmlaut & Phonetic Normalization]
         CLUST --> EVAL{Consensus K >= 0.67\n& Weight >= 1.25?}
-        EVAL -- Disputed Fields --> VLM2[Tier 2 Targeted Pass 1536px\nOnly Pending Fields]
+        EVAL -- Disputed Fields --> VLM2[Tier 2 Targeted Pass 1512px\nOnly Pending Fields]
         VLM2 --> EVAL2{Consensus Reached?}
-        EVAL2 -- Tiebreaker Needed --> VLM3[Tier 3 Tiebreaker 1676px]
+        EVAL2 -- Tiebreaker Needed --> VLM3[Tier 3 Tiebreaker 1764px]
         EVAL -- Validated --> WIN[Canonical Winner Extraction]
         EVAL2 -- Validated --> WIN
         VLM3 --> WIN
@@ -167,9 +167,10 @@ OrdinFlow/
 ├── routes/                       # Flask REST API endpoints & UI handlers
 │   └── api/                      # Cases, documents, inbox, skills & system telemetry APIs
 ├── static/ & templates/          # Modern web dashboard UI & stylesheet
-├── settings/skills/              # Declarative YAML skill definitions
+├── settings/                     # Declarative application configuration
+│   ├── config.yaml               # System runtime configuration
+│   └── skills/                   # Declarative YAML skill definitions
 ├── tests/                        # Comprehensive automated Pytest test suite (100+ tests)
-├── config.yaml                   # Application runtime configuration
 └── main.py                       # CLI & background orchestrator entrypoint
 ```
 
@@ -203,7 +204,7 @@ document_types:
       signature_required: false
 ```
 
-### Routing & Folder Template (`config.yaml`)
+### Routing & Folder Template (`settings/config.yaml`)
 ```yaml
 watch_dir: ./Eingang
 target_base_dir: ./Vorgaenge
@@ -262,7 +263,7 @@ Open [http://127.0.0.1:8080](http://127.0.0.1:8080) in your browser to access th
 
 ## 🛡️ License & Commercial Inquiries
 
-Copyright (c) 2026 **Daniel Azanza Hartmann**.  
+Copyright (c) 2026 **Daniel Azanza Hartmann**.
 This project is open-source under the **GNU Affero General Public License v3 (AGPL-3.0)**. See the [LICENSE](LICENSE) file for details.
 
 *Note: PyMuPDF is licensed under GNU AGPL v3. Any distribution or network deployment of derivative works must comply with AGPL-3.0 terms.*

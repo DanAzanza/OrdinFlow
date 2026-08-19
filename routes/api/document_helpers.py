@@ -239,7 +239,7 @@ def _generate_pdf_thumbnail(full_path: str):
     try:
         with fitz.open(full_path) as doc:
             page = doc[0]
-            zoom = 280 / page.rect.width
+            zoom = 280 / max(page.rect.width, 1.0)
             mat = fitz.Matrix(zoom, zoom)
             pix = page.get_pixmap(matrix=mat, alpha=False)
             img_bytes = pix.tobytes("jpeg", jpg_quality=75)
