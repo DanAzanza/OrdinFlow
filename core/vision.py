@@ -9,7 +9,6 @@ from core.llm_backends import LLMBackend, get_backend
 from core.utils import (
     MISSING_PLACEHOLDER,
     clean_extracted_value,
-    format_date_robust,
     is_missing_value,
 )
 
@@ -403,10 +402,6 @@ class LLMExtractor:
             else:
                 res2[key] = clean_extracted_value(val)
 
-        for k, v in list(res2.items()):
-            if "datum" in k.lower() or "date" in k.lower():
-                res2[k] = format_date_robust(v)
-
         return res2
 
     def extract_data_from_text_with_type(
@@ -513,10 +508,6 @@ class LLMExtractor:
                     res[key] = MISSING_PLACEHOLDER
             else:
                 res[key] = clean_extracted_value(val)
-
-        for k, v in list(res.items()):
-            if "datum" in k.lower() or "date" in k.lower():
-                res[k] = format_date_robust(v)
 
         return res
 
