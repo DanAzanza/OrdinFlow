@@ -30,9 +30,7 @@ def test_insurance_domain_routing_and_parsing():
     folder_structure = ["{Datum}", "{Schadenstyp}", "{Kundenname}"]
 
     # 1. Ordnernamen generieren
-    folder = render_folder_name(
-        data, routing_cfg=routing_cfg, folder_structure=folder_structure
-    )
+    folder = render_folder_name(data, routing_cfg=routing_cfg, folder_structure=folder_structure)
     assert folder == "2026-07-10--Wasserschaden--Schmidt, Erika"
 
     # 2. Dateinamen generieren
@@ -58,15 +56,11 @@ def test_tax_and_accounting_domain():
     folder_structure = ["{Steuerjahr}", "{Kategorie}", "{Lieferant}"]
 
     # 1. Generierung mit benutzerdefiniertem Trennzeichen '__'
-    folder = render_folder_name(
-        data, folder_structure=folder_structure, delimiter="__"
-    )
+    folder = render_folder_name(data, folder_structure=folder_structure, delimiter="__")
     assert folder == "2026__Eingangsrechnung__Acme Cloud Services GmbH"
 
     # 2. Parsen mit Trennzeichen '__'
-    parsed = parse_folder_name(
-        folder, folder_structure=folder_structure, delimiter="__"
-    )
+    parsed = parse_folder_name(folder, folder_structure=folder_structure, delimiter="__")
     assert parsed["Steuerjahr"] == "2026"
     assert parsed["Kategorie"] == "Eingangsrechnung"
     assert parsed["Lieferant"] == "Acme Cloud Services GmbH"
@@ -108,9 +102,7 @@ def test_creative_photo_archive_domain():
     }
     folder_structure = ["{Projekt}", "{Ort}", "{Titel}"]
     # Test optionales Feld 'Titel'
-    folder_full = render_folder_name(
-        data_with_title, folder_structure=folder_structure, optional_fields={"Titel"}
-    )
+    folder_full = render_folder_name(data_with_title, folder_structure=folder_structure, optional_fields={"Titel"})
     assert folder_full == "Alpen-Shooting--Innsbruck--Sonnenaufgang Gipfel"
 
     folder_no_title = render_folder_name(

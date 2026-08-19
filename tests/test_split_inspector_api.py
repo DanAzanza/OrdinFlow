@@ -42,7 +42,7 @@ def test_api_split_inspector_submit(client, tmp_path):
             "routing": {
                 "filename_template": "DocB__{Nachname}__{Datum}",
             }
-        }
+        },
     }
 
     try:
@@ -74,8 +74,8 @@ def test_api_split_inspector_submit(client, tmp_path):
                     "Datum": "2026-08-10",
                     "Produkt": "Software",
                     "pages": "2",
-                }
-            ]
+                },
+            ],
         }
 
         res = client.post("/api/split_inspector/submit", json=payload)

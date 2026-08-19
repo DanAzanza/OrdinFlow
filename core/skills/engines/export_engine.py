@@ -76,18 +76,14 @@ class ExportEngine(BaseSkill):
         self.target_window = definition.get("target_window")
         self.rdp_prefix = definition.get("rdp_path_prefix", "")
 
-    def _save_failure_screenshot(
-        self, step_id: str, desc: str = "", window_title: str | None = None
-    ) -> str | None:
+    def _save_failure_screenshot(self, step_id: str, desc: str = "", window_title: str | None = None) -> str | None:
         """Captures and saves a diagnostic screenshot when a skill step fails."""
         try:
             screen = SoMGrounder.capture_screen(window_title)
             if screen is None:
                 screen = SoMGrounder.capture_screen(None)
             if screen is not None:
-                base_dir = os.path.dirname(
-                    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-                )
+                base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
                 fail_dir = os.path.join(base_dir, "scratch", "rpa_failures")
                 os.makedirs(fail_dir, exist_ok=True)
                 sanitized_step = re.sub(r"[^\w\-_\.]", "_", step_id)
@@ -112,9 +108,7 @@ class ExportEngine(BaseSkill):
 
         return re.sub(r"\{([^{}]+)\}", replace_match, text)
 
-    def _locate_target(
-        self, locator: dict[str, Any], window_title: str | None = None
-    ) -> tuple[int, int] | None:
+    def _locate_target(self, locator: dict[str, Any], window_title: str | None = None) -> tuple[int, int] | None:
         """Determines the (x, y) pixel coordinates for a locator with auto-adaptive OCR & VLM fallback."""
         loc_type = str(locator.get("type", "auto"))
         loc_val = str(locator.get("value", "") or locator.get("prompt", "") or locator.get("target", ""))
@@ -179,11 +173,7 @@ class ExportEngine(BaseSkill):
                 f"Which element number best matches: '{search_term}'?\n"
                 f"Reply ONLY with the exact number in square brackets, e.g. `[14]`."
             )
-            payload = {
-                "messages": [
-                    {"role": "user", "content": ground_prompt, "images": [b64_som]}
-                ]
-            }
+            payload = {"messages": [{"role": "user", "content": ground_prompt, "images": [b64_som]}]}
 
             resp = self.vision_extractor.call_vision_api(payload)
             if resp:
@@ -278,9 +268,7 @@ class ExportEngine(BaseSkill):
 
             # 1. FOCUS_WINDOW
             if action_type == "FOCUS_WINDOW":
-                win_pattern = self._substitute_placeholders(
-                    step.get("window_title", self.target_window or ""), context
-                )
+                win_pattern = self._substitute_placeholders(step.get("window_title", self.target_window or ""), context)
                 max_retries = int(step.get("max_retries", 5))
                 retry_delay_s = float(step.get("retry_delay_s", 1.0))
                 screen = None
@@ -481,7 +469,9 @@ class ExportEngine(BaseSkill):
 
         try:
             if folder_path or folder_name:
-                resolved_folder = str(folder_path) if folder_path else os.path.abspath(os.path.join(target_base, str(folder_name)))
+                resolved_folder = (
+                    str(folder_path) if folder_path else os.path.abspath(os.path.join(target_base, str(folder_name)))
+                )
                 success = self.execute_skill_for_folder(resolved_folder, context, reporter)
                 return TaskResult(
                     success=success,
@@ -522,9 +512,7 @@ class ExportEngine(BaseSkill):
             logger.error("[ExportEngine] Execution error: %s", e, exc_info=True)
             return TaskResult(success=False, error=str(e))
 
-    def filter_matching_files(
-        self, folder_path: str, allowed_types: list[str] | None = None
-    ) -> list[dict[str, Any]]:
+    def filter_matching_files(self, folder_path: str, allowed_types: list[str] | None = None) -> list[dict[str, Any]]:
         """Filters PDF files in a case folder according to the skill's allowed document types and loads metadata."""
         matching_files: list[dict[str, Any]] = []
         if not os.path.exists(folder_path) or not os.path.isdir(folder_path):
@@ -757,6 +745,6 @@ class ExportEngine(BaseSkill):
             with open(meta_path, "w", encoding="utf-8") as f:
                 json.dump(data, f, ensure_ascii=False, indent=2)
             return True
-        except OSError:
+        except OSError as e:
+            logger.debug("[ExportEngine] Could not write metadata sidecar %s: %s", meta_path, e)
             return False
-

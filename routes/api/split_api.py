@@ -50,9 +50,7 @@ def _parse_pages_input(val: Any, total_pages: int = 999) -> list[int]:
     return list(range(1, total_pages + 1))
 
 
-def _resolve_split_source(
-    context: str, folder: str | None, filename: str
-) -> tuple[str | None, tuple[Any, int] | None]:
+def _resolve_split_source(context: str, folder: str | None, filename: str) -> tuple[str | None, tuple[Any, int] | None]:
     """Validates and resolves the source document path for split inspection."""
     if not DashboardState.config:
         return None, (jsonify({"error": "Config not available"}), 503)
@@ -99,8 +97,8 @@ def _slice_or_move_document(
     target_filename, target_path = _deduplicate_filename(target_dir, target_filename)
 
     pages_to_extract = _parse_pages_input(data.get("pages"), total_pages)
-    should_slice = is_pdf and fitz is not None and pdf_doc is not None and (
-        is_multi_doc or len(pages_to_extract) < total_pages
+    should_slice = (
+        is_pdf and fitz is not None and pdf_doc is not None and (is_multi_doc or len(pages_to_extract) < total_pages)
     )
 
     if should_slice and fitz is not None and pdf_doc is not None:
@@ -123,16 +121,13 @@ def _cleanup_empty_case_folder(folder: str) -> None:
         return
     try:
         remaining = os.listdir(src_dir)
-        doc_files = [
-            f for f in remaining
-            if not f.lower().endswith(".meta") and f.lower() != "desktop.ini"
-        ]
+        doc_files = [f for f in remaining if not f.lower().endswith(".meta") and f.lower() != "desktop.ini"]
         if not doc_files:
             for f in remaining:
                 try:
                     os.remove(os.path.join(src_dir, f))
-                except OSError:
-                    pass
+                except OSError as e:
+                    logger.debug("Could not remove auxiliary file %s during cleanup: %s", f, e)
             os.rmdir(src_dir)
     except OSError as e:
         logger.warning("Could not remove empty process folder %s: %s", src_dir, e)
@@ -204,8 +199,8 @@ def api_split_inspector_submit():
         if os.path.isfile(src_path):
             try:
                 os.remove(src_path)
-            except OSError:
-                pass
+            except OSError as e:
+                logger.debug("Could not remove src_path %s: %s", src_path, e)
 
         if context == "cases" and folder:
             _cleanup_empty_case_folder(folder)

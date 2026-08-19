@@ -126,9 +126,7 @@ class _LlamaCppBackend(LLMBackend):
                                     except OSError:
                                         pass
             if dll_dirs:
-                os.environ["PATH"] = (
-                    os.pathsep.join(dll_dirs) + os.pathsep + os.environ.get("PATH", "")
-                )
+                os.environ["PATH"] = os.pathsep.join(dll_dirs) + os.pathsep + os.environ.get("PATH", "")
 
         try:
             from llama_cpp import Llama  # type: ignore[import-untyped]
@@ -137,8 +135,7 @@ class _LlamaCppBackend(LLMBackend):
             )
         except (ImportError, RuntimeError) as _e:
             logger.error(
-                "[!] Could not load 'llama-cpp-python': %s\n"
-                "    Please run Install_OrdinFlow.bat.",
+                "[!] Could not load 'llama-cpp-python': %s\n    Please run Install_OrdinFlow.bat.",
                 _e,
             )
             self._load_failed = True
@@ -148,12 +145,8 @@ class _LlamaCppBackend(LLMBackend):
             if not os.path.isfile(model_path):
                 raise FileNotFoundError(f"Model not found: {model_path}")
 
-            logger.info(
-                "[*] Loading local VL model from '%s' ...", os.path.basename(model_path)
-            )
-            logger.info(
-                "[*] GPU acceleration enabled: %d Layer(s) on GPU", n_gpu_layers
-            )
+            logger.info("[*] Loading local VL model from '%s' ...", os.path.basename(model_path))
+            logger.info("[*] GPU acceleration enabled: %d Layer(s) on GPU", n_gpu_layers)
 
             chat_handler = None
             if mmproj_raw and os.path.isfile(mmproj_raw):
@@ -161,13 +154,9 @@ class _LlamaCppBackend(LLMBackend):
                     "[*] Enabling Vision Projector (%s) via Qwen25VLChatHandler...",
                     os.path.basename(mmproj_raw),
                 )
-                chat_handler = Qwen25VLChatHandler(
-                    clip_model_path=mmproj_raw, verbose=False
-                )
+                chat_handler = Qwen25VLChatHandler(clip_model_path=mmproj_raw, verbose=False)
             else:
-                logger.warning(
-                    "[-] No valid mmproj path found. Model loading without vision support."
-                )
+                logger.warning("[-] No valid mmproj path found. Model loading without vision support.")
 
             kwargs = {
                 "model_path": model_path,
@@ -183,16 +172,13 @@ class _LlamaCppBackend(LLMBackend):
         except Exception as _e:
             logger.error("[!] Error loading model: %s", _e)
             raise RuntimeError(
-                "Could not load LLM. Please run 'Install_OrdinFlow.bat' "
-                "and enable GPU acceleration (Vulkan/CUDA)."
+                "Could not load LLM. Please run 'Install_OrdinFlow.bat' and enable GPU acceleration (Vulkan/CUDA)."
             ) from _e
 
         self._loaded = True
         return True
 
-    def _convert_messages(
-        self, raw_messages: list[dict[str, object]]
-    ) -> list[dict[str, object]]:
+    def _convert_messages(self, raw_messages: list[dict[str, object]]) -> list[dict[str, object]]:
         """Converts legacy/custom message formats to standard OpenAI Multimodal format for llama-cpp-python."""
         formatted: list[dict[str, object]] = []
         for msg in raw_messages:
@@ -211,14 +197,8 @@ class _LlamaCppBackend(LLMBackend):
             if images:
                 for img in images:  # type: ignore[union-attr]
                     if isinstance(img, str):
-                        img_url = (
-                            img
-                            if img.startswith("data:")
-                            else f"data:image/jpeg;base64,{img}"
-                        )
-                        content_parts.append(
-                            {"type": "image_url", "image_url": {"url": img_url}}
-                        )
+                        img_url = img if img.startswith("data:") else f"data:image/jpeg;base64,{img}"
+                        content_parts.append({"type": "image_url", "image_url": {"url": img_url}})
 
             if not content_parts:
                 content_parts.append({"type": "text", "text": ""})
@@ -226,9 +206,7 @@ class _LlamaCppBackend(LLMBackend):
             formatted.append({"role": role, "content": content_parts})
         return formatted
 
-    def call_vision_api(
-        self, payload: dict[str, object], force_json: bool = False
-    ) -> str:
+    def call_vision_api(self, payload: dict[str, object], force_json: bool = False) -> str:
         if not self._ensure_loaded():
             return ""
         with _LLM_LOCK:
@@ -262,11 +240,7 @@ class _LlamaCppBackend(LLMBackend):
                 resp = self._llm.create_chat_completion(**kwargs)  # type: ignore[attr-defined]
 
                 # Handle both streaming and non-streaming responses
-                choices = (
-                    resp.get("choices")
-                    if isinstance(resp, dict)
-                    else getattr(resp, "choices", None)
-                )
+                choices = resp.get("choices") if isinstance(resp, dict) else getattr(resp, "choices", None)
                 if choices is None:
                     return ""
 
@@ -281,23 +255,15 @@ class _LlamaCppBackend(LLMBackend):
                     if isinstance(message, dict):
                         content = message.get("content", "")
                     else:
-                        content = (
-                            getattr(message, "content", "")
-                            if message is not None
-                            else ""
-                        )
+                        content = getattr(message, "content", "") if message is not None else ""
 
-                result = (
-                    str(content).strip() if isinstance(content, (str, list)) else ""
-                )
+                result = str(content).strip() if isinstance(content, (str, list)) else ""
                 return result
             except (AttributeError, RuntimeError, ValueError, TypeError) as e:
                 logger.warning("[-] LLM call failed: %s", e)
                 return ""
 
-    def call_vision_api_json(
-        self, payload: dict[str, object]
-    ) -> dict[str, object] | None:
+    def call_vision_api_json(self, payload: dict[str, object]) -> dict[str, object] | None:
         raw = self.call_vision_api(payload, force_json=True)
         if not raw:
             return None
@@ -332,9 +298,7 @@ class _ServerBackend(LLMBackend):
                 mode=instructor.Mode.JSON,
             )
         except (ImportError, AttributeError, RuntimeError, OSError, ValueError) as e:
-            logger.error(
-                "[!] Instructor setup failed (openai/instructor not installed?): %s", e
-            )
+            logger.error("[!] Instructor setup failed (openai/instructor not installed?): %s", e)
             self._client = None
 
     def call_vision_api(self, payload: dict[str, object]) -> str:
@@ -346,9 +310,7 @@ class _ServerBackend(LLMBackend):
             content = m.get("content", "")  # type: ignore[union-attr]
             # Convert to OpenAI format (list of dicts if str)
             if isinstance(content, str):
-                msgs.append(
-                    {"role": role, "content": [{"type": "text", "text": content}]}
-                )
+                msgs.append({"role": role, "content": [{"type": "text", "text": content}]})
             elif isinstance(content, list):
                 msgs.append({"role": role, "content": content})
         try:

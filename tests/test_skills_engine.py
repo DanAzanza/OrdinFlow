@@ -1,6 +1,7 @@
 """
 Unit tests for OrdinFlow Skills Engine (core/skills_engine.py).
 """
+
 import json
 import os
 import shutil
@@ -8,9 +9,11 @@ import tempfile
 
 import pytest
 
-from core.skills_engine import (
+from core.skills import (
     SkillExecutor,
     SkillManager,
+)
+from core.skills.shield import (
     input_shield,
     set_block_input,
 )
@@ -34,13 +37,8 @@ def test_skill_manager_crud_and_duplicate(temp_skills_dir):
         "description": "First test skill",
         "enabled": True,
         "steps": [
-            {
-                "id": "step_1",
-                "description": "Focus Window",
-                "action_type": "FOCUS_WINDOW",
-                "window_title": "Notepad*"
-            }
-        ]
+            {"id": "step_1", "description": "Focus Window", "action_type": "FOCUS_WINDOW", "window_title": "Notepad*"}
+        ],
     }
     saved_id = mgr.save_skill(skill_data)
     assert saved_id == "test_skill_1"
@@ -95,8 +93,15 @@ def test_substitute_placeholders(temp_skills_dir):
     mgr = SkillManager(skills_dir=temp_skills_dir)
     executor = SkillExecutor(mgr)
 
-    ctx = {"LastName": "Mustermann", "FirstName": "Erika", "document_fullpath": "C:/docs/file.pdf", "BirthDate": "1985-05-12"}
-    res = executor._substitute_placeholders("Hello {FirstName} {LastName}, Born: {BirthDate}, File: {document_fullpath}", ctx)
+    ctx = {
+        "LastName": "Mustermann",
+        "FirstName": "Erika",
+        "document_fullpath": "C:/docs/file.pdf",
+        "BirthDate": "1985-05-12",
+    }
+    res = executor._substitute_placeholders(
+        "Hello {FirstName} {LastName}, Born: {BirthDate}, File: {document_fullpath}", ctx
+    )
     assert res == "Hello Erika Mustermann, Born: 1985-05-12, File: C:/docs/file.pdf"
 
     # Test unknown key safety (unpopulated keys safely resolve to empty string)
@@ -112,9 +117,7 @@ def test_sub_skill_execution(temp_skills_dir):
         "id": "sub_skill_1",
         "name": "Sub Skill 1",
         "enabled": True,
-        "steps": [
-            {"id": "sub_step_1", "description": "Sub Action", "action_type": "FOCUS_WINDOW"}
-        ]
+        "steps": [{"id": "sub_step_1", "description": "Sub Action", "action_type": "FOCUS_WINDOW"}],
     }
     mgr.save_skill(sub_skill)
 
@@ -125,7 +128,7 @@ def test_sub_skill_execution(temp_skills_dir):
         "enabled": True,
         "steps": [
             {"id": "call_sub", "description": "Call Subskill", "action_type": "CALL_SKILL", "skill_id": "sub_skill_1"}
-        ]
+        ],
     }
     mgr.save_skill(main_skill)
 
@@ -307,7 +310,7 @@ def test_verify_screen_fallback_routine(temp_skills_dir, monkeypatch):
                 "id": "final_upload_step",
                 "action_type": "FOCUS_WINDOW",
                 "window_title": "Remote Desktop*",
-            }
+            },
         ],
     }
     mgr.save_skill(main_skill)
@@ -320,6 +323,7 @@ def test_verify_screen_fallback_routine(temp_skills_dir, monkeypatch):
 
     # Mock execute_skill for the routine to record execution
     orig_execute = executor.execute_skill
+
     def mock_execute_skill(skill_id, context=None, depth=0):
         if skill_id == "create_patient_routine":
             routine_executed.append(skill_id)
@@ -331,4 +335,3 @@ def test_verify_screen_fallback_routine(temp_skills_dir, monkeypatch):
     res = executor.execute_skill("main_export_skill", context={"Nachname": "Mustermann"})
     assert res is True
     assert routine_executed == ["create_patient_routine"]
-

@@ -12,6 +12,7 @@ logger = logging.getLogger(__name__)
 
 # ── In-memory log handler for web dashboard buffering ──
 
+
 class MemoryLogHandler(logging.Handler):
     def __init__(self, max_records: int = 3000):
         super().__init__()
@@ -30,17 +31,13 @@ class MemoryLogHandler(logging.Handler):
                         "id": self.seq_id,
                         "level": record.levelname,
                         "message": msg,
-                        "time": time.strftime(
-                            "%H:%M:%S", time.localtime(record.created)
-                        ),
+                        "time": time.strftime("%H:%M:%S", time.localtime(record.created)),
                     }
                 )
         except Exception:
             self.handleError(record)
 
-    def load_initial_from_file(
-        self, log_path: str = "main.log", limit: int = 500
-    ) -> None:
+    def load_initial_from_file(self, log_path: str = "main.log", limit: int = 500) -> None:
         """Populates the in-memory ring buffer with recent historical lines from log file."""
         if not os.path.exists(log_path):
             base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -63,20 +60,14 @@ class MemoryLogHandler(logging.Handler):
                     tm = p[1].split(",")[0]
                     lvl = p[2][1:-1]
                     msg = p[3]
-                    self.records.append(
-                        {"id": self.seq_id, "level": lvl, "message": msg, "time": tm}
-                    )
+                    self.records.append({"id": self.seq_id, "level": lvl, "message": msg, "time": tm})
                 else:
-                    self.records.append(
-                        {"id": self.seq_id, "level": "INFO", "message": line_str, "time": ""}
-                    )
+                    self.records.append({"id": self.seq_id, "level": "INFO", "message": line_str, "time": ""})
             self._initialized_from_file = True
         except Exception as e:
             logger.debug("Could not pre-load logs from file: %s", e)
 
-    def get_logs(
-        self, since_id: int = 0, limit: int = 300
-    ) -> tuple[list[dict[str, Any]], int]:
+    def get_logs(self, since_id: int = 0, limit: int = 300) -> tuple[list[dict[str, Any]], int]:
         with self._lock:
             if not self._initialized_from_file and not self.records:
                 self.load_initial_from_file()
@@ -97,7 +88,6 @@ memory_log_handler = MemoryLogHandler()
 _RE_INVALID_PATH_CHARS = re.compile(r'[\\/*?:"<>|]')
 
 
-
 MISSING_PLACEHOLDER = "----"
 
 _MISSING_VALUES = frozenset(
@@ -116,6 +106,7 @@ _MISSING_VALUES = frozenset(
         "----",
     ]
 )
+
 
 def clean_path_component(text: str) -> str:
     """Strips characters from text that are invalid or disruptive in the Windows filesystem (e.g. square brackets)."""
@@ -141,14 +132,13 @@ def clean_template_result(text: str, delimiter: str = "__") -> str:
     if delimiter:
         escaped = re.escape(delimiter)
         # Protect the placeholder "----" with a token without underscores/hyphens
-        placeholder_mask = "QQQMISSINGPLACEHOLDERQQQ"  # nosec B105
+        placeholder_mask = "QQQMISSINGPLACEHOLDERQQQ"
         cleaned = cleaned.replace("----", placeholder_mask)
         cleaned = re.sub(f"{escaped}(?:{escaped})+", delimiter, cleaned)
         cleaned = re.sub(f"(?:{escaped})+$", "", cleaned)
         cleaned = re.sub(f"^{escaped}+", "", cleaned)
         cleaned = cleaned.replace(placeholder_mask, "----")
     return cleaned.strip()
-
 
 
 def is_missing_value(val: Any) -> bool:
@@ -184,9 +174,7 @@ def format_date_robust(date_str: str) -> str:
         final_date = date_str
     else:
         # Check DD.MM.YYYY or DD.MM.YY or DD-MM-YY (also with comma instead of dot due to OCR errors)
-        match_ger = re.search(
-            r"(\d{1,2})[\.\-\,]\s*(\d{1,2})[\.\-\,]\s*(\d{2,4})", date_str
-        )
+        match_ger = re.search(r"(\d{1,2})[\.\-\,]\s*(\d{1,2})[\.\-\,]\s*(\d{2,4})", date_str)
         if match_ger:
             d, m, y = match_ger.groups()
             if len(y) == 2:
@@ -258,13 +246,13 @@ def wait_until_unlocked(filepath: str, retries: int = 6, delay: float = 0.5) -> 
                             with fitz.open(filepath) as doc:
                                 if len(doc) > 0:
                                     return True
-                        except Exception:
-                            pass
+                        except Exception as e:
+                            logger.debug("PDF not ready yet during unlock check: %s", e)
                     else:
                         return True
                 last_size = current_size
-            except OSError:
-                pass
+            except OSError as e:
+                logger.debug("Could not get file size for %s: %s", filepath, e)
 
         logger.info(
             f"[*] File '{os.path.basename(filepath)}' is still writing or locked. "
@@ -281,21 +269,19 @@ def wait_until_unlocked(filepath: str, retries: int = 6, delay: float = 0.5) -> 
     return False
 
 
-def safe_move(src: str, dst: str, retries: int = 3, delay: int = 2) -> bool:
+def safe_move(src: str, dst: str, retries: int = 3, delay: float = 2.0) -> bool:
     for attempt in range(retries):
         try:
             shutil.move(src, dst)
             return True
         except PermissionError:
             if attempt < retries - 1:
-                logger.warning(
-                    f"[*] File locked, retrying {attempt + 1}/{retries} for {src}..."
-                )
+                logger.warning(f"[*] File locked, retrying {attempt + 1}/{retries} for {src}...")
                 time.sleep(delay)
     raise PermissionError(f"File could not be moved: {src}")
 
 
-def _deduplicate_path(target_filepath: str) -> str:
+def deduplicate_path(target_filepath: str) -> str:
     """Appends a timestamp suffix if the target file already exists."""
     if os.path.exists(target_filepath):
         base, ext = os.path.splitext(target_filepath)
@@ -303,7 +289,7 @@ def _deduplicate_path(target_filepath: str) -> str:
     return target_filepath
 
 
-def _remove_source_with_meta(filepath: str) -> None:
+def remove_source_with_meta(filepath: str) -> None:
     """Deletes the source file and its associated .meta sidecar file."""
     try:
         if os.path.exists(filepath):
@@ -314,3 +300,7 @@ def _remove_source_with_meta(filepath: str) -> None:
     except OSError as e:
         logger.warning(f"[!] Error deleting source file '{filepath}': {e}")
 
+
+# Backward-compatible aliases
+_deduplicate_path = deduplicate_path
+_remove_source_with_meta = remove_source_with_meta

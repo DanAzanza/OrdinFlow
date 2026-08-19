@@ -95,9 +95,7 @@ class SkillRecorder:
                 cls._instance = SkillRecorder()
             return cls._instance
 
-    def start_recording(
-        self, skill_name: str = "New Recorded Skill"
-    ) -> dict[str, Any]:
+    def start_recording(self, skill_name: str = "New Recorded Skill") -> dict[str, Any]:
         with self._lock:
             if self.is_recording:
                 return {"status": "already_recording", "step_count": len(self.steps)}
@@ -108,9 +106,7 @@ class SkillRecorder:
             self.is_recording = True
             self.skill_name = skill_name or "New Recorded Skill"
             self.skill_id = (
-                "rdp_rec_"
-                + re.sub(r"\W+", "_", self.skill_name.lower()).strip("_")
-                + f"_{int(time.time())}"
+                "rdp_rec_" + re.sub(r"\W+", "_", self.skill_name.lower()).strip("_") + f"_{int(time.time())}"
             )
             self.steps = []
             self.current_window = ""
@@ -177,9 +173,7 @@ class SkillRecorder:
                 "skill_id": self.skill_id,
                 "skill_name": self.skill_name,
                 "step_count": len(self.steps) + (1 if self._keyboard_buffer else 0),
-                "elapsed_seconds": round(time.time() - self.start_time, 1)
-                if self.is_recording
-                else 0.0,
+                "elapsed_seconds": round(time.time() - self.start_time, 1) if self.is_recording else 0.0,
                 "last_action": self.last_action_desc,
             }
 
@@ -237,16 +231,10 @@ class SkillRecorder:
         self.last_click_time = now
         self.last_click_coords = (x, y)
 
-        if (
-            is_double_click
-            and self.steps
-            and self.steps[-1].get("action_type") == "CLICK"
-        ):
+        if is_double_click and self.steps and self.steps[-1].get("action_type") == "CLICK":
             # Convert previous click to DOUBLE_CLICK
             self.steps[-1]["action_type"] = "DOUBLE_CLICK"
-            self.steps[-1]["description"] = self.steps[-1]["description"].replace(
-                "Click", "Double click"
-            )
+            self.steps[-1]["description"] = self.steps[-1]["description"].replace("Click", "Double click")
             self.last_action_desc = "Double click captured"
             return
 
@@ -268,9 +256,7 @@ class SkillRecorder:
 
         time_diff = now - (self.last_event_time or now)
         self.last_event_time = now
-        calculated_delay = (
-            max(500, min(10000, int(time_diff * 1000))) if time_diff > 0.8 else 500
-        )
+        calculated_delay = max(500, min(10000, int(time_diff * 1000))) if time_diff > 0.8 else 500
 
         self._add_step(
             {

@@ -28,4 +28,3 @@ def test_evaluate_field_consensus_disagreement_weights():
     assert counts.get("Müller") == 1.0
     assert counts.get("Meier") == 1.0
     assert k_score == 0.50
-

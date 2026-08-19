@@ -15,10 +15,13 @@ from core.skills.models import (
 from core.skills.queue import SkillQueueManager, get_skill_queue_manager
 from core.skills.shield import input_shield
 
+SkillExecutor = ExportEngine
+
 __all__ = [
     "BaseSkill",
     "ImportEngine",
     "ExportEngine",
+    "SkillExecutor",
     "SkillManager",
     "SkillQueueManager",
     "get_skill_queue_manager",

@@ -109,7 +109,9 @@ def test_queue_manager_execution_with_custom_engine(temp_skills_env, monkeypatch
                 reporter(TaskProgress(current=1, total=1, message="Done", percent=100.0))
             return TaskResult(success=True, data={"result": "ok"})
 
-    monkeypatch.setattr(skill_mgr, "get_skill_engine", lambda skill_id, **kw: DummyEngine({"id": skill_id, "name": skill_id}))
+    monkeypatch.setattr(
+        skill_mgr, "get_skill_engine", lambda skill_id, **kw: DummyEngine({"id": skill_id, "name": skill_id})
+    )
 
     item = queue_mgr.add_to_queue("test_s1")
     queue_mgr.start_queue()
@@ -179,7 +181,9 @@ def test_queue_manager_pause_and_resume(temp_skills_env, monkeypatch):
             time.sleep(0.3)
             return TaskResult(success=True)
 
-    monkeypatch.setattr(skill_mgr, "get_skill_engine", lambda skill_id, **kw: SlowEngine({"id": skill_id, "name": skill_id}))
+    monkeypatch.setattr(
+        skill_mgr, "get_skill_engine", lambda skill_id, **kw: SlowEngine({"id": skill_id, "name": skill_id})
+    )
 
     item1 = queue_mgr.add_to_queue("skill_p1")
     item2 = queue_mgr.add_to_queue("skill_p2")
@@ -293,4 +297,3 @@ def test_import_engine_live_pause_and_stop(temp_skills_env, monkeypatch):
     time.sleep(0.3)
     # Remaining files must NOT be processed
     assert len(processed_files) < 5
-

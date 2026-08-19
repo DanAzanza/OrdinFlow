@@ -10,8 +10,6 @@ import unicodedata
 from difflib import SequenceMatcher
 from typing import Any
 
-logger = logging.getLogger(__name__)
-
 from core.config import AppConfig
 from core.image_processing import ImagePreprocessor
 from core.utils import (
@@ -19,6 +17,8 @@ from core.utils import (
     is_missing_value,
 )
 from core.vision import LLMExtractor
+
+logger = logging.getLogger(__name__)
 
 _RAPID_OCR_ENGINE = None
 
@@ -412,6 +412,19 @@ class ExtractionPipeline:
                 tier_page_results.append({})
                 continue
 
+            # Skip KI request if target_fields is set and page has none of the target fields
+            if target_fields is not None:
+                target_set_lower = {f.lower() for f in target_fields}
+                page_fields_lower = {f.lower() for f in p_fields.keys()}
+                if p_sig:
+                    page_fields_lower.add("signed")
+                if not (page_fields_lower & target_set_lower):
+                    logging.debug(
+                        f"[*] Page {p_num} ({p_type}) {label}: Skipped (no matching target fields for this page type)."
+                    )
+                    tier_page_results.append({})
+                    continue
+
             img_b64 = (
                 p.get("b64_img")
                 if p.get("prep_img") is None
@@ -422,12 +435,7 @@ class ExtractionPipeline:
             )
             res = ext if isinstance(ext, dict) else {}
             tier_page_results.append(res)
-            if not res and target_fields:
-                logging.debug(
-                    f"[*] Page {p_num} ({p_type}) {label}: Skipped (no matching target fields for this page type)."
-                )
-            else:
-                logging.info(f"[*] Page {p_num} ({p_type}) {label} result: {res}")
+            logging.info(f"[*] Page {p_num} ({p_type}) {label} result: {res}")
 
         return tier_page_results
 
@@ -452,6 +460,17 @@ class ExtractionPipeline:
                 tier_page_results.append({})
                 continue
 
+            # Skip if target_fields is set and page has none of the target fields (excluding Signed for text pass)
+            if target_fields is not None:
+                target_set_lower = {f.lower() for f in target_fields if f.lower() != "signed"}
+                page_fields_lower = {f.lower() for f in p_fields.keys()}
+                if not (page_fields_lower & target_set_lower):
+                    logging.debug(
+                        f"[*] Page {p_num} ({p_type}) {label}: Skipped (no matching target fields for this page type)."
+                    )
+                    tier_page_results.append({})
+                    continue
+
             spatial_text = p.get("spatial_text", "")
             if not spatial_text or len(spatial_text.strip()) < 10:
                 logging.debug(f"[*] Page {p_num} ({p_type}) {label}: No spatial text available. Skipping text pass.")
@@ -463,12 +482,7 @@ class ExtractionPipeline:
             )
             res = ext if isinstance(ext, dict) else {}
             tier_page_results.append(res)
-            if not res and target_fields:
-                logging.debug(
-                    f"[*] Page {p_num} ({p_type}) {label}: Skipped (no matching target fields for this page type)."
-                )
-            else:
-                logging.info(f"[*] Page {p_num} ({p_type}) {label} result: {res}")
+            logging.info(f"[*] Page {p_num} ({p_type}) {label} result: {res}")
 
         return tier_page_results
 

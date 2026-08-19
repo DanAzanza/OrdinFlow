@@ -302,8 +302,8 @@ async function autoAssignFile(filename) {
 			method: "POST",
 		});
 		toast("File assigned successfully");
-		fetchInbox();
-		fetchCases();
+		AppEvents.emit("inbox:refresh");
+		AppEvents.emit("cases:refresh");
 	} catch (e) {
 		toast("Assignment error: " + e.message, "error");
 	}
@@ -316,7 +316,7 @@ async function retryFile(filename) {
 			method: "POST",
 		});
 		toast("Reprocessing file: " + filename);
-		fetchInbox();
+		AppEvents.emit("inbox:refresh");
 	} catch (e) {
 		toast("Error: " + e.message, "error");
 	}
@@ -431,8 +431,8 @@ async function batchAutoAssignInbox() {
 	}
 	toast(`${successCount} of ${files.length} file(s) assigned successfully.`);
 	state.selectedInbox.clear();
-	fetchInbox();
-	fetchCases();
+	AppEvents.emit("inbox:refresh");
+	AppEvents.emit("cases:refresh");
 }
 
 async function batchDeleteInbox() {
@@ -453,7 +453,7 @@ async function batchDeleteInbox() {
 	}
 	toast(`${deleteCount} file(s) deleted.`);
 	state.selectedInbox.clear();
-	fetchInbox();
+	AppEvents.emit("inbox:refresh");
 }
 
 async function batchReprocessInbox() {
@@ -474,7 +474,7 @@ async function batchReprocessInbox() {
 	}
 	toast(`${successCount} of ${files.length} file(s) queued for reprocessing.`);
 	state.selectedInbox.clear();
-	fetchInbox();
+	AppEvents.emit("inbox:refresh");
 }
 
 // Side drawer & Split Inspector functions are modularized in inbox_drawer.js

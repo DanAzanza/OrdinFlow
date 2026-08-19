@@ -15,7 +15,12 @@ def test_skill_recorder_synthesis():
     recorder.target_window = "Test Window*"
     recorder.steps = [
         {"id": "step_1", "description": "Focus window", "action_type": "FOCUS_WINDOW", "window_title": "Test Window*"},
-        {"id": "step_2", "description": "Click search", "action_type": "CLICK", "locator": {"type": "ocr_contains", "prompt": "Search"}}
+        {
+            "id": "step_2",
+            "description": "Click search",
+            "action_type": "CLICK",
+            "locator": {"type": "ocr_contains", "prompt": "Search"},
+        },
     ]
 
     skill_obj = recorder._synthesize_skill()

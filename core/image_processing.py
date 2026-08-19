@@ -60,23 +60,16 @@ class ImagePreprocessor:
             gray_temp = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
             blurred_for_crop = cv2.GaussianBlur(gray_temp, (5, 5), 0)
             inv_crop = cv2.bitwise_not(blurred_for_crop)
-            _, thresh_crop = cv2.threshold(
-                inv_crop, self.config.crop_edge_threshold, 255, cv2.THRESH_BINARY
-            )
+            _, thresh_crop = cv2.threshold(inv_crop, self.config.crop_edge_threshold, 255, cv2.THRESH_BINARY)
 
-            contours, _ = cv2.findContours(
-                thresh_crop, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
-            )
+            contours, _ = cv2.findContours(thresh_crop, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
             img_h, img_w = img.shape[:2]
             valid_rects: list[tuple[int, int, int, int]] = []
 
             for cnt in contours:
                 x, y, w, h = cv2.boundingRect(cnt)
-                if (
-                    w < self.config.min_contour_area
-                    and h < self.config.min_contour_area
-                ):
+                if w < self.config.min_contour_area and h < self.config.min_contour_area:
                     continue
                 touches_left = x <= 5
                 touches_top = y <= 5
@@ -119,9 +112,7 @@ class ImagePreprocessor:
             # --- White border ---
             bw = self.config.white_border
             if bw > 0:
-                img = cv2.copyMakeBorder(
-                    img, bw, bw, bw, bw, cv2.BORDER_CONSTANT, value=[255, 255, 255]
-                )
+                img = cv2.copyMakeBorder(img, bw, bw, bw, bw, cv2.BORDER_CONSTANT, value=[255, 255, 255])
 
             # --- Rescaling ---
             img_h, img_w = img.shape[:2]
@@ -132,9 +123,7 @@ class ImagePreprocessor:
                 new_h = int(img_h * scale)
                 img = cv2.resize(img, (new_w, new_h), interpolation=cv2.INTER_CUBIC)
 
-            _, buffer = cv2.imencode(
-                ".jpg", img, [int(cv2.IMWRITE_JPEG_QUALITY), _JPEG_QUALITY]
-            )
+            _, buffer = cv2.imencode(".jpg", img, [int(cv2.IMWRITE_JPEG_QUALITY), _JPEG_QUALITY])
             return base64.b64encode(buffer.tobytes()).decode("utf-8")
         except Exception:
             logger.exception("[!] Error during scaling and encoding")
@@ -153,9 +142,7 @@ class ImagePreprocessor:
         try:
             if ext == ".pdf":
                 if not HAS_FITZ or fitz is None:
-                    logger.error(
-                        "[!] PyMuPDF (fitz) not installed – PDF cannot be processed."
-                    )
+                    logger.error("[!] PyMuPDF (fitz) not installed – PDF cannot be processed.")
                     return None
                 pil_images: list[Image.Image] = []
                 with fitz.open(pdf_path) as doc:
@@ -165,9 +152,7 @@ class ImagePreprocessor:
                     for i in range(n_pages):
                         page = doc[i]
                         pix = page.get_pixmap(matrix=mat, colorspace=fitz.csRGB)
-                        img = Image.frombytes(
-                            "RGB", (pix.width, pix.height), pix.samples
-                        )
+                        img = Image.frombytes("RGB", (pix.width, pix.height), pix.samples)
                         pil_images.append(img)
                         del pix
             else:

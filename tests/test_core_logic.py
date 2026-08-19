@@ -11,13 +11,6 @@ from core.processor import DocumentProcessor
 # ──────────────────────────────────────────────────────────────
 
 
-
-
-
-
-
-
-
 # ──────────────────────────────────────────────────────────────
 # MEDIUM VALUE
 # ──────────────────────────────────────────────────────────────
@@ -100,6 +93,7 @@ def test_api_eingang_preview_missing_file_returns_404(client):
 def test_universal_document_router_custom_schema(tmp_path):
     """Testet, dass der Universal Document Router mit frei definierten Feldern (z.B. Kuchen-Rezept) funktioniert."""
     from unittest.mock import patch
+
     config = AppConfig(base_dir=str(tmp_path))
     config.watch_dir = str(tmp_path / "watch")
     config.target_base_dir = str(tmp_path / "target")
@@ -113,12 +107,9 @@ def test_universal_document_router_custom_schema(tmp_path):
             "extraction_fields": {
                 "Kategorie": "Welche Art Kuchen",
                 "Rezeptname": "Name des Rezepts",
-                "Backzeit": "Dauer in Minuten"
+                "Backzeit": "Dauer in Minuten",
             },
-            "routing": {
-                "archive": True,
-                "filename_template": "Kuchen__{Rezeptname}__{Backzeit}min"
-            }
+            "routing": {"archive": True, "filename_template": "Kuchen__{Rezeptname}__{Backzeit}min"},
         }
     }
 
@@ -130,7 +121,7 @@ def test_universal_document_router_custom_schema(tmp_path):
         "Document": "Rezeptur",
         "Kategorie": "Torten",
         "Rezeptname": "Schwarzwälder Kirsch",
-        "Backzeit": "45"
+        "Backzeit": "45",
     }
 
     with patch.object(processor, "extract_hybrid_voting", return_value=mock_extracted):
@@ -147,6 +138,7 @@ def test_universal_document_router_custom_schema(tmp_path):
 def test_universal_document_router_custom_schema_custom_delimiter(tmp_path):
     """Testet Kuchen-Rezepte mit einem benutzerdefinierten Ordner-Delimiter ('++')."""
     from unittest.mock import patch
+
     config = AppConfig(base_dir=str(tmp_path))
     config.watch_dir = str(tmp_path / "watch")
     config.target_base_dir = str(tmp_path / "target")
@@ -161,12 +153,9 @@ def test_universal_document_router_custom_schema_custom_delimiter(tmp_path):
             "extraction_fields": {
                 "Kategorie": "Welche Art Kuchen",
                 "Rezeptname": "Name des Rezepts",
-                "Backzeit": "Dauer in Minuten"
+                "Backzeit": "Dauer in Minuten",
             },
-            "routing": {
-                "archive": True,
-                "filename_template": "Kuchen++{Rezeptname}++{Backzeit}min"
-            }
+            "routing": {"archive": True, "filename_template": "Kuchen++{Rezeptname}++{Backzeit}min"},
         }
     }
 
@@ -174,12 +163,7 @@ def test_universal_document_router_custom_schema_custom_delimiter(tmp_path):
     dummy_file = tmp_path / "watch" / "marmor.pdf"
     dummy_file.write_text("Marmorkuchen", encoding="utf-8")
 
-    mock_extracted = {
-        "Document": "Rezeptur",
-        "Kategorie": "Rührkuchen",
-        "Rezeptname": "Marmorkuchen",
-        "Backzeit": "50"
-    }
+    mock_extracted = {"Document": "Rezeptur", "Kategorie": "Rührkuchen", "Rezeptname": "Marmorkuchen", "Backzeit": "50"}
 
     with patch.object(processor, "extract_hybrid_voting", return_value=mock_extracted):
         success = processor.process_and_route_file(str(dummy_file))
@@ -195,6 +179,7 @@ def test_universal_document_router_custom_schema_custom_delimiter(tmp_path):
 def test_optional_fields_in_folder_template(tmp_path):
     """Prüft, dass optionale Felder wie 'Titel' bei fehlendem Wert nicht als FEHLT im Ordnernamen erscheinen."""
     from unittest.mock import patch
+
     config = AppConfig(base_dir=str(tmp_path))
     config.watch_dir = str(tmp_path / "watch")
     config.target_base_dir = str(tmp_path / "target")
@@ -209,15 +194,10 @@ def test_optional_fields_in_folder_template(tmp_path):
                 "Nachname": "Nachname",
                 "Titel": "Titel",
                 "Datum": "Datum",
-                "Produkt": "Produkt"
+                "Produkt": "Produkt",
             },
-            "validation": {
-                "optional_fields": ["Titel"]
-            },
-            "routing": {
-                "archive": True,
-                "filename_template": "Vertrag__{Produkt}__{Datum}"
-            }
+            "validation": {"optional_fields": ["Titel"]},
+            "routing": {"archive": True, "filename_template": "Vertrag__{Produkt}__{Datum}"},
         }
     }
 
@@ -231,7 +211,7 @@ def test_optional_fields_in_folder_template(tmp_path):
         "Nachname": "Müller",
         "Titel": "[MISSING]",
         "Datum": "2026-07-08",
-        "Produkt": "Software"
+        "Produkt": "Software",
     }
 
     with patch.object(processor, "extract_hybrid_voting", return_value=mock_extracted):
@@ -260,12 +240,12 @@ def test_split_multi_documents(tmp_path):
     config.document_types = {
         "Vertrag": {
             "validation": {"signature_required": True},
-            "routing": {"archive": True, "filename_template": "{Document}__{Nachname}"}
+            "routing": {"archive": True, "filename_template": "{Document}__{Nachname}"},
         },
         "Lieferschein": {
             "validation": {"signature_required": False},
-            "routing": {"archive": True, "filename_template": "{Document}__{Nachname}"}
-        }
+            "routing": {"archive": True, "filename_template": "{Document}__{Nachname}"},
+        },
     }
 
     os.makedirs(config.watch_dir, exist_ok=True)
@@ -274,8 +254,8 @@ def test_split_multi_documents(tmp_path):
     # Erstelle ein 2-seitiges PDF
     pdf_path = os.path.join(config.watch_dir, "sammelscan.pdf")
     doc = fitz.open()
-    doc.new_page() # Seite 1
-    doc.new_page() # Seite 2
+    doc.new_page()  # Seite 1
+    doc.new_page()  # Seite 2
     doc.save(pdf_path)
     doc.close()
 
@@ -290,17 +270,9 @@ def test_split_multi_documents(tmp_path):
         "Produkt": "Software",
         "Signed": True,
         "page_results": [
-            {
-                "Document": "Vertrag",
-                "pages": [1],
-                "Signed": True
-            },
-            {
-                "Document": "Lieferschein",
-                "pages": [2],
-                "Signed": False
-            }
-        ]
+            {"Document": "Vertrag", "pages": [1], "Signed": True},
+            {"Document": "Lieferschein", "pages": [2], "Signed": False},
+        ],
     }
 
     with patch.object(processor, "extract_hybrid_voting", return_value=mock_extracted):
@@ -342,7 +314,6 @@ def test_empty_pages_deleted(tmp_path):
     os.makedirs(config.watch_dir, exist_ok=True)
     os.makedirs(config.target_base_dir, exist_ok=True)
 
-    config.save_empty_pages = False
     config.folder_structure = ["{Datum}", "{Produkt}", "{Nachname}", "{Vorname}"]
     config.document_types = {
         "Vertrag": {
@@ -350,10 +321,10 @@ def test_empty_pages_deleted(tmp_path):
                 "Vorname": "Vorname des Personen",
                 "Nachname": "Nachname des Personen",
                 "Datum": "Ausstellungsdatum",
-                "Produkt": "Produkt"
+                "Produkt": "Produkt",
             },
             "validation": {"signature_required": False},
-            "routing": {"archive": True, "filename_template": "{Document}__{Nachname}"}
+            "routing": {"archive": True, "filename_template": "{Document}__{Nachname}"},
         }
     }
 
@@ -370,9 +341,39 @@ def test_empty_pages_deleted(tmp_path):
 
     # Mock _classify_single_page
     mock_classifications = [
-        {"idx": 0, "page_num": 1, "raw_img": None, "prep_img": None, "b64_img": "dummy1", "ocr_text": "Vertragstext", "doc_type": "Vertrag", "matched_name": "Vertrag", "matched_info": config.document_types["Vertrag"]},
-        {"idx": 1, "page_num": 2, "raw_img": None, "prep_img": None, "b64_img": "dummy2", "ocr_text": "", "doc_type": "LEER", "matched_name": "LEER", "matched_info": {}},
-        {"idx": 2, "page_num": 3, "raw_img": None, "prep_img": None, "b64_img": "dummy3", "ocr_text": "Vertragstext 2", "doc_type": "Vertrag", "matched_name": "Vertrag", "matched_info": config.document_types["Vertrag"]}
+        {
+            "idx": 0,
+            "page_num": 1,
+            "raw_img": None,
+            "prep_img": None,
+            "b64_img": "dummy1",
+            "ocr_text": "Vertragstext",
+            "doc_type": "Vertrag",
+            "matched_name": "Vertrag",
+            "matched_info": config.document_types["Vertrag"],
+        },
+        {
+            "idx": 1,
+            "page_num": 2,
+            "raw_img": None,
+            "prep_img": None,
+            "b64_img": "dummy2",
+            "ocr_text": "",
+            "doc_type": "LEER",
+            "matched_name": "LEER",
+            "matched_info": {},
+        },
+        {
+            "idx": 2,
+            "page_num": 3,
+            "raw_img": None,
+            "prep_img": None,
+            "b64_img": "dummy3",
+            "ocr_text": "Vertragstext 2",
+            "doc_type": "Vertrag",
+            "matched_name": "Vertrag",
+            "matched_info": config.document_types["Vertrag"],
+        },
     ]
 
     mock_extracted_data = {
@@ -380,12 +381,14 @@ def test_empty_pages_deleted(tmp_path):
         "Vorname": "Max",
         "Nachname": "Mustermann",
         "Datum": "2026-07-10",
-        "Produkt": "Software"
+        "Produkt": "Software",
     }
 
-    with patch.object(processor, "_classify_single_page", side_effect=mock_classifications), \
-         patch.object(processor.llm_extractor, "extract_data_from_images_with_type", return_value=mock_extracted_data):
-        success = processor.process_and_route_file(pdf_path)
+    with (
+        patch.object(processor, "_classify_single_page", side_effect=mock_classifications),
+        patch.object(processor.llm_extractor, "extract_data_from_images_with_type", return_value=mock_extracted_data),
+    ):
+        success = processor.process_and_route_file(pdf_path, save_empty_pages=False)
 
     assert success
     assert not os.path.exists(pdf_path)
@@ -418,8 +421,6 @@ def test_all_pages_empty_deleted(tmp_path):
     os.makedirs(config.watch_dir, exist_ok=True)
     os.makedirs(config.target_base_dir, exist_ok=True)
 
-    config.save_empty_pages = False
-
     # Erstelle ein 2-seitiges PDF
     pdf_path = os.path.join(config.watch_dir, "empty.pdf")
     doc = fitz.open()
@@ -432,12 +433,32 @@ def test_all_pages_empty_deleted(tmp_path):
 
     # Mock _classify_single_page to return LEER for all pages
     mock_classifications = [
-        {"idx": 0, "page_num": 1, "raw_img": None, "prep_img": None, "b64_img": "d1", "ocr_text": "", "doc_type": "LEER", "matched_name": "LEER", "matched_info": {}},
-        {"idx": 1, "page_num": 2, "raw_img": None, "prep_img": None, "b64_img": "d2", "ocr_text": "", "doc_type": "LEER", "matched_name": "LEER", "matched_info": {}}
+        {
+            "idx": 0,
+            "page_num": 1,
+            "raw_img": None,
+            "prep_img": None,
+            "b64_img": "d1",
+            "ocr_text": "",
+            "doc_type": "LEER",
+            "matched_name": "LEER",
+            "matched_info": {},
+        },
+        {
+            "idx": 1,
+            "page_num": 2,
+            "raw_img": None,
+            "prep_img": None,
+            "b64_img": "d2",
+            "ocr_text": "",
+            "doc_type": "LEER",
+            "matched_name": "LEER",
+            "matched_info": {},
+        },
     ]
 
     with patch.object(processor, "_classify_single_page", side_effect=mock_classifications):
-        success = processor.process_and_route_file(pdf_path)
+        success = processor.process_and_route_file(pdf_path, save_empty_pages=False)
 
     assert success
     # Die Datei muss gelöscht sein!
@@ -459,7 +480,6 @@ def test_empty_pages_saved(tmp_path):
     os.makedirs(config.watch_dir, exist_ok=True)
     os.makedirs(config.target_base_dir, exist_ok=True)
 
-    config.save_empty_pages = True
     config.folder_structure = ["{Datum}", "{Produkt}", "{Nachname}", "{Vorname}"]
     config.document_types = {
         "Rezept": {
@@ -467,10 +487,10 @@ def test_empty_pages_saved(tmp_path):
                 "Vorname": "Vorname des Personen",
                 "Nachname": "Nachname des Personen",
                 "Datum": "Ausstellungsdatum",
-                "Produkt": "Produkt"
+                "Produkt": "Produkt",
             },
             "validation": {"signature_required": False},
-            "routing": {"archive": True, "filename_template": "{Document}__{Nachname}"}
+            "routing": {"archive": True, "filename_template": "{Document}__{Nachname}"},
         }
     }
 
@@ -487,9 +507,39 @@ def test_empty_pages_saved(tmp_path):
 
     # Mock _classify_single_page: Page 2 is LEER
     mock_classifications = [
-        {"idx": 0, "page_num": 1, "raw_img": None, "prep_img": None, "b64_img": "dummy1", "ocr_text": "Rezepttext", "doc_type": "Rezept", "matched_name": "Rezept", "matched_info": config.document_types["Rezept"]},
-        {"idx": 1, "page_num": 2, "raw_img": None, "prep_img": None, "b64_img": "dummy2", "ocr_text": "", "doc_type": "LEER", "matched_name": "LEER", "matched_info": {}},
-        {"idx": 2, "page_num": 3, "raw_img": None, "prep_img": None, "b64_img": "dummy3", "ocr_text": "Rezepttext 2", "doc_type": "Rezept", "matched_name": "Rezept", "matched_info": config.document_types["Rezept"]}
+        {
+            "idx": 0,
+            "page_num": 1,
+            "raw_img": None,
+            "prep_img": None,
+            "b64_img": "dummy1",
+            "ocr_text": "Rezepttext",
+            "doc_type": "Rezept",
+            "matched_name": "Rezept",
+            "matched_info": config.document_types["Rezept"],
+        },
+        {
+            "idx": 1,
+            "page_num": 2,
+            "raw_img": None,
+            "prep_img": None,
+            "b64_img": "dummy2",
+            "ocr_text": "",
+            "doc_type": "LEER",
+            "matched_name": "LEER",
+            "matched_info": {},
+        },
+        {
+            "idx": 2,
+            "page_num": 3,
+            "raw_img": None,
+            "prep_img": None,
+            "b64_img": "dummy3",
+            "ocr_text": "Rezepttext 2",
+            "doc_type": "Rezept",
+            "matched_name": "Rezept",
+            "matched_info": config.document_types["Rezept"],
+        },
     ]
 
     mock_extracted_data = {
@@ -497,12 +547,14 @@ def test_empty_pages_saved(tmp_path):
         "Vorname": "Max",
         "Nachname": "Mustermann",
         "Datum": "2026-07-10",
-        "Produkt": "Einlagen"
+        "Produkt": "Einlagen",
     }
 
-    with patch.object(processor, "_classify_single_page", side_effect=mock_classifications), \
-         patch.object(processor.llm_extractor, "extract_data_from_images_with_type", return_value=mock_extracted_data):
-        success = processor.process_and_route_file(pdf_path)
+    with (
+        patch.object(processor, "_classify_single_page", side_effect=mock_classifications),
+        patch.object(processor.llm_extractor, "extract_data_from_images_with_type", return_value=mock_extracted_data),
+    ):
+        success = processor.process_and_route_file(pdf_path, save_empty_pages=True)
 
     assert success
     assert not os.path.exists(pdf_path)
@@ -531,14 +583,28 @@ def test_pure_majority_voting_multipage():
 
     # 2 Seiten Gruppe
     group_pages = [
-        {"page_num": 1, "raw_img": None, "prep_img": None, "b64_img": "p1", "matched_info": {"extraction_fields": {"Datum": "...", "Nachname": "..."}}},
-        {"page_num": 2, "raw_img": None, "prep_img": None, "b64_img": "p2", "matched_info": {"extraction_fields": {"Datum": "...", "Nachname": "..."}}}
+        {
+            "page_num": 1,
+            "raw_img": None,
+            "prep_img": None,
+            "b64_img": "p1",
+            "matched_info": {"extraction_fields": {"Datum": "...", "Nachname": "..."}},
+        },
+        {
+            "page_num": 2,
+            "raw_img": None,
+            "prep_img": None,
+            "b64_img": "p2",
+            "matched_info": {"extraction_fields": {"Datum": "...", "Nachname": "..."}},
+        },
     ]
 
-    pipeline.llm_extractor.extract_data_from_images_with_type = MagicMock(side_effect=[
-        {"Datum": "2026-04-10", "Nachname": "Gerbig"}, # Tier 1 Page 1
-        {"Datum": "2026-04-10", "Nachname": "Gerbig"}, # Tier 1 Page 2
-    ])
+    pipeline.llm_extractor.extract_data_from_images_with_type = MagicMock(
+        side_effect=[
+            {"Datum": "2026-04-10", "Nachname": "Gerbig"},  # Tier 1 Page 1
+            {"Datum": "2026-04-10", "Nachname": "Gerbig"},  # Tier 1 Page 2
+        ]
+    )
 
     res = pipeline.process_page_group("Fußscan", group_pages)
     assert res is not None
@@ -557,9 +623,7 @@ def test_boolean_field_voting_consensus():
     from core.extraction_pipeline import _evaluate_field_consensus
 
     winner, k_score, counts = _evaluate_field_consensus(
-        "Signed",
-        [[{"Signed": True}], [{"Signed": False}], [{"Signed": False}]],
-        [1396, 1536, 1676]
+        "Signed", [[{"Signed": True}], [{"Signed": False}], [{"Signed": False}]], [1396, 1536, 1676]
     )
     assert winner is False
     assert isinstance(winner, bool)
@@ -610,13 +674,7 @@ def test_tiebreaker_target_fields_only():
 
     config = AppConfig()
     config.document_types = {
-        "TestDoc": {
-            "extraction_fields": {
-                "Vorname": "Vorname",
-                "Nachname": "Nachname",
-                "Geburtsdatum": "Geburtsdatum"
-            }
-        }
+        "TestDoc": {"extraction_fields": {"Vorname": "Vorname", "Nachname": "Nachname", "Geburtsdatum": "Geburtsdatum"}}
     }
     extractor = LLMExtractor(config)
     extractor.find_doc_type_config = MagicMock(return_value=("TestDoc", config.document_types["TestDoc"]))
@@ -633,6 +691,8 @@ def test_tiebreaker_target_fields_only():
     content = user_msg.get("content", "")
     assert '"Nachname"' in content
     assert '"Vorname"' not in content
+
+
 def test_stage2_target_fields_only():
     """Testet, dass Stufe 2 nur noch die unsicheren/fehlenden Felder aus Stufe 1 abfragt."""
     from unittest.mock import MagicMock
@@ -672,9 +732,7 @@ def test_stage2_target_fields_only():
         return [{"Vorname": "Max", "Nachname": "Mustermann", "Geburtsdatum": "----"}]
 
     pipeline.run_extraction_tier = MagicMock(side_effect=mock_run_tier)
-    pipeline.run_text_extraction_tier = MagicMock(
-        return_value=[{"Vorname": "Max", "Nachname": "Mustermann"}]
-    )
+    pipeline.run_text_extraction_tier = MagicMock(return_value=[{"Vorname": "Max", "Nachname": "Mustermann"}])
     res = pipeline.process_page_group("Vertrag", group_pages)
 
     assert res is not None
@@ -700,4 +758,3 @@ def test_substring_merging_and_ocr_priority():
     clusters = _cluster_votes(votes, threshold=0.85)
     assert len(clusters) == 1
     assert clusters[0]["representative"] == "Bramkamp-Wannink"
-

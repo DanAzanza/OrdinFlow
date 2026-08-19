@@ -34,16 +34,11 @@ class SoMGrounder:
                         if length > 0:
                             buff = ctypes.create_unicode_buffer(length + 1)
                             ctypes.windll.user32.GetWindowTextW(h, buff, length + 1)  # type: ignore[union-attr]
-                            if (
-                                window_title.lower().replace("*", "")
-                                in buff.value.lower()
-                            ):
+                            if window_title.lower().replace("*", "") in buff.value.lower():
                                 found.append(h)
                         return True
 
-                    cb = ctypes.WINFUNCTYPE(
-                        ctypes.c_bool, ctypes.c_void_p, ctypes.c_void_p
-                    )(enum_windows_proc)
+                    cb = ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.c_void_p, ctypes.c_void_p)(enum_windows_proc)
                     ctypes.windll.user32.EnumWindows(cb, 0)
                     if found:
                         hwnd = found[0]
@@ -52,9 +47,7 @@ class SoMGrounder:
                     ctypes.windll.user32.SetForegroundWindow(hwnd)  # type: ignore[union-attr]
                     time.sleep(0.2)
             except OSError as e:
-                logger.warning(
-                    "[SoMGrounder] Error focusing window '%s': %s", window_title, e
-                )
+                logger.warning("[SoMGrounder] Error focusing window '%s': %s", window_title, e)
 
         if ImageGrab is not None:
             try:
@@ -120,9 +113,7 @@ class SoMGrounder:
                     11,
                     2,
                 )
-                contours, _ = cv2.findContours(
-                    thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
-                )
+                contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
                 for cnt in contours:
                     x, y, w, h = cv2.boundingRect(cnt)
@@ -166,9 +157,7 @@ class SoMGrounder:
             badge_text = f"[{idx}]"
             badge_w = len(badge_text) * 7 + 4
             badge_h = 14
-            draw.rectangle(
-                [x1, max(0, y1 - badge_h), x1 + badge_w, y1], fill=(255, 0, 0, 220)
-            )
+            draw.rectangle([x1, max(0, y1 - badge_h), x1 + badge_w, y1], fill=(255, 0, 0, 220))
             draw.text(
                 (x1 + 2, max(0, y1 - badge_h) + 1),
                 badge_text,
