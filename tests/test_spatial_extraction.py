@@ -91,7 +91,7 @@ def test_extract_data_from_text_with_type(sample_config):
         result = llm.extract_data_from_text_with_type(spatial_text, "Rechnung")
 
     assert result["Rechnungsnummer"] == "INV-999"
-    assert result["Datum"] == "2026-08-17"  # Normalized date
+    assert result["Datum"] == "17.08.2026"  # Preserves exact extracted date
     assert result["Betrag"] == "149.99"
     assert "Signed" not in result  # Signed is not extracted via text pass
 

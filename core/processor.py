@@ -20,7 +20,6 @@ from core.routing import render_filename
 from core.utils import (
     MISSING_PLACEHOLDER,
     clean_path_component,
-    format_date_robust,
     format_result,
     is_missing_value,
     remove_source_with_meta,
@@ -298,10 +297,7 @@ class DocumentProcessor:
 
                 for k, v in list(extracted.items()):
                     if isinstance(v, str) and not is_missing_value(v):
-                        if "datum" in k.lower():
-                            extracted[k] = format_date_robust(clean_path_component(v))
-                        else:
-                            extracted[k] = clean_path_component(v).strip()
+                        extracted[k] = clean_path_component(v).strip()
 
                 if not is_dependent_doc:
                     self.last_context = dict(extracted)
