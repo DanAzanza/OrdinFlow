@@ -171,6 +171,10 @@ class ImportEngine(BaseSkill):
                         logger.info("[ImportEngine] Batch execution stopped by user request.")
                         break
 
+                    if not os.path.exists(fp):
+                        logger.info("[ImportEngine] File %s was already processed or removed. Skipping.", fname)
+                        continue
+
                     processor.wait_if_paused()
                     if reporter:
                         pct = round(((idx - 1) / total) * 100, 1)

@@ -250,6 +250,9 @@ class DocumentProcessor:
             return False
 
         with self.processing_lock:
+            if filepath in self.processing_files:
+                logger.warning(f"[!] File '{filename}' is already being processed. Skipping duplicate invocation.")
+                return False
             self.processing_files.add(filepath)
 
         try:
@@ -305,6 +308,10 @@ class DocumentProcessor:
                     self.last_optional_fields = set(optional_fields)
                     self.last_extraction_fields = set(extraction_fields)
                 is_valid, reason = self._validate_extracted_data(extracted)
+
+            if not os.path.exists(filepath):
+                logger.warning(f"[!] File '{filename}' was removed or moved during processing. Skipping routing.")
+                return False
 
             if is_valid and extracted:
                 _, orig_ext = os.path.splitext(filepath.lower())
