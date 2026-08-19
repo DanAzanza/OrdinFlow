@@ -235,6 +235,8 @@ def test_dual_source_tier1_disagreement_triggers_tier2(sample_config):
 
 
 def test_wait_until_unlocked_debouncing(tmp_path):
+    import fitz
+
     test_file = tmp_path / "incoming_scan.pdf"
     # Create empty file first
     test_file.write_bytes(b"")
@@ -242,9 +244,12 @@ def test_wait_until_unlocked_debouncing(tmp_path):
     # While file is 0 bytes, it should not be ready
     assert wait_until_unlocked(str(test_file), retries=2, delay=0.1) is False
 
-    # Write actual content and verify stability check
-    test_file.write_bytes(b"%PDF-1.4 test document content EOF")
-    # On first check after write, last_size is established; next cycle verifies stability
+    # Write valid PDF content and verify readiness check
+    doc = fitz.open()
+    doc.new_page()
+    doc.save(str(test_file))
+    doc.close()
+
     assert wait_until_unlocked(str(test_file), retries=4, delay=0.1) is True
 
 

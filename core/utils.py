@@ -227,40 +227,40 @@ def is_file_locked(filepath: str) -> bool:
 
 
 def wait_until_unlocked(filepath: str, retries: int = 6, delay: float = 0.5) -> bool:
-    """Patiently waits until a file is no longer locked and its size has stabilized (debouncing)."""
+    """Patiently waits until a file is no longer locked, non-empty, and structurally ready."""
     if not os.path.exists(filepath):
         return False
 
-    last_size = -1
+    filename = os.path.basename(filepath)
+    is_pdf = filepath.lower().endswith(".pdf")
+
     for attempt in range(retries):
         if not is_file_locked(filepath):
             try:
-                current_size = os.path.getsize(filepath)
-                # Verify non-empty and size stability across check intervals
-                if current_size > 0 and current_size == last_size:
-                    # Optional PDF integrity check if file is a PDF
-                    if filepath.lower().endswith(".pdf"):
+                size = os.path.getsize(filepath)
+                if size > 0:
+                    if is_pdf:
                         try:
                             import fitz
 
                             with fitz.open(filepath) as doc:
-                                if len(doc) > 0:
+                                if len(doc) > 0 and not doc.is_closed:
                                     return True
                         except Exception as e:
-                            logger.debug("PDF not ready yet during unlock check: %s", e)
+                            logger.debug("PDF not structurally complete yet: %s", e)
                     else:
                         return True
-                last_size = current_size
             except OSError as e:
-                logger.debug("Could not get file size for %s: %s", filepath, e)
+                logger.debug("Could not inspect file '%s': %s", filepath, e)
 
-        logger.info(
-            f"[*] File '{os.path.basename(filepath)}' is still writing or locked. "
-            f"Waiting {delay}s (attempt {attempt + 1}/{retries})..."
-        )
-        time.sleep(delay)
+        if attempt < retries - 1:
+            logger.info(
+                f"[*] File '{filename}' is still writing or locked. "
+                f"Waiting {delay}s (attempt {attempt + 1}/{retries})..."
+            )
+            time.sleep(delay)
 
-    # Final check if retries exhausted
+    # Final fallback check if retries exhausted
     if not is_file_locked(filepath) and os.path.exists(filepath):
         try:
             return os.path.getsize(filepath) > 0

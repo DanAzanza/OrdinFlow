@@ -204,6 +204,13 @@ def api_get_logs():
 @system_api_bp.route("/api/log/clear", methods=["POST"])
 def api_clear_logs():
     memory_log_handler.clear()
+    log_path = "main.log" if os.path.exists("main.log") else "document_router.log"
+    if os.path.exists(log_path):
+        try:
+            with open(log_path, "w", encoding="utf-8") as f:
+                f.truncate(0)
+        except OSError:
+            pass
     return jsonify({"status": "cleared"})
 
 
@@ -213,7 +220,7 @@ def _get_empty_log_stats() -> dict[str, Any]:
         "totalFiles": 0,
         "completedFiles": 0,
         "manualReviewFiles": 0,
-        "failedFiles": 0,
+        "abortedFiles": 0,
         "successRate": "100.0",
         "totalProcessingTime": "0.0",
         "maxProcessingTime": "0.0",
@@ -236,6 +243,7 @@ def _compute_log_stats(lines: list[str]) -> dict[str, Any]:
 
     completed_files = 0
     manual_review_files = 0
+    aborted_files = 0
     total_processing_time = 0.0
     max_processing_time = 0.0
     total_pages = 0
@@ -244,7 +252,6 @@ def _compute_log_stats(lines: list[str]) -> dict[str, Any]:
     tier1_count = 0
     tier2_count = 0
     tier3_count = 0
-    early_stop_count = 0
 
     info_count = 0
     warn_count = 0
@@ -258,7 +265,9 @@ def _compute_log_stats(lines: list[str]) -> dict[str, Any]:
         elif " [ERROR] " in line or " [CRITICAL] " in line:
             error_count += 1
 
-        match_completed = re.search(r"completed successfully after ([\d\.]+) seconds", line)
+        match_completed = re.search(
+            r"completed successfully after ([\d\.]+) seconds", line, re.IGNORECASE
+        )
         if match_completed:
             completed_files += 1
             secs = float(match_completed.group(1))
@@ -266,10 +275,28 @@ def _compute_log_stats(lines: list[str]) -> dict[str, Any]:
             if secs > max_processing_time:
                 max_processing_time = secs
 
-        match_incomplete = re.search(r"Processing of '.*?' incomplete \(([\d\.]+)s\)", line)
+        match_incomplete = re.search(
+            r"incomplete \(([\d\.]+)s\)", line, re.IGNORECASE
+        )
         if match_incomplete:
             manual_review_files += 1
             secs = float(match_incomplete.group(1))
+            total_processing_time += secs
+            if secs > max_processing_time:
+                max_processing_time = secs
+        elif (
+            "manual assignment required" in line
+            or "manual review required" in line
+        ):
+            if not match_incomplete:
+                manual_review_files += 1
+
+        match_abort = re.search(
+            r"aborted due to error after ([\d\.]+) seconds", line, re.IGNORECASE
+        )
+        if match_abort:
+            aborted_files += 1
+            secs = float(match_abort.group(1))
             total_processing_time += secs
             if secs > max_processing_time:
                 max_processing_time = secs
@@ -278,28 +305,61 @@ def _compute_log_stats(lines: list[str]) -> dict[str, Any]:
         if match_class:
             total_pages += 1
             cat = match_class.group(1).strip()
+            if "\ufffd" in cat and DashboardState.config and DashboardState.config.document_types:
+                for valid_type in DashboardState.config.document_types:
+                    if len(valid_type) == len(cat) and all(
+                        c1 == c2 for c1, c2 in zip(valid_type, cat) if c2 != "\ufffd"
+                    ):
+                        cat = valid_type
+                        break
             category_counts[cat] = category_counts.get(cat, 0) + 1
 
-        if "Early stop after Tier 1" in line:
-            early_stop_count += 1
-        if "Starting Tier 1" in line:
+        # Tier 1 (Direct Consensus): Document finalized directly in Tier 1
+        if (
+            "validated with >= 2 measurements" in line
+            or "Finalizing document" in line
+            or "Early stop after Tier 1" in line
+        ):
             tier1_count += 1
-        if "Starting Tier 2" in line:
+
+        # Tier 2 (High-Res Verification): Escalation to 1536px for pending fields
+        if (
+            "Starting Vision-LLM Tier 2 for pending fields" in line
+            or "Starting Tier 2" in line
+        ):
             tier2_count += 1
-        if "Starting Tier 3" in line or "Tier 3 Tiebreaker" in line:
+
+        # Tier 3 (Tiebreaker Audit): Escalation to 1676px for conflicting fields
+        if (
+            "Starting Vision-LLM Tier 3 Tiebreaker" in line
+            or "Disagreement in field(s)" in line
+            or "Starting Tier 3" in line
+        ):
             tier3_count += 1
 
-    total_files = completed_files + manual_review_files
-    success_rate = f"{((completed_files / total_files) * 100):.1f}" if total_files > 0 else "100.0"
-    avg_time_file = f"{(total_processing_time / total_files):.1f}" if total_files > 0 else "0.0"
-    avg_time_page = f"{(total_processing_time / total_pages):.1f}" if total_pages > 0 else "0.0"
+    total_files = completed_files + manual_review_files + aborted_files
+    success_rate = (
+        f"{((completed_files / total_files) * 100):.1f}"
+        if total_files > 0
+        else "100.0"
+    )
+    avg_time_file = (
+        f"{(total_processing_time / total_files):.1f}"
+        if total_files > 0
+        else "0.0"
+    )
+    avg_time_page = (
+        f"{(total_processing_time / total_pages):.1f}"
+        if total_pages > 0
+        else "0.0"
+    )
 
     return {
         "recordsCount": len(lines),
         "totalFiles": total_files,
         "completedFiles": completed_files,
         "manualReviewFiles": manual_review_files,
-        "failedFiles": 0,
+        "abortedFiles": aborted_files,
         "successRate": success_rate,
         "totalProcessingTime": f"{total_processing_time:.1f}",
         "maxProcessingTime": f"{max_processing_time:.1f}",
@@ -310,7 +370,7 @@ def _compute_log_stats(lines: list[str]) -> dict[str, Any]:
         "tier1Count": tier1_count,
         "tier2Count": tier2_count,
         "tier3Count": tier3_count,
-        "earlyStopCount": early_stop_count,
+        "earlyStopCount": tier1_count,
         "infoCount": info_count,
         "warnCount": warn_count,
         "errorCount": error_count,

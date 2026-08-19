@@ -154,7 +154,11 @@
                     <div style="display: flex; align-items: center; justify-content: space-between; gap: 10px; background: rgba(255, 255, 255, 0.02); border: 1px solid var(--border); padding: 6px 12px; border-radius: var(--radius-sm);">
                         <div style="display: flex; align-items: center; gap: 8px;">
                             <span class="badge" id="logCountBadge" style="background: rgba(99, 102, 241, 0.18); color: #a5b4fc; border: 1px solid rgba(99, 102, 241, 0.35);">0 entries</span>
-                            <span style="font-size: 0.76rem; color: var(--text-dim);">Live Delta-Stream</span>
+                            <div class="health-badge-row" id="logHealthBadges" style="display: flex; gap: 6px; align-items: center;">
+                                <span class="badge badge-health-info" id="badgeHealthInfo">INFO: 0</span>
+                                <span class="badge badge-health-warn" id="badgeHealthWarn">WARN: 0</span>
+                                <span class="badge badge-health-err" id="badgeHealthErr">ERR: 0</span>
+                            </div>
                         </div>
                         <div style="display: flex; gap: 8px; align-items: center;">
                             <button class="btn btn-sm" id="autoScrollBtn" onclick="toggleAutoScroll()">
