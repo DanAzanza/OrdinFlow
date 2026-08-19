@@ -30,6 +30,7 @@ class SkillQueueManager:
         self._pause_event.set()
         self._stop_event = threading.Event()
         self._worker_thread: threading.Thread | None = None
+        self._worker_lock = threading.Lock()
 
         # Auto-repeat configuration (5 minutes default)
         self.auto_repeat_enabled = False
@@ -212,7 +213,7 @@ class SkillQueueManager:
     def start_queue(self, auto_triggered: bool = False) -> bool:
         """Starts worker loop processing queued items sequentially."""
         with self.lock:
-            if self.is_running:
+            if self.is_running or (self._worker_thread is not None and self._worker_thread.is_alive()):
                 logger.info("[SkillQueueManager] Queue is already running.")
                 return True
 
@@ -285,7 +286,7 @@ class SkillQueueManager:
             DashboardState.processor.resume()
 
         with self.lock:
-            if not self.is_running:
+            if not self.is_running and not (self._worker_thread is not None and self._worker_thread.is_alive()):
                 self.is_running = True
                 self._stop_event.clear()
                 self._worker_thread = threading.Thread(
@@ -331,85 +332,92 @@ class SkillQueueManager:
 
     def _worker_loop(self) -> None:
         """Internal sequential execution loop."""
-        while True:
-            # Handle Pause: wait until resumed or stopped
+        if not self._worker_lock.acquire(blocking=False):
+            logger.warning("[SkillQueueManager] Worker loop already running in another thread. Exiting duplicate.")
+            return
+
+        try:
             while True:
+                # Handle Pause: wait until resumed or stopped
+                while True:
+                    with self.lock:
+                        if self._stop_requested:
+                            break
+                        if not self.is_paused:
+                            break
+                    time.sleep(0.3)
+
+                current_task: SkillTask | None = None
                 with self.lock:
                     if self._stop_requested:
                         break
-                    if not self.is_paused:
-                        break
-                time.sleep(0.3)
 
-            current_task: SkillTask | None = None
-            with self.lock:
-                if self._stop_requested:
-                    break
+                    # Find next pending task
+                    for item in self.items:
+                        if item.status == TaskStatus.PENDING:
+                            current_task = item
+                            break
 
-                # Find next pending task
-                for item in self.items:
-                    if item.status == TaskStatus.PENDING:
-                        current_task = item
+                    if not current_task:
+                        logger.info("[SkillQueueManager] All queued tasks completed.")
                         break
 
-                if not current_task:
-                    logger.info("[SkillQueueManager] All queued tasks completed.")
-                    break
+                    current_task.status = TaskStatus.RUNNING
+                    current_task.started_at = time.time()
+                    current_task.progress = TaskProgress(message="Starting execution...")
+                    self.active_task = current_task
+                    self._save_state()
 
-                current_task.status = TaskStatus.RUNNING
-                current_task.started_at = time.time()
-                current_task.progress = TaskProgress(message="Starting execution...")
-                self.active_task = current_task
-                self._save_state()
-
-            # Execute Task outside the lock
-            success = False
-            error_msg: str | None = None
-            result_data: dict[str, Any] = {}
-
-            try:
-                engine = self.skill_manager.get_skill_engine(current_task.skill_id)
-                if not engine:
-                    raise RuntimeError(f"Skill engine for '{current_task.skill_id}' not found.")
-
-                def progress_reporter(prog: TaskProgress) -> None:
-                    with self.lock:
-                        if current_task is not None:
-                            current_task.progress = prog
-
-                res = engine.execute(current_task, reporter=progress_reporter)
-                success = res.success
-                result_data = res.data
-                error_msg = res.error
-            except Exception as e:
-                logger.error("[SkillQueueManager] Error executing task %s: %s", current_task.id, e, exc_info=True)
-                error_msg = str(e)
+                # Execute Task outside the lock
                 success = False
+                error_msg: str | None = None
+                result_data: dict[str, Any] = {}
 
-            with self.lock:
-                current_task.finished_at = time.time()
-                if self._stop_requested:
-                    current_task.status = TaskStatus.CANCELLED
-                    current_task.progress = TaskProgress(percent=100.0, message="Stopped by user.")
-                else:
-                    current_task.status = TaskStatus.COMPLETED if success else TaskStatus.FAILED
-                    current_task.result = result_data
-                    current_task.error = error_msg
-                    if success:
-                        current_task.progress = TaskProgress(percent=100.0, message="Completed successfully.")
+                try:
+                    engine = self.skill_manager.get_skill_engine(current_task.skill_id)
+                    if not engine:
+                        raise RuntimeError(f"Skill engine for '{current_task.skill_id}' not found.")
+
+                    def progress_reporter(prog: TaskProgress) -> None:
+                        with self.lock:
+                            if current_task is not None:
+                                current_task.progress = prog
+
+                    res = engine.execute(current_task, reporter=progress_reporter)
+                    success = res.success
+                    result_data = res.data
+                    error_msg = res.error
+                except Exception as e:
+                    logger.error("[SkillQueueManager] Error executing task %s: %s", current_task.id, e, exc_info=True)
+                    error_msg = str(e)
+                    success = False
+
+                with self.lock:
+                    current_task.finished_at = time.time()
+                    if self._stop_requested:
+                        current_task.status = TaskStatus.CANCELLED
+                        current_task.progress = TaskProgress(percent=100.0, message="Stopped by user.")
                     else:
-                        current_task.progress = TaskProgress(percent=100.0, message=f"Failed: {error_msg}")
+                        current_task.status = TaskStatus.COMPLETED if success else TaskStatus.FAILED
+                        current_task.result = result_data
+                        current_task.error = error_msg
+                        if success:
+                            current_task.progress = TaskProgress(percent=100.0, message="Completed successfully.")
+                        else:
+                            current_task.progress = TaskProgress(percent=100.0, message=f"Failed: {error_msg}")
 
+                    self.active_task = None
+                    self._save_state()
+                    if self._stop_requested:
+                        break
+
+        finally:
+            with self.lock:
+                self.is_running = False
                 self.active_task = None
                 self._save_state()
-                if self._stop_requested:
-                    break
-
-        with self.lock:
-            self.is_running = False
-            self.active_task = None
-            self._save_state()
-        logger.info("[SkillQueueManager] Queue worker thread finished.")
+            self._worker_lock.release()
+            logger.info("[SkillQueueManager] Queue worker thread finished.")
 
 
 _SKILL_QUEUE_MANAGER: SkillQueueManager | None = None

@@ -154,79 +154,94 @@ class FileService:
             return False
 
         filename = os.path.basename(filepath)
+        if not os.path.exists(filepath):
+            logger.warning(f"[!] Source file '{filepath}' no longer exists for splitting.")
+            return False
+
         logger.info(f"[*] Splitting batch PDF '{filename}' into {len(page_results)} separate files...")
         optional_fields = optional_fields or set()
         extraction_fields = extraction_fields or set()
 
-        with fitz.open(filepath) as doc:  # type: ignore[assignment]
-            for group_res in page_results:
-                g_type = group_res.get("Document", "UNKNOWN")
-                g_pages = group_res.get("pages", [])
+        try:
+            with fitz.open(filepath) as doc:  # type: ignore[assignment]
+                for group_res in page_results:
+                    g_type = group_res.get("Document", "UNKNOWN")
+                    g_pages = group_res.get("pages", [])
 
-                part_extracted = dict(group_res)
-                part_extracted["Document"] = g_type
+                    part_extracted = dict(group_res)
+                    part_extracted["Document"] = g_type
 
-                for k, v in extracted_base.items():
-                    if k not in {
-                        "Document",
-                        "pages",
-                        "page_results",
-                        "vision_description",
-                    } and (
-                        k not in part_extracted or not part_extracted[k] or part_extracted[k] == MISSING_PLACEHOLDER
-                    ):
-                        part_extracted[k] = v
+                    for k, v in extracted_base.items():
+                        if k not in {
+                            "Document",
+                            "pages",
+                            "page_results",
+                            "vision_description",
+                        } and (
+                            k not in part_extracted or not part_extracted[k] or part_extracted[k] == MISSING_PLACEHOLDER
+                        ):
+                            part_extracted[k] = v
 
-                _, g_info = find_doc_type_cfg_fn(g_type)
-                g_routing = g_info.get("routing") or {} if g_info else {}
-                g_val = g_info.get("validation") or {} if g_info else {}
-                g_opt = set(g_val.get("optional_fields", []))
-                g_ext_fields = g_info.get("extraction_fields", {}) if g_info else {}
+                    _, g_info = find_doc_type_cfg_fn(g_type)
+                    g_routing = g_info.get("routing") or {} if g_info else {}
+                    g_val = g_info.get("validation") or {} if g_info else {}
+                    g_opt = set(g_val.get("optional_fields", []))
+                    g_ext_fields = g_info.get("extraction_fields", {}) if g_info else {}
 
-                g_is_dependent = bool(g_info.get("dependent", False)) if g_info else False
-                if g_is_dependent:
-                    g_opt = g_opt | optional_fields
-                    g_ext_fields_keys = set(g_ext_fields.keys()) | extraction_fields
-                else:
-                    g_ext_fields_keys = set(g_ext_fields.keys())
+                    g_is_dependent = bool(g_info.get("dependent", False)) if g_info else False
+                    if g_is_dependent:
+                        g_opt = g_opt | optional_fields
+                        g_ext_fields_keys = set(g_ext_fields.keys()) | extraction_fields
+                    else:
+                        g_ext_fields_keys = set(g_ext_fields.keys())
 
-                target_dir = self.determine_target_directory(
-                    extracted=part_extracted,
-                    routing_cfg=g_routing,
-                    optional_fields=g_opt,
-                    extraction_fields=g_ext_fields_keys,
-                )
+                    target_dir = self.determine_target_directory(
+                        extracted=part_extracted,
+                        routing_cfg=g_routing,
+                        optional_fields=g_opt,
+                        extraction_fields=g_ext_fields_keys,
+                    )
 
-                _, orig_ext = os.path.splitext(filepath.lower())
-                target_filename = render_filename(
-                    part_extracted,
-                    routing_cfg=g_routing,
-                    ext=orig_ext,
-                    optional_fields=g_opt,
-                    extraction_fields=g_ext_fields_keys,
-                    fallbacks={"Document": g_type},
-                )
+                    _, orig_ext = os.path.splitext(filepath.lower())
+                    target_filename = render_filename(
+                        part_extracted,
+                        routing_cfg=g_routing,
+                        ext=orig_ext,
+                        optional_fields=g_opt,
+                        extraction_fields=g_ext_fields_keys,
+                        fallbacks={"Document": g_type},
+                    )
 
-                with fitz.open() as new_doc:  # type: ignore[assignment]
-                    for p_idx in g_pages:
-                        new_doc.insert_pdf(doc, from_page=p_idx - 1, to_page=p_idx - 1)
+                    with fitz.open() as new_doc:  # type: ignore[assignment]
+                        for p_idx in g_pages:
+                            new_doc.insert_pdf(doc, from_page=p_idx - 1, to_page=p_idx - 1)
 
-                    target_filepath = deduplicate_path(os.path.join(target_dir, target_filename))
-                    new_doc.save(target_filepath)
-                logger.info(
-                    f"[+] Partial PDF '{os.path.basename(target_filepath)}' (pages {g_pages}) saved successfully."
-                )
-        remove_source_with_meta(filepath)
-        return True
+                        target_filepath = deduplicate_path(os.path.join(target_dir, target_filename))
+                        new_doc.save(target_filepath)
+                    logger.info(
+                        f"[+] Partial PDF '{os.path.basename(target_filepath)}' (pages {g_pages}) saved successfully."
+                    )
+            remove_source_with_meta(filepath)
+            return True
+        except Exception as e:
+            logger.error(f"[!] Error reading or splitting '{filepath}': {e}")
+            return False
 
     def save_filtered_pdf(self, src_path: str, dst_path: str, kept_pages: list[int]) -> bool:
         """Saves a PDF without empty pages."""
         if not self.can_split_pdf:
             return False
-        with fitz.open(src_path) as doc:  # type: ignore[assignment]
-            with fitz.open() as new_doc:  # type: ignore[assignment]
-                for p_idx in kept_pages:
-                    new_doc.insert_pdf(doc, from_page=p_idx - 1, to_page=p_idx - 1)
-                new_doc.save(dst_path)
-        remove_source_with_meta(src_path)
-        return True
+        if not os.path.exists(src_path):
+            logger.warning(f"[!] Source file '{src_path}' no longer exists for filtering.")
+            return False
+        try:
+            with fitz.open(src_path) as doc:  # type: ignore[assignment]
+                with fitz.open() as new_doc:  # type: ignore[assignment]
+                    for p_idx in kept_pages:
+                        new_doc.insert_pdf(doc, from_page=p_idx - 1, to_page=p_idx - 1)
+                    new_doc.save(dst_path)
+            remove_source_with_meta(src_path)
+            return True
+        except Exception as e:
+            logger.error(f"[!] Error saving filtered PDF for '{src_path}': {e}")
+            return False
