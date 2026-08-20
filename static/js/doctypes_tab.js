@@ -3,6 +3,16 @@
    ═══════════════════════════════════════════════════════════ */
 
 async function loadSkillDocumentTypes(importSkillId) {
+	if (isNewSkillCreation) {
+		state.selectedDocType = null;
+		const formEl = document.getElementById("docTypeForm");
+		const msgEl = document.getElementById("noDocSelectedMessage");
+		if (formEl) formEl.style.display = "none";
+		if (msgEl) msgEl.style.display = "flex";
+		renderDocTypesSidebar();
+		return;
+	}
+
 	try {
 		const res = await api(`/api/skills/${encodeURIComponent(importSkillId)}/documents`);
 		state.editingDocTypes = res.document_types || {};

@@ -212,7 +212,7 @@
                             <span class="doc-empty-icon">⚡</span>
                             Select a skill from the left column or create a new one.
                             <div style="margin-top: 14px;">
-                                <button type="button" class="btn btn-primary" onclick="createNewSkill()">
+                                <button type="button" class="btn btn-primary" onclick="openCreateSkillModal()">
                                     ➕ Add Skill
                                 </button>
                             </div>
@@ -683,6 +683,60 @@
                     <button type="button" class="btn btn-accent" id="inspectorRetryBtn" onclick="inspectorRetryCurrent()" style="margin-right: auto;">🔄 Rescan</button>
                     <button type="button" class="btn" onclick="closeSplitInspector()">Cancel</button>
                     <button type="button" class="btn btn-primary" onclick="submitSplitInspector()">✅ Approve & Move</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- ═══════ CREATE SKILL MODAL ═══════ -->
+        <div class="modal-overlay" id="createSkillModal">
+            <div class="modal modal-md">
+                <div class="modal-header">
+                    <h2>✨ Create New Skill</h2>
+                    <button type="button" class="btn btn-icon" onclick="closeCreateSkillModal()">✕</button>
+                </div>
+                <div class="modal-body">
+                    <p class="form-subtext" style="margin-bottom: 16px;">
+                        Choose which type of workflow skill you would like to build:
+                    </p>
+
+                    <div class="create-skill-options">
+                        <label class="create-skill-card active" id="createSkillCardExport" onclick="selectCreateSkillType('export')">
+                            <input type="radio" name="newSkillTypeRadio" value="export" checked style="display: none;">
+                            <div class="create-skill-card-icon">⚡</div>
+                            <div class="create-skill-card-content">
+                                <div class="create-skill-card-title">Export Skill (GUI / RPA Automation)</div>
+                                <div class="create-skill-card-desc">
+                                    Automate clicks, keystrokes, and file transfers into external software (e.g. via Remote Desktop, practice software). Includes live screen recording.
+                                </div>
+                            </div>
+                        </label>
+
+                        <label class="create-skill-card" id="createSkillCardImport" onclick="selectCreateSkillType('import')">
+                            <input type="radio" name="newSkillTypeRadio" value="import" style="display: none;">
+                            <div class="create-skill-card-icon">📥</div>
+                            <div class="create-skill-card-content">
+                                <div class="create-skill-card-title">Import Skill (Inbox & AI Classification)</div>
+                                <div class="create-skill-card-desc">
+                                    Configure incoming document processing, allowed file formats, PDF splitting, document categories, and AI extraction fields.
+                                </div>
+                            </div>
+                        </label>
+                    </div>
+
+                    <div id="importSkillCreationOptions" style="display: none; margin-top: 14px; padding: 12px 14px; background: rgba(0,0,0,0.25); border-radius: 8px; border: 1px solid var(--border);">
+                        <div class="config-toggle-group" style="margin: 0;">
+                            <input type="checkbox" id="createSkillCopyDefaultDocs" class="config-checkbox" checked>
+                            <label for="createSkillCopyDefaultDocs" class="config-checkbox-label">
+                                📋 Copy existing document types & fields as starting template
+                            </label>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn" onclick="closeCreateSkillModal()">Cancel</button>
+                    <button type="button" class="btn btn-primary" onclick="confirmCreateSkill()">
+                        <span>➕</span> Create Skill
+                    </button>
                 </div>
             </div>
         </div>

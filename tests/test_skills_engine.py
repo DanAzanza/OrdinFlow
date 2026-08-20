@@ -335,3 +335,47 @@ def test_verify_screen_fallback_routine(temp_skills_dir, monkeypatch):
     res = executor.execute_skill("main_export_skill", context={"Nachname": "Mustermann"})
     assert res is True
     assert routine_executed == ["create_patient_routine"]
+
+
+def test_import_skill_crud_and_document_types(temp_skills_dir):
+    mgr = SkillManager(skills_dir=temp_skills_dir)
+
+    import_skill_data = {
+        "id": "custom_import_pipeline",
+        "name": "Scanner Import",
+        "type": "import",
+        "description": "Incoming scanned documents pipeline",
+        "enabled": True,
+        "allowed_extensions": [".pdf", ".png"],
+        "split_multi_documents": True,
+        "save_empty_pages": False,
+        "document_types": {
+            "Rezept": {
+                "emoji": "💊",
+                "classification_desc": "Arztrezept",
+                "extraction_fields": {
+                    "Datum": {"description": "Ausstellungsdatum", "required": True},
+                    "Nachname": {"description": "Patienten Nachname", "required": True},
+                },
+            }
+        },
+    }
+
+    # 1. Save import skill
+    saved_id = mgr.save_skill(import_skill_data)
+    assert saved_id == "custom_import_pipeline"
+
+    # 2. Retrieve document types
+    doc_types = mgr.get_document_types_for_skill("custom_import_pipeline")
+    assert "Rezept" in doc_types
+    assert doc_types["Rezept"]["emoji"] == "💊"
+
+    # 3. Modify and save document types
+    doc_types["Befund"] = {"emoji": "📋", "classification_desc": "Befundbericht", "extraction_fields": {}}
+    success = mgr.save_document_types_for_skill("custom_import_pipeline", doc_types)
+    assert success is True
+
+    # 4. Verify updated document types
+    reloaded = mgr.get_document_types_for_skill("custom_import_pipeline")
+    assert "Befund" in reloaded
+    assert len(reloaded) == 2

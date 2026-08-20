@@ -3624,3 +3624,60 @@ color: #fff;
 .btn-picker:active {
     transform: translateY(0);
 }
+
+/* ═══════════════════════════════════════════════════════════
+   CREATE SKILL MODAL CARDS
+   ═══════════════════════════════════════════════════════════ */
+.create-skill-options {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.create-skill-card {
+    display: flex;
+    align-items: flex-start;
+    gap: 14px;
+    padding: 14px 16px;
+    border-radius: var(--radius-sm, 8px);
+    background: var(--surface-container-low, rgba(255, 255, 255, 0.03));
+    border: 1.5px solid var(--border, rgba(255, 255, 255, 0.1));
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.create-skill-card:hover {
+    border-color: var(--primary, #3b82f6);
+    background: var(--surface-container, rgba(255, 255, 255, 0.06));
+}
+
+.create-skill-card.active {
+    border-color: var(--primary, #3b82f6);
+    background: rgba(59, 130, 246, 0.12);
+    box-shadow: 0 0 0 1px var(--primary, #3b82f6);
+}
+
+.create-skill-card-icon {
+    font-size: 1.6rem;
+    line-height: 1;
+    flex-shrink: 0;
+    margin-top: 2px;
+}
+
+.create-skill-card-content {
+    flex: 1;
+    min-width: 0;
+}
+
+.create-skill-card-title {
+    font-size: 0.92rem;
+    font-weight: 700;
+    color: var(--text-primary, #ffffff);
+    margin-bottom: 4px;
+}
+
+.create-skill-card-desc {
+    font-size: 0.78rem;
+    color: var(--text-sec, rgba(255, 255, 255, 0.65));
+    line-height: 1.4;
+}
