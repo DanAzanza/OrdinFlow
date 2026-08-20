@@ -126,12 +126,18 @@ function calculateLogStatistics() {
 	let completedFiles = 0;
 	let manualReviewFiles = 0;
 	let abortedFiles = 0;
+	let emptyFiles = 0;
 	let totalProcessingTime = 0;
 	let maxProcessingTime = 0;
 	let totalPages = 0;
-	
+
+	let splitBatches = 0;
+	let partialDocsSaved = 0;
+	let directDocsMoved = 0;
+
 	const categoryCounts = {};
 	let tier1Count = 0;
+	let tier1DirectConsensus = 0;
 	let tier2Count = 0;
 	let tier3Count = 0;
 
@@ -155,14 +161,12 @@ function calculateLogStatistics() {
 			if (secs > maxProcessingTime) maxProcessingTime = secs;
 		}
 
-		const matchIncomplete = msg.match(/incomplete \(([\d\.]+)s\)/i) || msg.includes("manual review required") || msg.includes("manual assignment required");
+		const matchIncomplete = msg.match(/incomplete \(([\d\.]+)s\)/i);
 		if (matchIncomplete) {
 			manualReviewFiles++;
-			if (Array.isArray(matchIncomplete) && matchIncomplete[1] && !isNaN(parseFloat(matchIncomplete[1]))) {
-				const secs = parseFloat(matchIncomplete[1]);
-				totalProcessingTime += secs;
-				if (secs > maxProcessingTime) maxProcessingTime = secs;
-			}
+			const secs = parseFloat(matchIncomplete[1]);
+			totalProcessingTime += secs;
+			if (secs > maxProcessingTime) maxProcessingTime = secs;
 		}
 
 		const matchAbort = msg.match(/aborted due to error after ([\d\.]+) seconds/i);
@@ -173,6 +177,20 @@ function calculateLogStatistics() {
 			if (secs > maxProcessingTime) maxProcessingTime = secs;
 		}
 
+		if (msg.includes("consists only of empty pages and will be deleted")) {
+			emptyFiles++;
+		}
+
+		if (msg.includes("Splitting batch PDF")) {
+			splitBatches++;
+		}
+		if (msg.includes("saved successfully") && (msg.includes("Partial PDF") || msg.includes("partial PDF"))) {
+			partialDocsSaved++;
+		}
+		if (msg.includes("Moving file")) {
+			directDocsMoved++;
+		}
+
 		const matchClass = msg.match(/Page \d+ classification:\s*(.+)/i);
 		if (matchClass) {
 			totalPages++;
@@ -180,12 +198,15 @@ function calculateLogStatistics() {
 			categoryCounts[cat] = (categoryCounts[cat] || 0) + 1;
 		}
 
+		if (msg.includes("Starting Vision-LLM Tier 1")) {
+			tier1Count++;
+		}
 		if (
 			msg.includes("validated with >= 2 measurements") ||
 			msg.includes("Finalizing document") ||
 			msg.includes("Early stop after Tier 1")
 		) {
-			tier1Count++;
+			tier1DirectConsensus++;
 		}
 		if (
 			msg.includes("Starting Vision-LLM Tier 2 for pending fields") ||
@@ -202,10 +223,14 @@ function calculateLogStatistics() {
 		}
 	});
 
-	const totalFiles = completedFiles + manualReviewFiles + abortedFiles;
+	const totalFiles = completedFiles + manualReviewFiles + abortedFiles + emptyFiles;
+	const totalArchivedDocs = partialDocsSaved + directDocsMoved;
+	const tier2Resolved = Math.max(0, tier2Count - tier3Count);
+	const tier3Resolved = tier3Count;
+
 	const avgTimePerFile = totalFiles > 0 ? (totalProcessingTime / totalFiles).toFixed(1) : "0.0";
 	const avgTimePerPage = totalPages > 0 ? (totalProcessingTime / totalPages).toFixed(1) : "0.0";
-	const successRate = totalFiles > 0 ? (((totalFiles - manualReviewFiles) / totalFiles) * 100).toFixed(1) : "100.0";
+	const successRate = totalFiles > 0 ? (((completedFiles) / totalFiles) * 100).toFixed(1) : "100.0";
 
 	return {
 		recordsCount: records.length,
@@ -213,6 +238,11 @@ function calculateLogStatistics() {
 		completedFiles,
 		manualReviewFiles,
 		abortedFiles,
+		emptyFiles,
+		splitBatches,
+		partialDocsSaved,
+		directDocsMoved,
+		totalArchivedDocs,
 		totalProcessingTime: totalProcessingTime.toFixed(1),
 		maxProcessingTime: maxProcessingTime.toFixed(1),
 		avgTimePerFile,
@@ -220,9 +250,12 @@ function calculateLogStatistics() {
 		totalPages,
 		categoryCounts,
 		tier1Count,
+		tier1DirectConsensus,
 		tier2Count,
+		tier2Resolved,
 		tier3Count,
-		earlyStopCount: tier1Count,
+		tier3Resolved,
+		earlyStopCount: tier1DirectConsensus,
 		successRate,
 		infoCount,
 		warnCount,
@@ -263,7 +296,7 @@ async function updateLogInspectorAnalytics() {
 
 	if (!body) return;
 
-	const catEntries = Object.entries(stats.categoryCounts).sort((a, b) => b[1] - a[1]);
+	const catEntries = Object.entries(stats.categoryCounts || {}).sort((a, b) => b[1] - a[1]);
 	let catHtml = "";
 	if (catEntries.length === 0) {
 		catHtml = `<div class="analytics-empty-note">No page types classified yet.</div>`;
@@ -284,31 +317,47 @@ async function updateLogInspectorAnalytics() {
 		}).join("");
 	}
 
+	const totalExtracted = stats.tier1Count || stats.totalFiles || 1;
+	const t1Consensus = stats.tier1DirectConsensus || stats.earlyStopCount || 0;
+	const t1ConsensusPct = Math.round((t1Consensus / totalExtracted) * 100);
+
+	const t2Count = stats.tier2Count || 0;
+	const t2InvPct = Math.round((t2Count / totalExtracted) * 100);
+	const t2Resolved = stats.tier2Resolved !== undefined ? stats.tier2Resolved : Math.max(0, t2Count - (stats.tier3Count || 0));
+	const t2ResolvedPct = Math.round((t2Resolved / totalExtracted) * 100);
+
+	const t3Count = stats.tier3Count || 0;
+	const t3InvPct = Math.round((t3Count / totalExtracted) * 100);
+	const t3Resolved = stats.tier3Resolved !== undefined ? stats.tier3Resolved : t3Count;
+	const t3ResolvedPct = Math.round((t3Resolved / totalExtracted) * 100);
+
+	const archivedDocsCount = stats.totalArchivedDocs || (stats.completedFiles || 0);
+
 	body.innerHTML = `
 		<!-- KPI Summary Grid -->
 		<div class="analytics-grid-2col">
 			<div class="analytics-kpi-card analytics-kpi-card-indigo">
-				<div class="analytics-kpi-title-indigo">📄 Files Processed</div>
-				<div class="analytics-kpi-val">${stats.totalFiles}</div>
-				<div class="analytics-kpi-sub">${stats.completedFiles} Auto / ${stats.manualReviewFiles} Review</div>
+				<div class="analytics-kpi-title-indigo">📥 Source Files</div>
+				<div class="analytics-kpi-val">${stats.totalFiles || 0}</div>
+				<div class="analytics-kpi-sub">${stats.completedFiles || 0} Auto / ${stats.manualReviewFiles || 0} Review</div>
 			</div>
 
 			<div class="analytics-kpi-card analytics-kpi-card-emerald">
-				<div class="analytics-kpi-title-emerald">🎯 Automation Rate</div>
-				<div class="analytics-kpi-val">${stats.successRate}%</div>
-				<div class="analytics-kpi-sub">without manual review</div>
+				<div class="analytics-kpi-title-emerald">📂 Archived Docs</div>
+				<div class="analytics-kpi-val">${archivedDocsCount}</div>
+				<div class="analytics-kpi-sub">${stats.partialDocsSaved || 0} Split / ${stats.directDocsMoved || 0} Direct</div>
 			</div>
 
 			<div class="analytics-kpi-card analytics-kpi-card-blue">
-				<div class="analytics-kpi-title-blue">⚡ Avg Time / File</div>
-				<div class="analytics-kpi-val">${stats.avgTimePerFile}s</div>
-				<div class="analytics-kpi-sub">Max: ${stats.maxProcessingTime}s</div>
+				<div class="analytics-kpi-title-blue">🎯 Automation Rate</div>
+				<div class="analytics-kpi-val">${stats.successRate || "100.0"}%</div>
+				<div class="analytics-kpi-sub">without manual review</div>
 			</div>
 
 			<div class="analytics-kpi-card analytics-kpi-card-purple">
-				<div class="analytics-kpi-title-purple">⏱️ Avg Time / Page</div>
-				<div class="analytics-kpi-val">${stats.avgTimePerPage}s</div>
-				<div class="analytics-kpi-sub">Total ${stats.totalPages} pages</div>
+				<div class="analytics-kpi-title-purple">⚡ Avg Time / File</div>
+				<div class="analytics-kpi-val">${stats.avgTimePerFile || "0.0"}s</div>
+				<div class="analytics-kpi-sub">Ø ${stats.avgTimePerPage || "0.0"}s / page (${stats.totalPages || 0} pages)</div>
 			</div>
 		</div>
 
@@ -325,18 +374,45 @@ async function updateLogInspectorAnalytics() {
 			<h4 class="inspector-section-title">
 				<span>🤖</span> AI Pipeline Stages
 			</h4>
-			<div class="inspector-field-group">
-				<div class="inspector-field-row">
-					<span class="inspector-field-label">🟢 Tier 1 (Direct Consensus)</span>
-					<span class="inspector-field-value stat-tier1-val">${stats.tier1Count}</span>
+			<div class="stat-tier-card">
+				<div class="stat-tier-header">
+					<span>🟢 Tier 1 (Base & OCR Pass)</span>
+					<span class="stat-tier1-val">${stats.tier1Count || 0} Runs (100%)</span>
 				</div>
-				<div class="inspector-field-row">
-					<span class="inspector-field-label">🟡 Tier 2 (High-Res Verification)</span>
-					<span class="inspector-field-value stat-tier2-val">${stats.tier2Count}</span>
+				<div class="stat-tier-detail">
+					<span>Direct Consensus (Early Stop): <strong>${t1Consensus}</strong></span>
+					<span>${t1ConsensusPct}% of docs</span>
 				</div>
-				<div class="inspector-field-row">
-					<span class="inspector-field-label">🔴 Tier 3 (Tiebreaker Audit)</span>
-					<span class="inspector-field-value stat-tier3-val">${stats.tier3Count}</span>
+				<div class="stat-tier-bar-track">
+					<div class="stat-tier1-fill" style="width: ${t1ConsensusPct}%;"></div>
+				</div>
+			</div>
+
+			<div class="stat-tier-card">
+				<div class="stat-tier-header">
+					<span>🟡 Tier 2 (High-Res Verification)</span>
+					<span class="stat-tier2-val">${t2Count} Runs (${t2InvPct}%)</span>
+				</div>
+				<div class="stat-tier-detail">
+					<span>Resolved in Tier 2: <strong>${t2Resolved}</strong></span>
+					<span>${t2ResolvedPct}% of docs</span>
+				</div>
+				<div class="stat-tier-bar-track">
+					<div class="stat-tier2-fill" style="width: ${t2ResolvedPct}%;"></div>
+				</div>
+			</div>
+
+			<div class="stat-tier-card">
+				<div class="stat-tier-header">
+					<span>🔴 Tier 3 (Tiebreaker Audit)</span>
+					<span class="stat-tier3-val">${t3Count} Runs (${t3InvPct}%)</span>
+				</div>
+				<div class="stat-tier-detail">
+					<span>Resolved in Tier 3: <strong>${t3Resolved}</strong></span>
+					<span>${t3ResolvedPct}% of docs</span>
+				</div>
+				<div class="stat-tier-bar-track">
+					<div class="stat-tier3-fill" style="width: ${t3ResolvedPct}%;"></div>
 				</div>
 			</div>
 		</div>

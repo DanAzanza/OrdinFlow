@@ -381,10 +381,14 @@ def test_api_log_stats_computation():
         "2026-08-19 10:00:02,100 [INFO] [+] Page 1 classification: Rezept",
         "2026-08-19 10:00:03,100 [INFO] [+] Page 2 classification: Befundbogen",
         "2026-08-19 10:00:04,100 [INFO] [+] All 5 field(s) validated with >= 2 measurements. Finalizing document.",
+        "2026-08-19 10:00:04,150 [INFO] [*] Splitting batch PDF 'doc1.pdf' into 2 separate files...",
+        "2026-08-19 10:00:04,200 [INFO] [+] Partial PDF 'doc1_a.pdf' (pages [1]) saved successfully.",
+        "2026-08-19 10:00:04,250 [INFO] [+] Partial PDF 'doc1_b.pdf' (pages [2]) saved successfully.",
         "2026-08-19 10:00:05,100 [INFO] [+] Processing of 'doc1.pdf' completed successfully after 4.20 seconds.",
         "2026-08-19 10:00:10,100 [INFO] [*] Starting Vision-LLM Tier 1...",
         "2026-08-19 10:00:11,100 [INFO] [+] Page 1 classification: Rezept",
         "2026-08-19 10:00:12,100 [INFO] [*] Starting Vision-LLM Tier 2 for pending fields: ['Signed']...",
+        "2026-08-19 10:00:13,100 [INFO] [+] Moving file 'doc2.pdf' -> 'target/doc2.pdf'",
         "2026-08-19 10:00:14,100 [INFO] [+] Processing of 'doc2.pdf' completed successfully after 8.50 seconds.",
         "2026-08-19 10:00:20,100 [INFO] [*] Starting Vision-LLM Tier 1...",
         "2026-08-19 10:00:21,100 [INFO] [+] Page 1 classification: Notiz",
@@ -398,14 +402,21 @@ def test_api_log_stats_computation():
     assert stats["totalFiles"] == 3
     assert stats["completedFiles"] == 2
     assert stats["manualReviewFiles"] == 1
+    assert stats["splitBatches"] == 1
+    assert stats["partialDocsSaved"] == 2
+    assert stats["directDocsMoved"] == 1
+    assert stats["totalArchivedDocs"] == 3
     assert stats["totalPages"] == 4
     assert stats["categoryCounts"]["Rezept"] == 2
     assert stats["categoryCounts"]["Befundbogen"] == 1
     assert stats["categoryCounts"]["Notiz"] == 1
-    assert stats["tier1Count"] == 1  # 1 document finalized directly in Tier 1
+    assert stats["tier1Count"] == 3  # 3 total documents executed Tier 1
+    assert stats["tier1DirectConsensus"] == 1  # 1 document finalized directly in Tier 1
     assert stats["tier2Count"] == 2  # 2 documents escalated to Tier 2
+    assert stats["tier2Resolved"] == 1  # 1 document resolved in Tier 2
     assert stats["tier3Count"] == 1  # 1 document escalated to Tier 3 Tiebreaker
-    assert stats["infoCount"] == 13
+    assert stats["tier3Resolved"] == 1  # 1 document resolved in Tier 3
+    assert stats["infoCount"] == 17
     assert stats["warnCount"] == 1
     assert stats["errorCount"] == 0
     assert float(stats["totalProcessingTime"]) == 17.8
