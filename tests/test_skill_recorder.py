@@ -69,3 +69,49 @@ def test_skill_recorder_event_handling():
     types = [s["action_type"] for s in recorder.steps]
     assert "TYPE_TEXT" in types
     assert "CLICK" in types
+
+
+def test_skill_synthesizer_heuristics():
+    from core.skills.synthesizer import SkillSynthesizer
+
+    raw_steps = [
+        {"action_type": "FOCUS_WINDOW", "window_title": "CAD Program*"},
+        {"action_type": "CLICK", "description": "Menü Datei"},
+        {"action_type": "TYPE_TEXT", "text": "C:\\Cases\\Mueller\\Fußscan.pdf"},
+        {"action_type": "CLICK", "description": "Speichern"},
+    ]
+
+    synthesis = SkillSynthesizer.synthesize(
+        raw_steps=raw_steps,
+        user_instruction="Exportiere Fußscan als CDR",
+        existing_doc_types=["Fußscan", "Rezept"],
+    )
+
+    assert "tasks" in synthesis
+    assert len(synthesis["tasks"]) > 0
+    assert "Fußscan" in synthesis["suggested_document_types"]
+    # Check that file path was converted to {document_fullpath}
+    all_actions = []
+    for t in synthesis["tasks"]:
+        all_actions.extend(t.get("actions", []))
+
+    filepath_actions = [a for a in all_actions if a.get("action_type") == "TYPE_FILE_PATH"]
+    assert len(filepath_actions) >= 1
+    assert filepath_actions[0]["file_path"] == "{document_fullpath}"
+
+
+def test_synthesize_api_endpoint(client):
+    payload = {
+        "steps": [
+            {"action_type": "FOCUS_WINDOW", "window_title": "Sanivision*"},
+            {"action_type": "CLICK", "description": "Import"},
+        ],
+        "user_instruction": "Workflow für Rezepte",
+    }
+    resp = client.post("/api/skills/synthesize", json=payload)
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert data.get("status") == "ok"
+    assert "synthesis" in data
+    assert "tasks" in data["synthesis"]
+

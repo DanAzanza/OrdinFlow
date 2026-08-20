@@ -1,65 +1,65 @@
-# 🍰 OrdinFlow Beispieldaten: Kuchenrezepte & Fotos
+# 🍰 OrdinFlow Sample Data: Cake Recipes & Photos
 
-Dieses Verzeichnis enthält sofort einsatzbereite Beispieldaten, mit denen die Funktionen von **OrdinFlow** (Dokumentenklassifizierung, OCR & VLM-Extraktion, Bilderkennung, Multi-Page-Splitting und Routing) direkt getestet werden können.
+This directory contains ready-to-use sample data designed for testing and demonstrating the core features of **OrdinFlow** (document classification, OCR & VLM multimodal extraction, image recognition, multi-page splitting, and dynamic routing).
 
 ---
 
-## 📂 Struktur der Beispieldaten
+## 📂 Sample Data Structure
 
 ```
 sample_data/
-├── images/                         # 6 hochauflösende KI-generierte Kuchenfotos (.jpg)
-│   ├── 01_Schwarzwaelder_Kirschtorte.jpg
-│   ├── 02_Marmorkuchen.jpg
+├── images/                                 # 6 high-resolution AI-generated cake photos (.jpg)
+│   ├── 01_Black_Forest_Cake.jpg
+│   ├── 02_Marble_Cake.jpg
 │   ├── 03_New_York_Cheesecake.jpg
-│   ├── 04_Apfel_Streuselkuchen.jpg
-│   ├── 05_Zitronen_Gugelhupf.jpg
-│   └── 06_Wiener_Sachertorte.jpg
+│   ├── 04_Apple_Crumble_Cake.jpg
+│   ├── 05_Lemon_Bundt_Cake.jpg
+│   └── 06_Viennese_Sachertorte.jpg
 │
-├── recipes_pdf/                    # Formatierte DIN-A4 PDF-Rezeptdokumente
-│   ├── Rezept__01_Schwarzwaelder_Kirschtorte.pdf
-│   ├── Rezept__02_Marmorkuchen.pdf
-│   ├── Rezept__03_New_York_Cheesecake.pdf
-│   ├── Rezept__04_Apfel_Streuselkuchen.pdf
-│   ├── Rezept__05_Zitronen_Gugelhupf.pdf
-│   ├── Rezept__06_Wiener_Sachertorte.pdf
-│   └── Sammelband_Kuchenrezepte_Mehrseitig.pdf  # 6-seitiges PDF zum Testen des Multi-Page-Splittings
+├── recipes_pdf/                            # Formatted DIN-A4 PDF recipe documents
+│   ├── Recipe__01_Black_Forest_Cake.pdf
+│   ├── Recipe__02_Marble_Cake.pdf
+│   ├── Recipe__03_New_York_Cheesecake.pdf
+│   ├── Recipe__04_Apple_Crumble_Cake.pdf
+│   ├── Recipe__05_Lemon_Bundt_Cake.pdf
+│   ├── Recipe__06_Viennese_Sachertorte.pdf
+│   └── Compilation_Cake_Recipes_Multipage.pdf  # 6-page PDF for testing multi-page document splitting
 │
-├── recipes_scans_and_cards/        # Gerenderte Rezeptkarten als Bilddateien (.jpg) für Bild-OCR & Vision
-│   ├── Rezeptkarte__01_Schwarzwaelder_Kirschtorte.jpg
-│   ├── Rezeptkarte__02_Marmorkuchen.jpg
+├── recipes_scans_and_cards/                # Rendered recipe cards (.jpg) for Vision & image OCR testing
+│   ├── Recipe_Card__01_Black_Forest_Cake.jpg
+│   ├── Recipe_Card__02_Marble_Cake.jpg
 │   ├── ...
 │
-└── kuchen_skill_example.yaml       # Fertig konfigurierter Skill für Kuchenrezepte & Kuchenfotos
+└── cake_recipe_skill_example.yaml          # Pre-configured skill configuration for Cake Recipes & Photos
 ```
 
 ---
 
-## 🚀 Schnellstart: So testest du OrdinFlow mit diesen Beispieldaten
+## 🚀 Quick Start: Testing OrdinFlow with Sample Data
 
-### 1. Kuchen-Skill aktivieren (Optional für angepasstes Routing)
-Kopiere `sample_data/kuchen_skill_example.yaml` in deinen Skill-Ordner:
+### 1. Activate Cake Skill (Optional for customized routing)
+Copy `sample_data/cake_recipe_skill_example.yaml` into your skills directory:
 ```bash
-copy sample_data\kuchen_skill_example.yaml settings\skills\import_kuchenrezepte.yaml
+copy sample_data\cake_recipe_skill_example.yaml settings\skills\import_cake_recipes.yaml
 ```
-Oder lade die Konfiguration über das OrdinFlow Web-Dashboard im Tab **Fähigkeiten (Skills)** hoch.
+Or import the configuration directly via the OrdinFlow Web Dashboard in the **Skills** tab.
 
-### 2. Testdateien in den Eingangsordner legen
-Kopiere eine oder mehrere Beispieldateien in deinen überwachten Eingangsordner (`watch_dir`, z.B. `C:\OrdinFlowTest\Inbox` oder den in `settings/config.yaml` definierten Pfad):
+### 2. Place Test Files into Inbox Directory
+Copy one or more sample files into your watched directory (`watch_dir`, e.g., `C:\OrdinFlowTest\Inbox` or the directory defined in `settings/config.yaml`):
 ```bash
-copy sample_data\recipes_pdf\Rezept__01_Schwarzwaelder_Kirschtorte.pdf C:\OrdinFlowTest\Inbox\
-copy sample_data\images\01_Schwarzwaelder_Kirschtorte.jpg C:\OrdinFlowTest\Inbox\
+copy sample_data\recipes_pdf\Recipe__01_Black_Forest_Cake.pdf C:\OrdinFlowTest\Inbox\
+copy sample_data\images\01_Black_Forest_Cake.jpg C:\OrdinFlowTest\Inbox\
 ```
 
-### 3. Was passiert automatisch?
-1. **Erkennung & Klassifizierung:** OrdinFlow erkennt automatisch, ob es sich um ein `Kuchenrezept` (strukturiertes Dokument) oder ein `Kuchenfoto` handelt.
-2. **Datenextraktion:**
-   - `Rezeptname` (z.B. "Schwarzwälder Kirschtorte")
-   - `Kategorie` (z.B. "Sahnetorten & Festtagstorten")
-   - `Backzeit` (z.B. "45 Min")
-   - `Backtemperatur` (z.B. "175 °C")
-   - `Portionen` (z.B. "12 Stücke")
-   - `Konditor / Autor` (z.B. "Konditormeister Stefan Weber")
-   - `Datum` (z.B. "15.03.2026")
-3. **Automatisches Routing:** Die Datei wird automatisch nach `Target/Rezepte__<Kategorie>/Rezept__<Rezeptname>__<Backzeit>.pdf` verschoben und mit einer `.meta` JSON-Sidecar-Datei versehen.
-4. **Mehrseitige PDFs:** Das Dokument `Sammelband_Kuchenrezepte_Mehrseitig.pdf` demonstriert das automatische Trennen (`split_multi_documents: true`) in einzelne Rezepte.
+### 3. What OrdinFlow Does Automatically
+1. **Detection & Classification:** OrdinFlow detects whether the incoming document is a `CakeRecipe` (structured document) or a `CakePhoto` (image).
+2. **Data Extraction:**
+   - `RecipeName` (e.g., "Black Forest Cake")
+   - `Category` (e.g., "Layer Cakes & Celebrations")
+   - `BakeTime` (e.g., "45 mins")
+   - `BakeTemperature` (e.g., "175 °C / 350 °F")
+   - `Portions` (e.g., "12 slices")
+   - `Chef` (e.g., "Master Pastry Chef Stefan Weber")
+   - `Date` (e.g., "March 15, 2026")
+3. **Automated Routing:** The file is dynamically moved to `Target/Recipes__{Category}/Recipe__{RecipeName}__{BakeTime}.pdf` and paired with a `.meta` JSON sidecar file.
+4. **Multi-Page Splitting:** The multi-page document `Compilation_Cake_Recipes_Multipage.pdf` demonstrates automatic splitting (`split_multi_documents: true`) into individual recipes.
