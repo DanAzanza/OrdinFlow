@@ -81,8 +81,9 @@ class SkillRecorder:
         self.current_window: str = ""
         self.start_time: float = 0.0
         self.last_event_time: float = 0.0
+        self.last_click_time: float = 0.0
         self.last_action_desc: str = "Ready"
-        self.last_click_coords: tuple = (0, 0)
+        self.last_click_coords: tuple[int, int] = (0, 0)
 
         self._keyboard_buffer: list[str] = []
         self._mouse_listener: Any | None = None
@@ -111,6 +112,9 @@ class SkillRecorder:
             self.steps = []
             self.current_window = ""
             self.start_time = time.time()
+            self.last_event_time = 0.0
+            self.last_click_time = 0.0
+            self.last_click_coords = (0, 0)
             self.last_action_desc = "Recording started..."
             self._keyboard_buffer = []
 
@@ -201,73 +205,78 @@ class SkillRecorder:
         if not self.is_recording or not pressed:
             return
 
-        if button != mouse.Button.left:  # type: ignore[union-attr]
+        if mouse is not None and button != mouse.Button.left:  # type: ignore[union-attr]
+            return
+        if mouse is None and button != "left":
             return
 
-        now = time.time()
-        # Flush keyboard buffer before handling mouse click
-        self._flush_keyboard_buffer()
+        try:
+            now = time.time()
+            # Flush keyboard buffer before handling mouse click
+            self._flush_keyboard_buffer()
 
-        # Check window focus change
-        active_win = get_active_window_title()
-        if active_win and active_win != self.current_window:
-            self.current_window = active_win
+            # Check window focus change
+            active_win = get_active_window_title()
+            if active_win and active_win != self.current_window:
+                self.current_window = active_win
+                self._add_step(
+                    {
+                        "id": "step_tmp",
+                        "description": f"Focus window: {active_win}",
+                        "action_type": "FOCUS_WINDOW",
+                        "window_title": active_win,
+                    }
+                )
+
+            # Check for double click (same position within 450ms)
+            is_double_click = (
+                (now - self.last_click_time < 0.45)
+                and (abs(x - self.last_click_coords[0]) < 10)
+                and (abs(y - self.last_click_coords[1]) < 10)
+            )
+
+            self.last_click_time = now
+            self.last_click_coords = (x, y)
+
+            if is_double_click and self.steps and self.steps[-1].get("action_type") == "CLICK":
+                # Convert previous click to DOUBLE_CLICK
+                self.steps[-1]["action_type"] = "DOUBLE_CLICK"
+                self.steps[-1]["description"] = self.steps[-1]["description"].replace("Click", "Double click")
+                self.last_action_desc = "Double click captured"
+                return
+
+            # Capture cropped screenshot around click for OCR
+            ocr_text = ""
+            try:
+                crop_box = (max(0, x - 90), max(0, y - 25), x + 90, y + 25)
+                snippet = ImageGrab.grab(bbox=crop_box)
+                ocr_text = ocr_snippet(snippet)
+            except (AttributeError, OSError, RuntimeError, ValueError):
+                logger.debug("OCR capture during click failed", exc_info=True)
+
+            if ocr_text:
+                locator = {"type": "ocr_contains", "prompt": ocr_text}
+                desc = f"Click on '{ocr_text}'"
+            else:
+                locator = {"type": "som_vlm", "prompt": f"Element at pos ({x}, {y})"}
+                desc = f"Click at position ({x}, {y})"
+
+            time_diff = now - (self.last_event_time or now)
+            self.last_event_time = now
+            calculated_delay = max(500, min(10000, int(time_diff * 1000))) if time_diff > 0.8 else 500
+
             self._add_step(
                 {
                     "id": "step_tmp",
-                    "description": f"Focus window: {active_win}",
-                    "action_type": "FOCUS_WINDOW",
-                    "window_title": active_win,
+                    "description": desc,
+                    "action_type": "CLICK",
+                    "locator": locator,
+                    "delay_ms": calculated_delay,
                 }
             )
-
-        # Check for double click (same position within 450ms)
-        is_double_click = (
-            (now - self.last_click_time < 0.45)
-            and (abs(x - self.last_click_coords[0]) < 10)
-            and (abs(y - self.last_click_coords[1]) < 10)
-        )
-
-        self.last_click_time = now
-        self.last_click_coords = (x, y)
-
-        if is_double_click and self.steps and self.steps[-1].get("action_type") == "CLICK":
-            # Convert previous click to DOUBLE_CLICK
-            self.steps[-1]["action_type"] = "DOUBLE_CLICK"
-            self.steps[-1]["description"] = self.steps[-1]["description"].replace("Click", "Double click")
-            self.last_action_desc = "Double click captured"
-            return
-
-        # Capture cropped screenshot around click for OCR
-        ocr_text = ""
-        try:
-            crop_box = (max(0, x - 90), max(0, y - 25), x + 90, y + 25)
-            snippet = ImageGrab.grab(bbox=crop_box)
-            ocr_text = ocr_snippet(snippet)
-        except (AttributeError, OSError, RuntimeError, ValueError):
-            logger.debug("OCR capture during click failed", exc_info=True)
-
-        if ocr_text:
-            locator = {"type": "ocr_contains", "prompt": ocr_text}
-            desc = f"Click on '{ocr_text}'"
-        else:
-            locator = {"type": "som_vlm", "prompt": f"Element at pos ({x}, {y})"}
-            desc = f"Click at position ({x}, {y})"
-
-        time_diff = now - (self.last_event_time or now)
-        self.last_event_time = now
-        calculated_delay = max(500, min(10000, int(time_diff * 1000))) if time_diff > 0.8 else 500
-
-        self._add_step(
-            {
-                "id": "step_tmp",
-                "description": desc,
-                "action_type": "CLICK",
-                "locator": locator,
-                "delay_ms": calculated_delay,
-            }
-        )
-        self.last_action_desc = desc
+            self.last_action_desc = desc
+        except Exception as e:
+            logger.error("[SkillRecorder] Error handling mouse click: %s", e, exc_info=True)
 
     def _on_key_press(self, key: Any):
         if not self.is_recording:
@@ -289,6 +298,14 @@ class SkillRecorder:
     def _synthesize_skill(self) -> dict[str, Any]:
         """Cleans up and post-processes recorded steps into a complete Skill definition."""
         self._flush_keyboard_buffer()
+
+        # Remove accidental stop recording button clicks on the OrdinFlow dashboard if recorded at the end
+        if self.steps:
+            last = self.steps[-1]
+            last_desc = str(last.get("description", "")).lower()
+            last_prompt = str((last.get("locator") or {}).get("prompt", "")).lower()
+            if any(k in last_desc or k in last_prompt for k in ["stop", "aufnahme", "recorder"]):
+                self.steps.pop()
 
         # Re-index steps
         cleaned_steps = []

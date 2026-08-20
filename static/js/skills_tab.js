@@ -150,7 +150,7 @@ function renderSkillsSidebar(skills, searchQuery = "") {
 
 	container.innerHTML = `
 		${itemsHtml}
-		<button type="button" class="btn btn-sm btn-primary add-skill-btn" onclick="createNewSkill()">
+		<button type="button" class="btn btn-sm btn-primary add-skill-btn" onclick="openCreateSkillModal()">
 			<span>➕</span> Add Skill
 		</button>
 	`;
@@ -306,8 +306,10 @@ function onSkillTypeChange(type) {
 		if (exportSection) exportSection.style.display = "none";
 		if (importSection) importSection.style.display = "block";
 
-		if (selectedSkillId) {
+		if (!isNewSkillCreation && selectedSkillId) {
 			loadSkillDocumentTypes(selectedSkillId);
+		} else if (typeof renderDocTypesSidebar === "function") {
+			renderDocTypesSidebar();
 		}
 	} else {
 		if (importMeta) importMeta.style.display = "none";
@@ -320,12 +322,61 @@ function onSkillTypeChange(type) {
 // Document Types & Extraction Fields Editor functions are modularized in doctypes_tab.js
 
 /* ═══════════════════════════════════════════════════════════
-   EDITOR ACTIONS & STEPS
+   CREATE SKILL MODAL & EDITOR ACTIONS
    ═══════════════════════════════════════════════════════════ */
 
-function createNewSkill() {
+let currentSelectedNewSkillType = "export";
+
+function openCreateSkillModal() {
+	currentSelectedNewSkillType = "export";
+	selectCreateSkillType("export");
+	const modal = document.getElementById("createSkillModal");
+	if (modal) {
+		modal.style.display = "flex";
+	}
+}
+
+function closeCreateSkillModal() {
+	const modal = document.getElementById("createSkillModal");
+	if (modal) {
+		modal.style.display = "none";
+	}
+}
+
+function selectCreateSkillType(type) {
+	currentSelectedNewSkillType = type;
+	const cardExport = document.getElementById("createSkillCardExport");
+	const cardImport = document.getElementById("createSkillCardImport");
+	const importOpts = document.getElementById("importSkillCreationOptions");
+
+	if (type === "import") {
+		if (cardExport) cardExport.classList.remove("active");
+		if (cardImport) cardImport.classList.add("active");
+		if (importOpts) importOpts.style.display = "block";
+	} else {
+		if (cardExport) cardExport.classList.add("active");
+		if (cardImport) cardImport.classList.remove("active");
+		if (importOpts) importOpts.style.display = "none";
+	}
+
+	const radios = document.getElementsByName("newSkillTypeRadio");
+	radios.forEach((r) => {
+		if (r.value === type) r.checked = true;
+	});
+}
+
+function confirmCreateSkill() {
+	closeCreateSkillModal();
+	const copyDefaultDocs = document.getElementById("createSkillCopyDefaultDocs")
+		? document.getElementById("createSkillCopyDefaultDocs").checked
+		: true;
+	createNewSkill(currentSelectedNewSkillType, copyDefaultDocs);
+}
+
+function createNewSkill(skillType = "export", copyDefaultDocs = true) {
 	isNewSkillCreation = true;
-	const baseName = "New Workflow";
+	const isImport = skillType === "import";
+	const baseName = isImport ? "New Import Pipeline" : "New Workflow";
 	let slug = slugifySkillName(baseName);
 	const existingIds = new Set((state.skills || []).map((s) => s.id));
 	let counter = 2;
@@ -334,30 +385,61 @@ function createNewSkill() {
 		counter++;
 	}
 
-	const newSkill = {
-		id: slug,
-		name: counter > 2 ? `${baseName} ${counter - 1}` : baseName,
-		type: "export",
-		description: "",
-		target_window: "Remote Desktop*",
-		rdp_path_prefix: "\\\\tsclient\\C",
-		document_types: ["*"],
-		upload_mode: "single_file",
-		enabled: true,
-		steps: [
-			{
-				id: "step_1",
-				description: "Focus Window",
-				action_type: "FOCUS_WINDOW",
-				window_title: "Remote Desktop*",
-			},
-		],
-	};
+	let newSkill = null;
+
+	if (isImport) {
+		let initialDocTypes = {};
+		if (copyDefaultDocs) {
+			if (state.config && state.config.document_types) {
+				initialDocTypes = JSON.parse(JSON.stringify(state.config.document_types));
+			} else {
+				const defaultImport = (state.skills || []).find((s) => s.type === "import");
+				if (defaultImport && defaultImport.document_types) {
+					initialDocTypes = JSON.parse(JSON.stringify(defaultImport.document_types));
+				}
+			}
+		}
+
+		newSkill = {
+			id: slug,
+			name: counter > 2 ? `${baseName} ${counter - 1}` : baseName,
+			type: "import",
+			description: "",
+			allowed_extensions: [".pdf", ".png", ".jpg", ".jpeg", ".tif", ".tiff"],
+			split_multi_documents: true,
+			save_empty_pages: false,
+			enabled: true,
+			document_types: initialDocTypes,
+		};
+
+		state.editingDocTypes = JSON.parse(JSON.stringify(initialDocTypes));
+		state.selectedDocType = null;
+	} else {
+		newSkill = {
+			id: slug,
+			name: counter > 2 ? `${baseName} ${counter - 1}` : baseName,
+			type: "export",
+			description: "",
+			target_window: "Remote Desktop*",
+			rdp_path_prefix: "\\\\tsclient\\C",
+			document_types: ["*"],
+			upload_mode: "single_file",
+			enabled: true,
+			steps: [
+				{
+					id: "step_1",
+					description: "Focus Window",
+					action_type: "FOCUS_WINDOW",
+					window_title: "Remote Desktop*",
+				},
+			],
+		};
+		currentEditingSteps = JSON.parse(JSON.stringify(newSkill.steps));
+		stepExpandedMap = { step_1: true };
+	}
 
 	selectedSkillId = newSkill.id;
 	currentEditingSkill = newSkill;
-	currentEditingSteps = JSON.parse(JSON.stringify(newSkill.steps));
-	stepExpandedMap = { "step_1": true };
 
 	renderSkillsSidebar(state.skills || []);
 
@@ -372,14 +454,28 @@ function createNewSkill() {
 	document.getElementById("editorSkillId").value = newSkill.id;
 	document.getElementById("editorSkillName").value = newSkill.name;
 	document.getElementById("editorSkillDesc").value = "";
-	document.getElementById("editorSkillType").value = "export";
-	document.getElementById("editorSkillTargetWindow").value = newSkill.target_window;
-	document.getElementById("editorSkillRdpPrefix").value = newSkill.rdp_path_prefix;
-	document.getElementById("editorSkillDocTypes").value = "*";
-	document.getElementById("editorSkillUploadMode").value = "single_file";
+	document.getElementById("editorSkillType").value = newSkill.type;
 
-	onSkillTypeChange("export");
-	renderEditorSteps();
+	if (isImport) {
+		const allowedEl = document.getElementById("editorSkillAllowedExtensions");
+		if (allowedEl) allowedEl.value = ".pdf, .png, .jpg, .jpeg, .tif, .tiff";
+		const splitEl = document.getElementById("editorSkillSplitMulti");
+		if (splitEl) splitEl.checked = true;
+		const saveEmptyEl = document.getElementById("editorSkillSaveEmpty");
+		if (saveEmptyEl) saveEmptyEl.checked = false;
+	} else {
+		document.getElementById("editorSkillTargetWindow").value = newSkill.target_window;
+		document.getElementById("editorSkillRdpPrefix").value = newSkill.rdp_path_prefix;
+		document.getElementById("editorSkillDocTypes").value = "*";
+		document.getElementById("editorSkillUploadMode").value = "single_file";
+	}
+
+	onSkillTypeChange(newSkill.type);
+	if (!isImport) {
+		renderEditorSteps();
+	} else if (typeof renderDocTypesSidebar === "function") {
+		renderDocTypesSidebar();
+	}
 	renderVariableBadges();
 	renderQueueInspector();
 
@@ -451,8 +547,13 @@ async function saveSkillFromEditor() {
 
 	if (type === "import") {
 		payload.allowed_extensions = allowedExtensions;
-		payload.split_multi_documents = document.getElementById("editorSkillSplitMulti") ? document.getElementById("editorSkillSplitMulti").checked : true;
-		payload.save_empty_pages = document.getElementById("editorSkillSaveEmpty") ? document.getElementById("editorSkillSaveEmpty").checked : false;
+		payload.split_multi_documents = document.getElementById("editorSkillSplitMulti")
+			? document.getElementById("editorSkillSplitMulti").checked
+			: true;
+		payload.save_empty_pages = document.getElementById("editorSkillSaveEmpty")
+			? document.getElementById("editorSkillSaveEmpty").checked
+			: false;
+		payload.document_types = state.editingDocTypes || {};
 	} else {
 		payload.target_window = target_window;
 		payload.rdp_path_prefix = rdp_path_prefix;
@@ -479,7 +580,7 @@ async function saveSkillFromEditor() {
 		toast("Skill '" + name + "' saved successfully!");
 		isNewSkillCreation = false;
 		selectedSkillId = finalId;
-		await loadSkills();
+		await loadSkills(true);
 	} catch (e) {
 		toast("Error saving skill: " + e.message, "error");
 	}
@@ -495,7 +596,7 @@ async function duplicateSkillById(skillId) {
 		if (res.skill && res.skill.id) {
 			selectedSkillId = res.skill.id;
 		}
-		await loadSkills();
+		await loadSkills(true);
 	} catch (e) {
 		toast("Error duplicating skill: " + e.message, "error");
 	}
@@ -512,7 +613,7 @@ async function deleteSkillById(skillId) {
 		if (selectedSkillId === skillId) {
 			selectedSkillId = null;
 		}
-		await loadSkills();
+		await loadSkills(true);
 	} catch (e) {
 		toast("Error deleting skill: " + e.message, "error");
 	}

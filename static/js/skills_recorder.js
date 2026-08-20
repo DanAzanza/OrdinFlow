@@ -74,11 +74,73 @@ async function stopLiveRecording() {
 		});
 
 		updateRecorderFloatingWidget({ is_recording: false });
-		toast("⏹️ Aufnahme beendet und Skill gespeichert.", "success");
 
-		if (typeof loadSkills === "function") {
-			await loadSkills();
+		if (res && res.skill && Array.isArray(res.skill.steps) && res.skill.steps.length > 0) {
+			const recordedSteps = res.skill.steps;
+
+			// If the user was in the skill editor, inject recorded steps into active editing session
+			if (currentEditingSkill) {
+				// Update target window if recorder detected a specific window
+				if (
+					res.skill.target_window &&
+					(!currentEditingSkill.target_window || currentEditingSkill.target_window === "Remote Desktop*")
+				) {
+					currentEditingSkill.target_window = res.skill.target_window;
+					const winInput = document.getElementById("editorSkillTargetWindow");
+					if (winInput) {
+						winInput.value = res.skill.target_window;
+					}
+				}
+
+				// If currently there is only 1 placeholder step, replace it with the recorded sequence
+				const isPlaceholderOnly =
+					currentEditingSteps.length <= 1 &&
+					(!currentEditingSteps[0] ||
+						currentEditingSteps[0].action_type === "FOCUS_WINDOW" ||
+						!currentEditingSteps[0].description);
+
+				if (isPlaceholderOnly) {
+					currentEditingSteps = recordedSteps;
+				} else {
+					currentEditingSteps.push(...recordedSteps);
+				}
+
+				// Re-index all steps cleanly
+				currentEditingSteps.forEach((s, idx) => {
+					s.id = `step_${idx + 1}`;
+				});
+
+				// Auto-expand the first step
+				if (currentEditingSteps.length > 0 && typeof stepExpandedMap !== "undefined") {
+					stepExpandedMap[currentEditingSteps[0].id] = true;
+				}
+
+				if (typeof renderEditorSteps === "function") {
+					renderEditorSteps();
+				}
+
+				toast(
+					`⏹️ Aufnahme beendet! ${recordedSteps.length} Schritte wurden in den Workflow übernommen.`,
+					"success",
+				);
+			} else {
+				// Fallback if no skill was selected: save as new skill and load it
+				const saveRes = await api("/api/skills", {
+					method: "POST",
+					body: JSON.stringify(res.skill),
+				});
+				if (saveRes && saveRes.skill_id) {
+					selectedSkillId = saveRes.skill_id;
+				}
+				if (typeof loadSkills === "function") {
+					await loadSkills(true);
+				}
+				toast(`⏹️ Aufnahme beendet! Skill '${res.skill.name}' gespeichert.`, "success");
+			}
+		} else {
+			toast("⏹️ Aufnahme beendet (keine Schritte erfasst).", "info");
 		}
+
 		return res;
 	} catch (e) {
 		console.error("Error stopping live recording:", e);
