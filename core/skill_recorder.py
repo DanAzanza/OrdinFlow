@@ -181,7 +181,7 @@ class SkillRecorder:
                 "last_action": self.last_action_desc,
             }
 
-    def _flush_keyboard_buffer(self):
+    def _flush_keyboard_buffer(self, press_enter: bool = False):
         if not self._keyboard_buffer:
             return
         typed_text = "".join(self._keyboard_buffer).strip()
@@ -193,6 +193,7 @@ class SkillRecorder:
                     "description": f"Type text: '{typed_text}'",
                     "action_type": "TYPE_TEXT",
                     "text": typed_text,
+                    "press_enter": press_enter,
                 }
             )
             self.last_action_desc = f"Captured text: '{typed_text}'"
@@ -290,8 +291,8 @@ class SkillRecorder:
             elif key == keyboard.Key.backspace:  # type: ignore[union-attr]
                 if self._keyboard_buffer:
                     self._keyboard_buffer.pop()
-            elif key in (keyboard.Key.enter, keyboard.Key.tab):  # type: ignore[union-attr]
-                self._flush_keyboard_buffer()
+            elif keyboard is not None and key in (keyboard.Key.enter, keyboard.Key.tab):
+                self._flush_keyboard_buffer(press_enter=(key == keyboard.Key.enter))
         except (AttributeError, ValueError):
             logger.debug("Keyboard event handling failed", exc_info=True)
 
@@ -327,7 +328,7 @@ class SkillRecorder:
         skill_obj = {
             "id": self.skill_id or f"rdp_recorded_{int(time.time())}",
             "name": self.skill_name or "New Recorded Skill",
-            "description": f"Automatically recorded workflow ({len(cleaned_steps)} steps).",
+            "description": f"Automatically recorded skill ({len(cleaned_steps)} actions).",
             "target_window": self.target_window or "Remote Desktop*",
             "rdp_path_prefix": self.rdp_path_prefix,
             "document_types": self.document_types,

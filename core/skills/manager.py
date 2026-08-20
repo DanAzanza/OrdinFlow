@@ -165,14 +165,24 @@ class SkillManager:
         return skill_id
 
     def delete_skill(self, skill_id: str) -> bool:
-        """Deletes a skill's YAML file."""
+        """Deletes a skill's YAML file with retry on Windows file locks."""
         filepath = os.path.join(self.skills_dir, f"{skill_id}.yaml")
         if os.path.exists(filepath):
-            os.remove(filepath)
+            deleted = False
+            for attempt in range(5):
+                try:
+                    os.remove(filepath)
+                    deleted = True
+                    break
+                except (PermissionError, OSError) as e:
+                    if attempt == 4:
+                        logger.error("[SkillManager] Failed to delete %s after retries: %s", filepath, e)
+                        raise
+                    time.sleep(0.05 * (attempt + 1))
             with self._lock:
                 self._cache.pop(filepath, None)
             logger.info("[SkillManager] Skill '%s' deleted.", skill_id)
-            return True
+            return deleted
         return False
 
     def duplicate_skill(self, skill_id: str) -> dict[str, Any] | None:

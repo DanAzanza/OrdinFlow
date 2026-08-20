@@ -49,6 +49,28 @@ class SoMGrounder:
             except OSError as e:
                 logger.warning("[SoMGrounder] Error focusing window '%s': %s", window_title, e)
 
+        if sys.platform == "win32":
+            try:
+                user32 = ctypes.windll.user32
+                gdi32 = ctypes.windll.gdi32
+                user32.SetProcessDPIAware()
+                w_s = user32.GetSystemMetrics(0)
+                h_s = user32.GetSystemMetrics(1)
+                hdc = user32.GetDC(0)
+                memdc = gdi32.CreateCompatibleDC(hdc)
+                hbmp = gdi32.CreateCompatibleBitmap(hdc, w_s, h_s)
+                gdi32.SelectObject(memdc, hbmp)
+                gdi32.BitBlt(memdc, 0, 0, w_s, h_s, hdc, 0, 0, 0x00CC0020)
+                buf = (ctypes.c_char * (w_s * h_s * 4))()
+                gdi32.GetBitmapBits(hbmp, len(buf), buf)
+                img = Image.frombuffer("RGBA", (w_s, h_s), buf, "raw", "BGRA", 0, 1)
+                user32.ReleaseDC(0, hdc)
+                gdi32.DeleteDC(memdc)
+                gdi32.DeleteObject(hbmp)
+                return img
+            except Exception as e:
+                logger.debug("[SoMGrounder] Win32 BitBlt capture failed, trying ImageGrab: %s", e)
+
         if ImageGrab is not None:
             try:
                 return ImageGrab.grab()  # type: ignore[attr-defined]
