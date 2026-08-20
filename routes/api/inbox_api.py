@@ -265,7 +265,9 @@ def api_file_inbox(subpath: str):
     if not DashboardState.config:
         return jsonify({"error": "Config not available"}), 503
     full_path, err = _resolve_and_guard(subpath, DashboardState.config.watch_dir)
-    if err or full_path is None:
+    if err:
         return err
+    if full_path is None:
+        return jsonify({"error": "File not found"}), 404
     ext = os.path.splitext(full_path)[1].lower()
     return send_file(full_path, mimetype=_MIME_MAP.get(ext, "application/octet-stream"))

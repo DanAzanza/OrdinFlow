@@ -3033,6 +3033,12 @@ color: #fff;
     margin-top: 2px;
 }
 
+.analytics-kpi-unit {
+    font-size: 0.78rem;
+    font-weight: 500;
+    color: var(--text-dim);
+}
+
 .analytics-kpi-sub {
     font-size: 0.68rem;
     color: var(--text-dim);
@@ -3088,6 +3094,60 @@ color: #fff;
 
 .stat-tier3-val {
     color: #f43f5e;
+}
+
+.stat-tier-card {
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 8px 10px;
+    margin-bottom: 8px;
+}
+
+.stat-tier-card:last-child {
+    margin-bottom: 0;
+}
+
+.stat-tier-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.78rem;
+    font-weight: 600;
+}
+
+.stat-tier-detail {
+    font-size: 0.70rem;
+    color: var(--text-dim);
+    margin-top: 3px;
+    display: flex;
+    justify-content: space-between;
+}
+
+.stat-tier-bar-track {
+    height: 4px;
+    background: rgba(255, 255, 255, 0.06);
+    border-radius: 2px;
+    overflow: hidden;
+    margin-top: 5px;
+}
+
+.stat-tier1-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #10b981, #34d399);
+    border-radius: 2px;
+}
+
+.stat-tier2-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #f59e0b, #fbbf24);
+    border-radius: 2px;
+}
+
+.stat-tier3-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #ef4444, #f43f5e);
+    border-radius: 2px;
 }
 
 .health-badge-row {
