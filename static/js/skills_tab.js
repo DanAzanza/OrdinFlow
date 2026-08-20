@@ -177,10 +177,18 @@ async function selectSkill(skillId) {
 
 	selectedSkillId = skillId;
 	currentEditingSkill = skillObj;
-	currentEditingSteps = skillObj.steps ? JSON.parse(JSON.stringify(skillObj.steps)) : [];
-	stepExpandedMap = {};
-	if (currentEditingSteps.length === 1) {
-		stepExpandedMap[currentEditingSteps[0].id] = true;
+	if (Array.isArray(skillObj.tasks) && skillObj.tasks.length > 0) {
+		currentEditingTasks = JSON.parse(JSON.stringify(skillObj.tasks));
+	} else if (Array.isArray(skillObj.steps) && skillObj.steps.length > 0) {
+		currentEditingTasks = [
+			{
+				id: "task_1",
+				title: "Arbeitsablauf ausführen",
+				actions: JSON.parse(JSON.stringify(skillObj.steps)),
+			},
+		];
+	} else {
+		currentEditingTasks = [];
 	}
 	isNewSkillCreation = false;
 
@@ -425,17 +433,22 @@ function createNewSkill(skillType = "export", copyDefaultDocs = true) {
 			document_types: ["*"],
 			upload_mode: "single_file",
 			enabled: true,
-			steps: [
+			tasks: [
 				{
-					id: "step_1",
-					description: "Focus Window",
-					action_type: "FOCUS_WINDOW",
-					window_title: "Remote Desktop*",
+					id: "task_1",
+					title: "Programm aufrufen & vorbereiten",
+					actions: [
+						{
+							id: "act_1",
+							description: "Zielfenster in den Vordergrund bringen",
+							action_type: "FOCUS_WINDOW",
+							window_title: "Remote Desktop*",
+						},
+					],
 				},
 			],
 		};
-		currentEditingSteps = JSON.parse(JSON.stringify(newSkill.steps));
-		stepExpandedMap = { step_1: true };
+		currentEditingTasks = JSON.parse(JSON.stringify(newSkill.tasks));
 	}
 
 	selectedSkillId = newSkill.id;
@@ -464,10 +477,14 @@ function createNewSkill(skillType = "export", copyDefaultDocs = true) {
 		const saveEmptyEl = document.getElementById("editorSkillSaveEmpty");
 		if (saveEmptyEl) saveEmptyEl.checked = false;
 	} else {
-		document.getElementById("editorSkillTargetWindow").value = newSkill.target_window;
-		document.getElementById("editorSkillRdpPrefix").value = newSkill.rdp_path_prefix;
-		document.getElementById("editorSkillDocTypes").value = "*";
-		document.getElementById("editorSkillUploadMode").value = "single_file";
+		const targetWinEl = document.getElementById("editorSkillTargetWindow");
+		if (targetWinEl) targetWinEl.value = "";
+		const rdpPrefixEl = document.getElementById("editorSkillRdpPrefix");
+		if (rdpPrefixEl) rdpPrefixEl.value = newSkill.rdp_path_prefix || "\\\\tsclient\\C";
+		const docTypesEl = document.getElementById("editorSkillDocTypes");
+		if (docTypesEl) docTypesEl.value = "*";
+		const uploadModeEl = document.getElementById("editorSkillUploadMode");
+		if (uploadModeEl) uploadModeEl.value = "single_file";
 	}
 
 	onSkillTypeChange(newSkill.type);
@@ -516,16 +533,19 @@ async function saveSkillFromEditor() {
 				.map((s) => (s.startsWith(".") ? s : "." + s))
 		: [".pdf", ".png", ".jpg", ".jpeg", ".tif", ".tiff"];
 
-	const target_window = document.getElementById("editorSkillTargetWindow").value.trim();
-	const rdp_path_prefix = document.getElementById("editorSkillRdpPrefix").value.trim();
-	const docTypesRaw = document.getElementById("editorSkillDocTypes").value.trim();
+	const flatSteps = typeof getFlattenedSteps === "function" ? getFlattenedSteps() : [];
+	const explicitTargetWin = (document.getElementById("editorSkillTargetWindow")?.value || "").trim();
+	const firstFocusWin = (flatSteps.find((s) => s.action_type === "FOCUS_WINDOW")?.window_title || "").trim();
+	const target_window = explicitTargetWin || firstFocusWin || "Remote Desktop*";
+	const rdp_path_prefix = (document.getElementById("editorSkillRdpPrefix")?.value || "").trim() || "\\\\tsclient\\C";
+	const docTypesRaw = (document.getElementById("editorSkillDocTypes")?.value || "*").trim();
 	const docTypes = docTypesRaw
 		? docTypesRaw
 				.split(",")
 				.map((s) => s.trim())
 				.filter(Boolean)
 		: ["*"];
-	const uploadMode = document.getElementById("editorSkillUploadMode").value;
+	const uploadMode = document.getElementById("editorSkillUploadMode")?.value || "single_file";
 
 	if (!name) {
 		toast("Please enter a skill name.", "error");
@@ -559,7 +579,8 @@ async function saveSkillFromEditor() {
 		payload.rdp_path_prefix = rdp_path_prefix;
 		payload.document_types = docTypes;
 		payload.upload_mode = uploadMode;
-		payload.steps = currentEditingSteps;
+		payload.tasks = currentEditingTasks;
+		payload.steps = flatSteps;
 	}
 
 	try {

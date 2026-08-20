@@ -69,11 +69,29 @@ class ExportEngine(BaseSkill):
         super().__init__(definition)
         self.skill_manager = mgr
         self.vision_extractor = vext
+        raw_tasks = definition.get("tasks")
         raw_steps = definition.get("steps")
-        self.steps: list[dict[str, Any]] = (
-            [s for s in raw_steps if isinstance(s, dict)] if isinstance(raw_steps, list) else []
-        )
+
+        actions: list[dict[str, Any]] = []
+        if isinstance(raw_tasks, list) and raw_tasks:
+            for t in raw_tasks:
+                if isinstance(t, dict):
+                    t_actions = t.get("actions", [])
+                    if isinstance(t_actions, list):
+                        for a in t_actions:
+                            if isinstance(a, dict):
+                                actions.append(a)
+        elif isinstance(raw_steps, list):
+            actions = [s for s in raw_steps if isinstance(s, dict)]
+
+        self.steps: list[dict[str, Any]] = actions
+        self.tasks: list[dict[str, Any]] = [t for t in raw_tasks if isinstance(t, dict)] if isinstance(raw_tasks, list) else []
         self.target_window = definition.get("target_window")
+        if not self.target_window:
+            for s in self.steps:
+                if s.get("action_type") == "FOCUS_WINDOW" and s.get("window_title"):
+                    self.target_window = s.get("window_title")
+                    break
         self.rdp_prefix = definition.get("rdp_path_prefix", "")
 
     def _save_failure_screenshot(self, step_id: str, desc: str = "", window_title: str | None = None) -> str | None:

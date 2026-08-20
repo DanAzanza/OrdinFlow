@@ -379,3 +379,39 @@ def test_import_skill_crud_and_document_types(temp_skills_dir):
     reloaded = mgr.get_document_types_for_skill("custom_import_pipeline")
     assert "Befund" in reloaded
     assert len(reloaded) == 2
+
+
+def test_export_engine_hierarchical_tasks():
+    from core.skills.engines.export_engine import ExportEngine
+
+    definition = {
+        "id": "test_hierarchical",
+        "name": "Test Hierarchical",
+        "type": "export",
+        "tasks": [
+            {
+                "id": "task_1",
+                "title": "Vorbereitung",
+                "actions": [
+                    {"id": "act_1", "action_type": "FOCUS_WINDOW", "window_title": "Test Window*"},
+                    {"id": "act_2", "action_type": "TYPE_FILE_PATH", "file_path": "{document_fullpath}"},
+                ],
+            },
+            {
+                "id": "task_2",
+                "title": "Abschluss",
+                "actions": [
+                    {"id": "act_3", "action_type": "CLICK", "description": "Speichern"},
+                ],
+            },
+        ],
+    }
+
+    engine = ExportEngine(definition)
+    assert len(engine.tasks) == 2
+    assert len(engine.steps) == 3
+    assert engine.steps[0]["action_type"] == "FOCUS_WINDOW"
+    assert engine.steps[1]["action_type"] == "TYPE_FILE_PATH"
+    assert engine.steps[2]["action_type"] == "CLICK"
+    assert engine.target_window == "Test Window*"
+

@@ -1,0 +1,52 @@
+id: import_cake_recipes
+name: Cake Recipes & Bakery Import
+type: import
+description: Sample configuration for automatic classification, multimodal extraction, and archiving of cake recipes and cake photos.
+enabled: true
+allowed_extensions:
+- .pdf
+- .png
+- .jpg
+- .jpeg
+- .tif
+- .tiff
+split_multi_documents: true
+save_empty_pages: false
+trigger: on_queue
+
+document_types:
+  CakeRecipe:
+    classification_desc: A baking recipe for cakes, tarts, pastries, or sweet dishes with an ingredients list, baking time, temperature, and preparation steps.
+    emoji: 🍰
+    extraction_fields:
+      RecipeName: The name of the recipe or cake (e.g., Black Forest Cake, Marble Cake, New York Cheesecake).
+      Category: The pastry category (e.g., Pound Cakes, Layer Cakes, Sheet Cakes, Cheesecakes, Chocolate Specialties).
+      BakeTime: The baking time (e.g., 45 mins, 55 mins).
+      BakeTemperature: The recommended oven temperature (e.g., 175 °C, 180 °C).
+      Portions: Number of slices or servings (e.g., 12 slices, 16 slices).
+      Chef: The name of the author, baker, or master pastry chef.
+      Date: Issue or recipe date (e.g., March 15, 2026).
+      Difficulty: The difficulty level (Easy, Intermediate, Challenging).
+    routing:
+      archive: true
+      folder_template: Recipes__{Category}
+      filename_template: Recipe__{RecipeName}__{BakeTime}
+    validation:
+      optional_fields:
+      - Difficulty
+      - Portions
+      - Chef
+      signature_required: false
+
+  CakePhoto:
+    classification_desc: A photograph or image of a cake, tart, or pastry without structured recipe text.
+    emoji: 📷
+    dependent: true
+    extraction_fields:
+      Description: Short description of the depicted cake or pastry (e.g., Black Forest Cake slice, Marble Cake dusted with sugar).
+    routing:
+      archive: true
+      folder_template: Photos__{Description}
+      filename_template: Photo__{Description}
+    validation:
+      signature_required: false

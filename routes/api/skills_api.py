@@ -13,6 +13,7 @@ from core.skills.engines.export_engine import ExportEngine
 from core.skills.grounder import SoMGrounder
 from core.skills.manager import SkillManager
 from core.skills.queue import SkillQueueManager, get_skill_queue_manager
+from core.skills.synthesizer import SkillSynthesizer
 from routes.api.documents_api import (
     _is_within_base,
     _parse_folder_name,
@@ -238,6 +239,25 @@ def refine_step():
             refined["locator"] = {"type": "auto", "prompt": target or instruction}
 
     return jsonify({"status": "ok", "step": refined})
+
+
+@skills_api_bp.route("/api/skills/synthesize", methods=["POST"])
+def synthesize_skill():
+    data = request.json or {}
+    raw_steps = data.get("steps") or []
+    user_instruction = str(data.get("user_instruction") or "").strip()
+    existing_doc_types = data.get("existing_doc_types")
+
+    try:
+        synthesis = SkillSynthesizer.synthesize(
+            raw_steps=raw_steps,
+            user_instruction=user_instruction,
+            existing_doc_types=existing_doc_types,
+        )
+        return jsonify({"status": "ok", "synthesis": synthesis})
+    except Exception as e:
+        logger.error("[synthesize_skill] Failed to synthesize skill: %s", e)
+        return jsonify({"error": str(e)}), 500
 
 
 @skills_api_bp.route("/api/skills/approve_and_run", methods=["POST"])
