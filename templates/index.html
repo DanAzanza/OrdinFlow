@@ -241,7 +241,7 @@
                                         </div>
                                         <div class="form-group" style="margin: 0;">
                                             <label class="doc-editor-label">Description</label>
-                                            <input type="text" id="editorSkillDesc" class="doc-editor-input" placeholder="Short explanation of the workflow..." />
+                                            <input type="text" id="editorSkillDesc" class="doc-editor-input" placeholder="Short explanation of the skill..." />
                                         </div>
                                     </div>
 
@@ -316,38 +316,22 @@
                                     <div class="doc-editor-section">
                                         <div class="steps-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; flex-wrap: wrap; gap: 8px;">
                                             <div style="display: flex; align-items: center; gap: 10px;">
-                                                <h4 class="steps-title" style="margin: 0;">📋 Aufgaben (Tasks) & Aktionen</h4>
+                                                <h4 class="steps-title" style="margin: 0;">📋 Tasks & Actions</h4>
                                                 <div id="workflowStatsBadge" class="workflow-stats-badge"></div>
-                                            </div>
-                                            <div class="steps-global-controls" style="display: flex; align-items: center; gap: 8px;">
-                                                <div class="btn-group" style="display: inline-flex; background: rgba(0,0,0,0.3); border-radius: 6px; padding: 2px;">
-                                                    <button type="button" class="btn btn-xs active" id="btnViewModeSimple" onclick="setWorkflowViewMode('simple')" style="font-size: 0.72rem; padding: 3px 8px;">
-                                                        👁️ Einfach (MFA)
-                                                    </button>
-                                                    <button type="button" class="btn btn-xs" id="btnViewModeExpert" onclick="setWorkflowViewMode('expert')" style="font-size: 0.72rem; padding: 3px 8px;">
-                                                        ⚙️ Experten
-                                                    </button>
-                                                </div>
-                                                <button type="button" class="btn btn-sm btn-secondary" onclick="expandAllSteps()" title="Expand all">
-                                                    <span>➕</span> Alle aufklappen
-                                                </button>
-                                                <button type="button" class="btn btn-sm btn-secondary" onclick="collapseAllSteps()" title="Collapse all">
-                                                    <span>➖</span> Zuklappen
-                                                </button>
                                             </div>
                                         </div>
                                         <div id="editorStepsList" class="steps-list steps-timeline-container">
                                             <!-- Tasks and Action Items rendered dynamically via JS -->
                                         </div>
                                         <div class="steps-bottom-actions" style="display: flex; gap: 8px; margin-top: 14px; flex-wrap: wrap;">
-                                            <button type="button" class="btn btn-sm btn-danger" onclick="startLiveRecording(currentEditingSkill ? currentEditingSkill.name : 'New Workflow')" style="font-weight: 700;">
-                                                <span>🔴</span> Live-Aufnahme starten
+                                            <button type="button" class="btn btn-sm btn-danger" onclick="startLiveRecording(currentEditingSkill ? currentEditingSkill.name : 'New Skill')" style="font-weight: 700;">
+                                                <span>🔴</span> Start Live Recording
                                             </button>
                                             <button type="button" class="btn btn-sm btn-secondary" onclick="addEditorTask()" style="font-weight: 600;">
-                                                <span>📦</span> Neue Aufgabe hinzufügen
+                                                <span>📦</span> Add Task
                                             </button>
                                             <button type="button" class="btn btn-sm btn-primary" onclick="addEditorStep()">
-                                                <span>🎯</span> Aktion hinzufügen
+                                                <span>🎯</span> Add Action
                                             </button>
                                         </div>
                                     </div>
@@ -712,7 +696,7 @@
                 </div>
                 <div class="modal-body">
                     <p class="form-subtext" style="margin-bottom: 16px;">
-                        Choose which type of workflow skill you would like to build:
+                        Choose which type of skill you would like to build:
                     </p>
 
                     <div class="create-skill-options">
@@ -757,15 +741,15 @@
             </div>
         </div>
 
-        <!-- ═══════ AI SKILL SYNTHESIS MODAL (AFTER RECORDING) ═══════ -->
+        <!-- ═══════ AI SKILL SYNTHESIS COPILOT MODAL (AFTER RECORDING) ═══════ -->
         <div class="modal-overlay" id="aiSkillSynthesisModal">
             <div class="modal modal-lg" style="max-width: 780px;">
                 <div class="modal-header" style="background: linear-gradient(135deg, rgba(99, 102, 241, 0.15), rgba(168, 85, 247, 0.15));">
                     <div style="display: flex; align-items: center; gap: 10px;">
                         <span style="font-size: 1.5rem;">🤖</span>
                         <div>
-                            <h2 style="margin: 0; font-size: 1.15rem; color: #e0e7ff;">KI-Skill-Assistent (Synthese)</h2>
-                            <div style="font-size: 0.76rem; color: #a5b4fc;">Automatische Aufgaben-Gliederung & Variablenerkennung</div>
+                            <h2 style="margin: 0; font-size: 1.15rem; color: #e0e7ff;">AI Skill Copilot (Synthesis)</h2>
+                            <div style="font-size: 0.76rem; color: #a5b4fc;">Automatic Task Structuring & Variable Detection</div>
                         </div>
                     </div>
                     <button type="button" class="btn btn-icon" onclick="closeAiSynthesisModal()">✕</button>
@@ -775,20 +759,20 @@
                     <div id="aiSynthesisSummaryCard" class="synthesis-summary-card">
                         <div class="synthesis-ai-avatar">✨</div>
                         <div class="synthesis-summary-text" id="aiSynthesisSummaryText">
-                            Die Aufnahme wird analysiert...
+                            Analyzing recorded actions...
                         </div>
                     </div>
 
                     <!-- General Settings from AI -->
                     <div class="grid-2col" style="margin-top: 14px;">
                         <div class="form-group" style="margin: 0;">
-                            <label class="doc-editor-label">Vorgeschlagener Skill-Name</label>
-                            <input type="text" id="aiSynthesisSkillName" class="doc-editor-input" placeholder="z. B. Fußscan als CDR exportieren" />
+                            <label class="doc-editor-label">Suggested Skill Name</label>
+                            <input type="text" id="aiSynthesisSkillName" class="doc-editor-input" placeholder="e.g. Export Foot Scan as CDR" />
                         </div>
                         <div class="form-group" style="margin: 0;">
-                            <label class="doc-editor-label">Zulässige Dokumentarten</label>
+                            <label class="doc-editor-label">Allowed Document Types</label>
                             <select id="aiSynthesisDocTypeSelect" class="doc-editor-input">
-                                <option value="*">⭐ * (Alle Dokumentarten)</option>
+                                <option value="*">⭐ * (All Document Types)</option>
                             </select>
                         </div>
                     </div>
@@ -796,7 +780,7 @@
                     <!-- Detected Variables Section -->
                     <div id="aiSynthesisVariablesSection" style="margin-top: 14px; display: none;">
                         <label class="doc-editor-label" style="display: flex; align-items: center; gap: 6px;">
-                            <span>🧩</span> <span>Erkannte Platzhalter & Variablen</span>
+                            <span>🧩</span> <span>Detected Placeholders & Variables</span>
                         </label>
                         <div id="aiSynthesisVariablesList" class="synthesis-variables-grid"></div>
                     </div>
@@ -804,7 +788,7 @@
                     <!-- Tasks & Actions Preview Section -->
                     <div style="margin-top: 14px;">
                         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-                            <label class="doc-editor-label" style="margin: 0;">📋 Generierte Aufgaben (Tasks) & Aktionen</label>
+                            <label class="doc-editor-label" style="margin: 0;">📋 Generated Tasks & Actions</label>
                             <span id="aiSynthesisTaskCount" class="badge" style="background: rgba(99, 102, 241, 0.2); color: #c7d2fe;">0 Tasks</span>
                         </div>
                         <div id="aiSynthesisTasksPreview" class="synthesis-tasks-preview-box"></div>
@@ -812,19 +796,19 @@
 
                     <!-- AI Refinement Prompt -->
                     <div class="synthesis-prompt-box" style="margin-top: 14px;">
-                        <label class="doc-editor-label" style="color: #cbd5e1;">💬 Weitere Anweisungen an die KI (Optional):</label>
+                        <label class="doc-editor-label" style="color: #cbd5e1;">💬 Additional Instructions for AI Refinement (Optional):</label>
                         <div style="display: flex; gap: 8px; margin-top: 4px;">
-                            <input type="text" id="aiSynthesisRefineInput" class="doc-editor-input" placeholder="z.B. 'Nur für Fußscans anwenden' oder 'Schließe das CAD-Fenster am Ende'" onkeydown="if(event.key==='Enter') reSynthesizeSkillWithPrompt()" />
+                            <input type="text" id="aiSynthesisRefineInput" class="doc-editor-input" placeholder="e.g. 'Only apply to foot scans' or 'Close CAD application at the end'" onkeydown="if(event.key==='Enter') reSynthesizeSkillWithPrompt()" />
                             <button type="button" class="btn btn-primary" onclick="reSynthesizeSkillWithPrompt()" id="aiSynthesisRefineBtn" style="white-space: nowrap;">
-                                <span>✨</span> Anpassen
+                                <span>✨</span> Refine with AI
                             </button>
                         </div>
                     </div>
                 </div>
                 <div class="modal-footer">
-                    <button type="button" class="btn" onclick="closeAiSynthesisModal()">Abbrechen</button>
+                    <button type="button" class="btn" onclick="closeAiSynthesisModal()">Cancel</button>
                     <button type="button" class="btn btn-primary" onclick="applyAiSynthesisToEditor()" id="aiSynthesisApplyBtn" style="background: linear-gradient(135deg, #6366f1, #a855f7); font-weight: 700;">
-                        <span>✨</span> In Editor übernehmen
+                        <span>✨</span> Apply to Editor
                     </button>
                 </div>
             </div>

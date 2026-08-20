@@ -133,14 +133,14 @@ def run_skill_batch(skill_id: str):
 def refine_step():
     data = request.json or {}
     instruction = str(data.get("instruction", "")).strip()
-    existing_step = data.get("step")
+    existing_step = data.get("action") or data.get("step")
     if not isinstance(existing_step, dict):
         existing_step = {}
 
     if not instruction:
         return jsonify({"error": "Instruction is required"}), 400
 
-    step_id = str(existing_step.get("id") or "step_1")
+    step_id = str(existing_step.get("id") or "act_1")
     refined: dict[str, Any] = dict(existing_step)
     refined["id"] = step_id
 
@@ -238,7 +238,7 @@ def refine_step():
             target = re.sub(r"(?i)^(klicke auf|klick auf|click on|klicke|click)\s*", "", instruction).strip("\"' ")
             refined["locator"] = {"type": "auto", "prompt": target or instruction}
 
-    return jsonify({"status": "ok", "step": refined})
+    return jsonify({"status": "ok", "action": refined, "step": refined})
 
 
 @skills_api_bp.route("/api/skills/synthesize", methods=["POST"])

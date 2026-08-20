@@ -20,7 +20,7 @@ function updateRecorderFloatingWidget(statusData) {
 		}
 		const badgeEl = document.getElementById("recorderStepBadge");
 		if (badgeEl) {
-			badgeEl.textContent = `${statusData.step_count || 0} Schritte`;
+			badgeEl.textContent = `${statusData.step_count || 0} actions`;
 		}
 		const actionEl = document.getElementById("recorderLastAction");
 		if (actionEl && statusData.last_action) {
@@ -35,7 +35,7 @@ function updateRecorderFloatingWidget(statusData) {
 	}
 }
 
-async function startLiveRecording(skillName = "Neuer Workflow") {
+async function startLiveRecording(skillName = "New Skill") {
 	try {
 		const res = await api("/api/skills/recorder/start", {
 			method: "POST",
@@ -46,7 +46,7 @@ async function startLiveRecording(skillName = "Neuer Workflow") {
 			is_recording: true,
 			duration_seconds: 0,
 			step_count: 0,
-			last_action: "Live-Aufnahme läuft... Zeige der KI den Ablauf am Bildschirm.",
+			last_action: "Live recording in progress... Demonstrate the action sequence on screen.",
 		});
 
 		if (!recorderPollInterval) {
@@ -64,11 +64,11 @@ async function startLiveRecording(skillName = "Neuer Workflow") {
 			}, 1000);
 		}
 
-		toast("🔴 Live-Aufnahme gestartet! Führe den Ablauf am Bildschirm vor.", "success");
+		toast("🔴 Live recording started! Demonstrate the action sequence on screen.", "success");
 		return res;
 	} catch (e) {
 		console.error("Error starting live recording:", e);
-		toast("Fehler beim Starten der Aufnahme: " + e.message, "error");
+		toast("Error starting live recording: " + e.message, "error");
 	}
 }
 
@@ -84,11 +84,11 @@ async function stopLiveRecording() {
 			lastRecordedSteps = res.skill.steps;
 			await openAiSynthesisModal(lastRecordedSteps);
 		} else {
-			toast("Aufnahme beendet, es wurden keine Aktionen erfasst.", "info");
+			toast("Recording stopped, no actions were captured.", "info");
 		}
 	} catch (e) {
 		console.error("Error stopping live recording:", e);
-		toast("Fehler beim Beenden der Aufnahme: " + e.message, "error");
+		toast("Error stopping recording: " + e.message, "error");
 	}
 }
 
@@ -107,7 +107,7 @@ async function openAiSynthesisModal(rawSteps = []) {
 			knownTypes = ["*", ...Object.keys(state.config.document_types)];
 		}
 		docSelect.innerHTML = knownTypes
-			.map((t) => `<option value="${escapeHtml(t)}">${t === "*" ? "⭐ * (Alle Dokumentarten)" : escapeHtml(t)}</option>`)
+			.map((t) => `<option value="${escapeHtml(t)}">${t === "*" ? "⭐ * (All Document Types)" : escapeHtml(t)}</option>`)
 			.join("");
 	}
 
@@ -117,7 +117,7 @@ async function openAiSynthesisModal(rawSteps = []) {
 		summaryText.innerHTML = `
 			<div style="display: flex; align-items: center; gap: 8px;">
 				<div class="spinner-border spinner-border-sm text-primary" role="status" style="width: 14px; height: 14px; border-width: 2px;"></div>
-				<span>Die lokale KI analysiert deinen Ablauf (${rawSteps.length} Aktionen) und erkennt Aufgaben & Variablen...</span>
+				<span>Local AI is analyzing your recording (${rawSteps.length} actions) and structuring tasks & variables...</span>
 			</div>
 		`;
 	}
@@ -140,12 +140,36 @@ async function openAiSynthesisModal(rawSteps = []) {
 
 		if (res && res.synthesis) {
 			renderAiSynthesisResult(res.synthesis);
+		} else {
+			renderAiSynthesisResult({
+				name: (document.getElementById("editorSkillName")?.value || "").trim() || "New Skill",
+				description: `Automated skill with ${rawSteps.length} actions.`,
+				suggested_document_types: ["*"],
+				detected_variables: [],
+				tasks: [
+					{
+						id: "task_1",
+						title: "Task 1: Execute Application Flow",
+						actions: rawSteps,
+					},
+				],
+			});
 		}
 	} catch (e) {
 		console.error("Error during AI synthesis:", e);
-		if (summaryText) {
-			summaryText.textContent = "Synthese fehlgeschlagen. Der Workflow wird im Standardformat geladen.";
-		}
+		renderAiSynthesisResult({
+			name: (document.getElementById("editorSkillName")?.value || "").trim() || "New Skill",
+			description: `Automated skill (${rawSteps.length} actions).`,
+			suggested_document_types: ["*"],
+			detected_variables: [],
+			tasks: [
+				{
+					id: "task_1",
+					title: "Task 1: Execute Application Flow",
+					actions: rawSteps,
+				},
+			],
+		});
 	}
 }
 
@@ -155,13 +179,13 @@ function renderAiSynthesisResult(synthesis) {
 	// Summary text
 	const summaryText = document.getElementById("aiSynthesisSummaryText");
 	if (summaryText) {
-		summaryText.textContent = synthesis.description || "Ablauf erfolgreich analysiert und in Aufgaben strukturiert.";
+		summaryText.textContent = synthesis.description || "Skill structured successfully into tasks & actions.";
 	}
 
 	// Skill Name
 	const nameInput = document.getElementById("aiSynthesisSkillName");
 	if (nameInput) {
-		nameInput.value = synthesis.name || "Neuer Workflow";
+		nameInput.value = synthesis.name || "New Skill";
 	}
 
 	// Doc Type Select
@@ -204,7 +228,7 @@ function renderAiSynthesisResult(synthesis) {
 				(t, idx) => `
 			<div class="synthesis-task-preview-item">
 				<div class="synthesis-task-title">
-					<span>📦 Aufgabe ${idx + 1}:</span>
+					<span>📦 Task ${idx + 1}:</span>
 					<span>${escapeHtml(t.title || "")}</span>
 				</div>
 				<div>
@@ -240,7 +264,7 @@ async function reSynthesizeSkillWithPrompt() {
 		summaryText.innerHTML = `
 			<div style="display: flex; align-items: center; gap: 8px;">
 				<div class="spinner-border spinner-border-sm text-primary" role="status" style="width: 14px; height: 14px; border-width: 2px;"></div>
-				<span>Die KI passt den Workflow anhand deiner Anweisung an...</span>
+				<span>AI is adjusting the skill based on your instructions...</span>
 			</div>
 		`;
 	}
@@ -256,11 +280,11 @@ async function reSynthesizeSkillWithPrompt() {
 
 		if (res && res.synthesis) {
 			renderAiSynthesisResult(res.synthesis);
-			toast("✨ Workflow wurde von der KI angepasst!", "success");
+			toast("✨ Skill updated by AI!", "success");
 		}
 	} catch (e) {
 		console.error("Error refining synthesis:", e);
-		toast("Fehler bei der KI-Anpassung: " + e.message, "error");
+		toast("Error refining skill with AI: " + e.message, "error");
 	} finally {
 		if (btn) btn.disabled = false;
 	}
@@ -273,7 +297,7 @@ function applyAiSynthesisToEditor() {
 	}
 
 	// 1. Skill Name & ID
-	const name = (document.getElementById("aiSynthesisSkillName")?.value || "").trim() || currentSynthesisData.name || "Neuer Workflow";
+	const name = (document.getElementById("aiSynthesisSkillName")?.value || "").trim() || currentSynthesisData.name || "New Skill";
 	const nameEl = document.getElementById("editorSkillName");
 	if (nameEl) nameEl.value = name;
 
@@ -320,7 +344,7 @@ function applyAiSynthesisToEditor() {
 		renderEditorSteps();
 	}
 
-	toast(`✨ KI-Workflow '${name}' mit ${currentEditingTasks.length} Aufgaben in den Editor geladen!`, "success");
+	toast(`✨ AI Skill '${name}' with ${currentEditingTasks.length} task(s) loaded into editor!`, "success");
 }
 
 function closeAiSynthesisModal() {

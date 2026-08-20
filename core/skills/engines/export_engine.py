@@ -85,6 +85,7 @@ class ExportEngine(BaseSkill):
             actions = [s for s in raw_steps if isinstance(s, dict)]
 
         self.steps: list[dict[str, Any]] = actions
+        self.actions: list[dict[str, Any]] = actions
         self.tasks: list[dict[str, Any]] = [t for t in raw_tasks if isinstance(t, dict)] if isinstance(raw_tasks, list) else []
         self.target_window = definition.get("target_window")
         if not self.target_window:
@@ -241,13 +242,13 @@ class ExportEngine(BaseSkill):
         except Exception:
             return True
 
-    def execute_steps(
+    def execute_actions(
         self,
         context: dict[str, Any],
         reporter: Callable[[TaskProgress], None] | None = None,
         depth: int = 0,
     ) -> bool:
-        """Executes the defined steps sequentially with input shield protection."""
+        """Executes the defined actions sequentially with input shield protection."""
         if depth > 5:
             logger.error("[ExportEngine] Maximum recursion depth reached for CALL_SKILL: %s", self.id)
             return False
@@ -256,33 +257,34 @@ class ExportEngine(BaseSkill):
             logger.warning("[ExportEngine] Skill '%s' is disabled.", self.id)
             return False
 
-        logger.info("[*] Executing RPA skill '%s' (%d steps)...", self.name, len(self.steps))
-        step_idx = 0
-        step_map = {str(s.get("id")): idx for idx, s in enumerate(self.steps) if s.get("id")}
-        total_steps = len(self.steps)
+        actions = self.actions or self.steps
+        logger.info("[*] Executing RPA skill '%s' (%d actions)...", self.name, len(actions))
+        act_idx = 0
+        step_map = {str(s.get("id")): idx for idx, s in enumerate(actions) if s.get("id")}
+        total_actions = len(actions)
 
-        while step_idx < len(self.steps):
-            step = self.steps[step_idx]
-            step_id = step.get("id", f"step_{step_idx}")
+        while act_idx < len(actions):
+            step = actions[act_idx]
+            step_id = step.get("id", f"act_{act_idx}")
             action_type = step.get("action_type", "NONE")
             desc = step.get("description", action_type)
 
-            if not self._wait_for_queue(reporter, f"Paused before Step {step_idx + 1}/{total_steps}: {desc}"):
+            if not self._wait_for_queue(reporter, f"Paused before Action {act_idx + 1}/{total_actions}: {desc}"):
                 logger.info("[ExportEngine] Execution stopped by user request.")
                 return False
 
             if reporter:
-                pct = round((step_idx / max(total_steps, 1)) * 100, 1)
+                pct = round((act_idx / max(total_actions, 1)) * 100, 1)
                 reporter(
                     TaskProgress(
-                        current=step_idx + 1,
-                        total=total_steps,
-                        message=f"Step {step_idx + 1}/{total_steps}: {desc}",
+                        current=act_idx + 1,
+                        total=total_actions,
+                        message=f"Action {act_idx + 1}/{total_actions}: {desc}",
                         percent=pct,
                     )
                 )
 
-            logger.info("  [Step %d/%d] %s: %s", step_idx + 1, total_steps, step_id, desc)
+            logger.info("  [Action %d/%d] %s: %s", act_idx + 1, total_actions, step_id, desc)
 
             # 1. FOCUS_WINDOW
             if action_type == "FOCUS_WINDOW":
@@ -378,7 +380,7 @@ class ExportEngine(BaseSkill):
                     if on_succ == "stop_success":
                         return True
                     elif on_succ in step_map:
-                        step_idx = step_map[on_succ]
+                        act_idx = step_map[on_succ]
                         continue
                 else:
                     on_fail = step.get("on_failure", "stop")
@@ -392,7 +394,7 @@ class ExportEngine(BaseSkill):
                     elif on_fail == "continue" or on_fail_action == "continue":
                         pass
                     elif on_fail in step_map:
-                        step_idx = step_map[on_fail]
+                        act_idx = step_map[on_fail]
                         continue
 
             # 6. CALL_SKILL
@@ -458,19 +460,21 @@ class ExportEngine(BaseSkill):
             if delay_ms > 0:
                 time.sleep(delay_ms / 1000.0)
 
-            step_idx += 1
+            act_idx += 1
 
         if reporter:
             reporter(
                 TaskProgress(
-                    current=total_steps,
-                    total=total_steps,
+                    current=total_actions,
+                    total=total_actions,
                     message=f"Completed {self.name}",
                     percent=100.0,
                 )
             )
 
         return True
+
+    execute_steps = execute_actions
 
     def execute(
         self,
@@ -706,6 +710,7 @@ class ExportEngine(BaseSkill):
             return False
 
         orig_steps = self.steps
+        orig_actions = self.actions
         orig_window = self.target_window
         orig_rdp = self.rdp_prefix
         orig_id = self.id
@@ -713,13 +718,27 @@ class ExportEngine(BaseSkill):
         try:
             self.id = str(skill_def.get("id", skill_id))
             self.name = str(skill_def.get("name", self.id))
-            raw_s = skill_def.get("steps")
-            self.steps = [s for s in raw_s if isinstance(s, dict)] if isinstance(raw_s, list) else []
+            raw_tasks = skill_def.get("tasks")
+            raw_steps = skill_def.get("steps")
+            actions: list[dict[str, Any]] = []
+            if isinstance(raw_tasks, list) and raw_tasks:
+                for t in raw_tasks:
+                    if isinstance(t, dict):
+                        t_actions = t.get("actions", [])
+                        if isinstance(t_actions, list):
+                            for a in t_actions:
+                                if isinstance(a, dict):
+                                    actions.append(a)
+            elif isinstance(raw_steps, list):
+                actions = [s for s in raw_steps if isinstance(s, dict)]
+            self.steps = actions
+            self.actions = actions
             self.target_window = skill_def.get("target_window")
             self.rdp_prefix = skill_def.get("rdp_path_prefix", "")
-            return self.execute_steps(context or {}, depth=depth)
+            return self.execute_actions(context or {}, depth=depth)
         finally:
             self.steps = orig_steps
+            self.actions = orig_actions
             self.target_window = orig_window
             self.rdp_prefix = orig_rdp
             self.id = orig_id

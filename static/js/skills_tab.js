@@ -4,7 +4,6 @@
 
 let selectedSkillId = null;
 let currentEditingSkill = null;
-let currentEditingSteps = [];
 let activeInputField = null;
 let isNewSkillCreation = false;
 
@@ -20,7 +19,7 @@ function slugifySkillName(name) {
 function onSkillNameInput(val) {
 	const headerTitle = document.getElementById("skillHeaderTitle");
 	if (headerTitle) {
-		headerTitle.textContent = val.trim() || "Untitled Workflow";
+		headerTitle.textContent = val.trim() || "Untitled Skill";
 	}
 	if (isNewSkillCreation) {
 		const slug = slugifySkillName(val) || "custom_skill";
@@ -159,7 +158,6 @@ function renderSkillsSidebar(skills, searchQuery = "") {
 function showNoSkillSelected() {
 	selectedSkillId = null;
 	currentEditingSkill = null;
-	currentEditingSteps = [];
 	const emptyMsg = document.getElementById("noSkillSelectedMessage");
 	const wrapper = document.getElementById("skillFormWrapper");
 	if (emptyMsg) emptyMsg.style.display = "flex";
@@ -183,7 +181,7 @@ async function selectSkill(skillId) {
 		currentEditingTasks = [
 			{
 				id: "task_1",
-				title: "Arbeitsablauf ausführen",
+				title: "Execute Action Sequence",
 				actions: JSON.parse(JSON.stringify(skillObj.steps)),
 			},
 		];
@@ -384,7 +382,7 @@ function confirmCreateSkill() {
 function createNewSkill(skillType = "export", copyDefaultDocs = true) {
 	isNewSkillCreation = true;
 	const isImport = skillType === "import";
-	const baseName = isImport ? "New Import Pipeline" : "New Workflow";
+	const baseName = isImport ? "New Import Pipeline" : "New Skill";
 	let slug = slugifySkillName(baseName);
 	const existingIds = new Set((state.skills || []).map((s) => s.id));
 	let counter = 2;
@@ -436,11 +434,11 @@ function createNewSkill(skillType = "export", copyDefaultDocs = true) {
 			tasks: [
 				{
 					id: "task_1",
-					title: "Programm aufrufen & vorbereiten",
+					title: "Open target application & prepare",
 					actions: [
 						{
 							id: "act_1",
-							description: "Zielfenster in den Vordergrund bringen",
+							description: "Bring target window to foreground",
 							action_type: "FOCUS_WINDOW",
 							window_title: "Remote Desktop*",
 						},

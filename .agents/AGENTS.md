@@ -120,3 +120,16 @@ When asked to write or suggest Git commit messages, strictly adhere to the follo
 * **License Integrity & Attribution**: Preserve AGPL-3.0 header compatibility and ensure any new third-party dependency is logged with its license in `THIRD_PARTY_LICENSES.md`.
 * **Clean Git History**: Run `git status` and verify no scratch logs, temp files, or untracked sensitive data exist before committing or opening pull requests.
 
+---
+
+## 10. Desktop Automation, Windows Session Isolation & RPA Discipline
+* **Windows Session Isolation & Truthfulness**:
+  * Agent subshells on Windows run in isolated sandbox virtual desktop stations (`exebox-...`), not in the interactive user desktop station (`WinSta0\Default`).
+  * Native OS GUI actions (`pynput`, `pyautogui`, `ctypes.windll.user32.mouse_event`, `BitBlt`) executed from background subshells interact strictly with the virtual desktop of that process and are NOT visible on the user's physical monitor.
+  * Never claim a physical window was operated on the user's physical screen when executing from a subshell. Only web/browser interactions via Chrome DevTools MCP (CDP WebSocket) interact with the live user browser instance.
+* **KISS in Workflow & Task Editors**:
+  * Keep Task & Action configuration interfaces direct, transparent, and immediately editable. Avoid nested view-mode toggles (e.g. "Simple vs. Expert") or complex collapse states that hide inputs and confuse non-technical users.
+* **DPI-Aware Native Screen Grabbing**:
+  * On Windows, always declare DPI awareness (`user32.SetProcessDPIAware()`) and utilize direct Win32 GDI BitBlt captures to ensure robust screen and snippet grabbing across high-DPI and multi-monitor configurations without `OSError: screen grab failed`.
+
+

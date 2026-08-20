@@ -5,7 +5,38 @@ from __future__ import annotations
 import time
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any
+from typing import Any, TypedDict
+
+
+class SkillActionDict(TypedDict, total=False):
+    """Declarative action definition inside a skill task."""
+
+    id: str
+    action_type: str
+    description: str
+    locator: dict[str, Any]
+    text: str
+    file_path: str
+    window_title: str
+    press_enter: bool
+    skill_id: str
+    keys: list[str] | str
+    duration_s: float
+    delay_ms: int
+    max_retries: int
+    retry_delay_s: float
+    on_success: str
+    on_failure: str
+    on_failure_action: str
+    on_failure_skill: str
+
+
+class SkillTaskBlockDict(TypedDict, total=False):
+    """Declarative task block grouping multiple sequential actions within a Skill."""
+
+    id: str
+    title: str
+    actions: list[SkillActionDict | dict[str, Any]]
 
 
 class SkillType(str, Enum):

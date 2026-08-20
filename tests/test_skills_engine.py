@@ -410,8 +410,54 @@ def test_export_engine_hierarchical_tasks():
     engine = ExportEngine(definition)
     assert len(engine.tasks) == 2
     assert len(engine.steps) == 3
+    assert len(engine.actions) == 3
     assert engine.steps[0]["action_type"] == "FOCUS_WINDOW"
     assert engine.steps[1]["action_type"] == "TYPE_FILE_PATH"
     assert engine.steps[2]["action_type"] == "CLICK"
     assert engine.target_window == "Test Window*"
+
+
+def test_sub_skill_execution_with_tasks_hierarchy(temp_skills_dir):
+    mgr = SkillManager(skills_dir=temp_skills_dir)
+
+    # Sub-skill defined ONLY with tasks hierarchy (no legacy steps key)
+    sub_skill = {
+        "id": "sub_hierarchical",
+        "name": "Sub Hierarchical Skill",
+        "enabled": True,
+        "tasks": [
+            {
+                "id": "task_1",
+                "title": "Sub Task",
+                "actions": [
+                    {"id": "act_sub_1", "description": "Sub Action", "action_type": "FOCUS_WINDOW", "window_title": "Remote Desktop*"}
+                ],
+            }
+        ],
+    }
+    mgr.save_skill(sub_skill)
+
+    # Main skill calling sub-skill
+    main_skill = {
+        "id": "main_hierarchical",
+        "name": "Main Hierarchical Skill",
+        "enabled": True,
+        "tasks": [
+            {
+                "id": "task_main",
+                "title": "Main Task",
+                "actions": [
+                    {"id": "act_main_1", "description": "Call Sub", "action_type": "CALL_SKILL", "skill_id": "sub_hierarchical"}
+                ],
+            }
+        ],
+    }
+    mgr.save_skill(main_skill)
+
+    executor = SkillExecutor(mgr)
+    success = executor.execute_skill("main_hierarchical", context={})
+    assert success is True
+    # Test execute_actions alias
+    assert hasattr(executor, "execute_actions")
+    assert executor.execute_actions == executor.execute_steps
 

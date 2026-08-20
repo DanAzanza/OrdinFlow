@@ -287,7 +287,7 @@ async function renderQueueInspector() {
 		<div class="queue-list-section">
 			<div class="queue-list-header-row">
 				<h4 class="queue-list-title">
-					📋 Tasks & Workflow
+					📋 Queue Tasks & Skills
 				</h4>
 				${qState.items.length > 0 ? `
 					<button type="button" class="btn btn-text btn-sm" onclick="clearSkillQueue()" title="Clear queue">

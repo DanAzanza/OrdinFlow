@@ -22,7 +22,7 @@ class SkillSynthesizer:
         user_instruction: str = "",
         existing_doc_types: list[str] | None = None,
     ) -> dict[str, Any]:
-        """Synthesizes raw recorded steps into a clean Task & Action workflow."""
+        """Synthesizes raw recorded steps into a clean Task & Action skill structure."""
         if not raw_steps:
             return cls._generate_fallback_synthesis(
                 user_instruction=user_instruction,
@@ -89,7 +89,7 @@ class SkillSynthesizer:
         known_variables: list[str],
         llm_extractor: Any,
     ) -> dict[str, Any] | None:
-        """Prompts the local LLM to structure, name, and parameterize the workflow."""
+        """Prompts the local LLM to structure, name, and parameterize the skill."""
         prompt = (
             "Du bist ein intelligenter Assistent für Praxis- und Büroautomation (RPA).\n"
             "Ein Nutzer hat eine Bildschirmaufnahme durchgeführt, um einen Arbeitsablauf zu automatisieren.\n"
@@ -213,7 +213,7 @@ class SkillSynthesizer:
                 "actions": cleaned_actions,
             })
 
-        skill_name = "Neuer Workflow"
+        skill_name = "Neuer Skill"
         if detected_doc_types != ["*"]:
             skill_name = f"{detected_doc_types[0]} exportieren"
 
@@ -233,7 +233,7 @@ class SkillSynthesizer:
     ) -> dict[str, Any]:
         """Generates an initial structured Task template."""
         return {
-            "name": "Neuer Workflow",
+            "name": "Neuer Skill",
             "description": "Automatisierter Arbeitsablauf.",
             "suggested_document_types": existing_doc_types or ["*"],
             "detected_variables": [],
