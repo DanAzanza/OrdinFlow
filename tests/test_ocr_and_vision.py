@@ -164,13 +164,13 @@ def test_routing_without_signature_marks_pruefen(processor, tmp_path):
     with patch.object(processor, "extract_hybrid_voting", return_value=mock_extracted):
         processor.process_and_route_file(str(dummy_file))
 
-    # Nach dem Verarbeitungsversuch sollte die Datei im Eingang bleiben (.meta vorhanden)
+    # After processing attempt, file should stay in inbox (.meta sidecar created)
     pruefen_files = os.listdir(processor.config.watch_dir)
     assert any(f.endswith(".meta") for f in pruefen_files)
 
 
 def test_routing_with_missing_name_keeps_in_watch(processor, tmp_path):
-    """Dokument ohne Namen bleibt im Eingang (keine Zielordner-Erstellung)."""
+    """Document without a name stays in inbox (no destination folder created)."""
     watch_dir = tmp_path / "Inbox"
     target_dir = tmp_path / "Cases"
     os.makedirs(watch_dir, exist_ok=True)
@@ -209,7 +209,7 @@ def test_routing_with_missing_name_keeps_in_watch(processor, tmp_path):
     with patch.object(processor, "extract_hybrid_voting", return_value=mock_extracted):
         processor.process_and_route_file(str(dummy_file))
 
-    # Kein Zielordner sollte erstellt worden sein (kein plausibler Name)
+    # No destination folder should be created (no plausible name)
     assert len(os.listdir(processor.config.target_base_dir)) == 0
 
 

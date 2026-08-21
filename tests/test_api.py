@@ -2,10 +2,10 @@ from routes.state import DashboardState
 
 
 def test_api_eingang(client, tmp_path):
-    # Setze temporäres watch_dir auf tmp_path
+    # Set temporary watch_dir to tmp_path
     DashboardState.config.watch_dir = str(tmp_path)
 
-    # Erstelle eine Dummy PDF-Datei und eine .meta Datei
+    # Create dummy PDF file and .meta sidecar file
     dummy_pdf = tmp_path / "test_person.pdf"
     dummy_pdf.touch()
     dummy_meta = tmp_path / "test_person.pdf.meta"
@@ -15,22 +15,22 @@ def test_api_eingang(client, tmp_path):
     assert response.status_code == 200
     data = response.get_json()
 
-    # Es sollte nur die PDF-Datei gelistet werden, die .meta wird ignoriert
+    # Only PDF files should be listed; .meta sidecars are ignored
     assert len(data) == 1
     assert data[0]["name"] == "test_person.pdf"
-    # Die Datei hat eine .meta Sidecar → "grund" ist vorhanden (früher: is_pruefen=True)
+    # File has a .meta sidecar -> 'grund' field is present
     assert "grund" in data[0]
     assert "preview_url" in data[0]
-    # Überprüfe, ob die URL korrekt URL-encoded wurde
+    # Verify that URL is correctly URL-encoded
     assert "/api/inbox/preview/test_person.pdf" in data[0]["preview_url"]
 
 
 def test_api_vorgaenge(client, tmp_path):
-    # Setze temporäres target_base_dir auf tmp_path
+    # Set temporary target_base_dir to tmp_path
     DashboardState.config.target_base_dir = str(tmp_path)
     DashboardState.config.folder_structure = ["{Datum}", "{Produkt}", "{Person}"]
 
-    # Erstelle Dummy-Ordner und PDF + .meta Datei
+    # Create dummy folder and PDF + .meta sidecar file
     person_folder = tmp_path / "2026-03-13__Software__Muster, Max"
     person_folder.mkdir()
     dummy_file = person_folder / "Vertrag__Software__2026-03-13.pdf"
@@ -38,20 +38,20 @@ def test_api_vorgaenge(client, tmp_path):
     dummy_meta = person_folder / "Vertrag__Software__2026-03-13.pdf.meta"
     dummy_meta.touch()
 
-    # Teste /api/cases
+    # Test /api/cases
     response = client.get("/api/cases")
     assert response.status_code == 200
     data = response.get_json()
     assert len(data) == 1
     assert data[0]["person"] == "Muster, Max"
-    # Der file_count darf .meta-Dateien nicht mitzählen (nur 1 PDF)
+    # file_count must not count .meta files (only 1 PDF)
     assert data[0]["file_count"] == 1
 
-    # Teste /api/cases/<folder_name> (Detail)
+    # Test /api/cases/<folder_name> (Detail)
     response_detail = client.get("/api/cases/2026-03-13__Software__Muster%2C%20Max")
     assert response_detail.status_code == 200
     data_detail = response_detail.get_json()
-    # Nur das PDF darf gelistet werden
+    # Only PDF should be listed
     assert len(data_detail["files"]) == 1
     assert data_detail["files"][0]["name"] == "Vertrag__Software__2026-03-13.pdf"
     assert "preview_url" in data_detail["files"][0]

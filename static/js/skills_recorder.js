@@ -115,8 +115,8 @@ async function openAiSynthesisModal(rawSteps = []) {
 	const summaryText = document.getElementById("aiSynthesisSummaryText");
 	if (summaryText) {
 		summaryText.innerHTML = `
-			<div style="display: flex; align-items: center; gap: 8px;">
-				<div class="spinner-border spinner-border-sm text-primary" role="status" style="width: 14px; height: 14px; border-width: 2px;"></div>
+			<div class="skills-spinner-box">
+				<div class="spinner-border spinner-border-sm text-primary skills-spinner-sm" role="status"></div>
 				<span>Local AI is analyzing your recording (${rawSteps.length} actions) and structuring tasks & variables...</span>
 			</div>
 		`;
@@ -262,8 +262,8 @@ async function reSynthesizeSkillWithPrompt() {
 	const summaryText = document.getElementById("aiSynthesisSummaryText");
 	if (summaryText) {
 		summaryText.innerHTML = `
-			<div style="display: flex; align-items: center; gap: 8px;">
-				<div class="spinner-border spinner-border-sm text-primary" role="status" style="width: 14px; height: 14px; border-width: 2px;"></div>
+			<div class="skills-spinner-box">
+				<div class="spinner-border spinner-border-sm text-primary skills-spinner-sm" role="status"></div>
 				<span>AI is adjusting the skill based on your instructions...</span>
 			</div>
 		`;

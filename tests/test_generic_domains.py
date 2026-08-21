@@ -59,13 +59,13 @@ def test_tax_and_accounting_domain():
     folder = render_folder_name(data, folder_structure=folder_structure, delimiter="__")
     assert folder == "2026__Eingangsrechnung__Acme Cloud Services GmbH"
 
-    # 2. Parsen mit Trennzeichen '__'
+    # 2. Parse with delimiter '__'
     parsed = parse_folder_name(folder, folder_structure=folder_structure, delimiter="__")
     assert parsed["Steuerjahr"] == "2026"
     assert parsed["Kategorie"] == "Eingangsrechnung"
     assert parsed["Lieferant"] == "Acme Cloud Services GmbH"
 
-    # 3. Test der API-Pflichtfeldvalidierung für benutzerdefinierte Dokumenten
+    # 3. Test API required field validation for custom document types
     config = AppConfig()
     config.document_types["Eingangsrechnung"] = {
         "routing": {
@@ -77,11 +77,11 @@ def test_tax_and_accounting_domain():
     }
     DashboardState.config = config
 
-    # Valide Daten -> Kein Fehler
+    # Valid data -> no error
     err = _validate_required_api_fields(data, "Eingangsrechnung")
     assert err is None
 
-    # Unvollständige Daten -> Validierungsfehler
+    # Incomplete data -> validation error
     empty_data = {"Lieferant": "", "Belegnummer": ""}
     err_missing = _validate_required_api_fields(empty_data, "Eingangsrechnung")
     assert err_missing is not None
@@ -89,7 +89,7 @@ def test_tax_and_accounting_domain():
 
 
 def test_creative_photo_archive_domain():
-    """Testfall: Fotosammlung / Projektarchiv mit optionalen Feldern."""
+    """Test case: Photo collection / project archive with optional fields."""
     data_with_title = {
         "Projekt": "Alpen-Shooting",
         "Ort": "Innsbruck",
@@ -101,14 +101,14 @@ def test_creative_photo_archive_domain():
         "Titel": "[MISSING]",
     }
     folder_structure = ["{Projekt}", "{Ort}", "{Titel}"]
-    # Test optionales Feld 'Titel'
+    # Test optional field 'Titel'
     folder_full = render_folder_name(data_with_title, folder_structure=folder_structure, optional_fields={"Titel"})
     assert folder_full == "Alpen-Shooting--Innsbruck--Sonnenaufgang Gipfel"
 
     folder_no_title = render_folder_name(
         data_without_title, folder_structure=folder_structure, optional_fields={"Titel"}
     )
-    # Leeres optionales Feld darf nicht "Titel-MISSING" erzeugen und bereinigt Trennzeichen
+    # Empty optional field should not produce 'Titel-MISSING' and cleans delimiter
     assert "Titel-MISSING" not in folder_no_title
     assert folder_no_title == "Alpen-Shooting--Innsbruck"
 

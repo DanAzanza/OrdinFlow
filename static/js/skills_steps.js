@@ -187,13 +187,13 @@ function renderEditorSteps() {
 
 	if (currentEditingTasks.length === 0) {
 		container.innerHTML = `
-			<div class="step-empty-box" style="padding: 32px 20px; text-align: center; background: rgba(0,0,0,0.2); border-radius: 8px; border: 1px dashed var(--border);">
-				<div style="font-size: 2rem; margin-bottom: 8px;">🤖✨</div>
-				<div style="font-weight: 700; color: #f1f5f9; font-size: 0.95rem; margin-bottom: 4px;">No actions recorded yet</div>
-				<div style="font-size: 0.8rem; color: #94a3b8; max-width: 460px; margin: 0 auto 16px auto;">
+			<div class="step-empty-box">
+				<div class="step-empty-icon">🤖✨</div>
+				<div class="step-empty-title">No actions recorded yet</div>
+				<div class="step-empty-desc">
 					Click <strong>"Start Live Recording"</strong> to demonstrate your routine on screen, or use the <strong>AI Skill Copilot</strong> above to generate tasks automatically.
 				</div>
-				<button type="button" class="btn btn-sm btn-danger" onclick="startLiveRecording(currentEditingSkill ? currentEditingSkill.name : 'New Skill')" style="font-weight: 700;">
+				<button type="button" class="btn btn-sm btn-danger btn-bold" onclick="startLiveRecording(currentEditingSkill ? currentEditingSkill.name : 'New Skill')">
 					<span>🔴</span> Start Live Recording
 				</button>
 			</div>
@@ -217,14 +217,14 @@ function renderEditorSteps() {
 					<div class="task-header-right">
 						<button type="button" class="btn btn-icon btn-sm" onclick="moveTaskUp(${taskIdx})" ${isFirstTask ? "disabled" : ""} title="Move task up">⬆️</button>
 						<button type="button" class="btn btn-icon btn-sm" onclick="moveTaskDown(${taskIdx})" ${isLastTask ? "disabled" : ""} title="Move task down">⬇️</button>
-						<button type="button" class="btn btn-icon btn-sm" onclick="removeEditorTask(${taskIdx})" title="Delete task" style="color: var(--danger);">🗑️</button>
+						<button type="button" class="btn btn-icon btn-sm btn-danger-icon" onclick="removeEditorTask(${taskIdx})" title="Delete task">🗑️</button>
 					</div>
 				</div>
 
 				<div class="task-actions-container">
 					${
 						actions.length === 0
-							? `<div style="font-size: 0.76rem; color: #64748b; font-style: italic; padding: 6px;">No actions in this task yet.</div>`
+							? `<div class="step-empty-task-notice">No actions in this task yet.</div>`
 							: actions
 									.map((act, actIdx) => {
 										const isFirstAct = actIdx === 0;
@@ -250,7 +250,7 @@ function renderEditorSteps() {
 													${badgeStyle.label || act.action_type}
 												</span>
 												${isSensitive ? `<span class="action-type-pill action-pill-secret" title="Security Warning: Sensitive credential or password detected. Plaintext inputs are executed on screen.">🔒 Sensitive</span>` : ""}
-												<div style="display: flex; flex-direction: column; min-width: 0;">
+												<div class="step-action-desc-col">
 													<span class="action-item-desc">${escapeHtml(act.description || act.action_type || "Action")}</span>
 													${paramText ? `<span class="action-item-param" title="${escapeHtml(act.text || paramText)}">${escapeHtml(paramText)}</span>` : ""}
 												</div>
@@ -260,7 +260,7 @@ function renderEditorSteps() {
 												${act.action_type === "TYPE_TEXT" ? `<button type="button" class="btn btn-icon btn-sm" onclick="toggleActionSecret(${taskIdx}, ${actIdx})" title="${act.is_secret ? 'Remove secret flag' : 'Mark as secret/credential'}">${act.is_secret ? '🔒' : '🔓'}</button>` : ""}
 												<button type="button" class="btn btn-icon btn-sm" onclick="moveActionUp(${taskIdx}, ${actIdx})" ${isFirstAct ? "disabled" : ""} title="Move up">⬆️</button>
 												<button type="button" class="btn btn-icon btn-sm" onclick="moveActionDown(${taskIdx}, ${actIdx})" ${isLastAct ? "disabled" : ""} title="Move down">⬇️</button>
-												<button type="button" class="btn btn-icon btn-sm" onclick="removeEditorAction(${taskIdx}, ${actIdx})" title="Remove action" style="color: var(--danger);">🗑️</button>
+												<button type="button" class="btn btn-icon btn-sm btn-danger-icon" onclick="removeEditorAction(${taskIdx}, ${actIdx})" title="Remove action">🗑️</button>
 											</div>
 										</div>
 									`;

@@ -261,7 +261,7 @@ def test_split_multi_documents(tmp_path):
 
     processor = DocumentProcessor(config)
 
-    # Mocke die Extraktion, die 2 Dokumente zurückgibt
+    # Mock extraction returning 2 documents
     mock_extracted = {
         "Document": "Vertrag+Lieferschein",
         "Vorname": "Max",
@@ -400,14 +400,14 @@ def test_empty_pages_deleted(tmp_path):
     assert os.path.exists(reconstructed_pdf)
     assert os.path.exists(reconstructed_pdf)
 
-    # Das rekonstruierte PDF sollte nur 2 Seiten haben (Seite 2 LEER wurde gelöscht)
+    # Reconstructed PDF should only have 2 pages (page 2 LEER was deleted)
     doc_check = fitz.open(reconstructed_pdf)
     assert len(doc_check) == 2
     doc_check.close()
 
 
 def test_all_pages_empty_deleted(tmp_path):
-    """Testet, dass das PDF komplett gelöscht wird, wenn alle Seiten leer sind und save_empty_pages=False."""
+    """Tests that PDF is completely deleted when all pages are empty and save_empty_pages=False."""
     from unittest.mock import patch
 
     import fitz
@@ -421,7 +421,7 @@ def test_all_pages_empty_deleted(tmp_path):
     os.makedirs(config.watch_dir, exist_ok=True)
     os.makedirs(config.target_base_dir, exist_ok=True)
 
-    # Erstelle ein 2-seitiges PDF
+    # Create a 2-page PDF
     pdf_path = os.path.join(config.watch_dir, "empty.pdf")
     doc = fitz.open()
     doc.new_page()
@@ -461,12 +461,12 @@ def test_all_pages_empty_deleted(tmp_path):
         success = processor.process_and_route_file(pdf_path, save_empty_pages=False)
 
     assert success
-    # Die Datei muss gelöscht sein!
+    # File must be deleted!
     assert not os.path.exists(pdf_path)
 
 
 def test_empty_pages_saved(tmp_path):
-    """Testet, dass leere Seiten behalten und dem umliegenden Typ zugeordnet werden, wenn save_empty_pages=True."""
+    """Tests that empty pages are preserved and assigned to surrounding document when save_empty_pages=True."""
     from unittest.mock import patch
 
     import fitz
@@ -565,14 +565,14 @@ def test_empty_pages_saved(tmp_path):
     reconstructed_pdf = os.path.join(target_dir, "Rezept__Mustermann.pdf")
     assert os.path.exists(reconstructed_pdf)
 
-    # Das rekonstruierte PDF sollte alle 3 Seiten behalten haben
+    # Reconstructed PDF should have retained all 3 pages
     doc_check = fitz.open(reconstructed_pdf)
     assert len(doc_check) == 3
     doc_check.close()
 
 
 def test_pure_majority_voting_multipage():
-    """Testet das gewichtete Fuzzy-Voting mit Konsens-Score K(f) über alle Seiten und Stufen."""
+    """Tests weighted fuzzy voting with consensus score K(f) across pages and tiers."""
     from unittest.mock import MagicMock
 
     from core.config import AppConfig
@@ -581,7 +581,7 @@ def test_pure_majority_voting_multipage():
     config = AppConfig()
     pipeline = ExtractionPipeline(config, MagicMock(), MagicMock())
 
-    # 2 Seiten Gruppe
+    # 2 pages group
     group_pages = [
         {
             "page_num": 1,
@@ -608,18 +608,18 @@ def test_pure_majority_voting_multipage():
 
     res = pipeline.process_page_group("Fußscan", group_pages)
     assert res is not None
-    # Early-Stop löst nach Stufe 1 aus, da alle Felder K >= 0.85 haben
+    # Early-stop triggers after Tier 1 since all fields have K >= 0.85
     assert pipeline.llm_extractor.extract_data_from_images_with_type.call_count == 2
     assert res.get("Datum") == "2026-04-10"
     assert res.get("Nachname") == "Gerbig"
-    # Neues Feature: Confidence-Metriken sind vorhanden und voll
+    # Confidence metrics are fully populated
     conf = res.get("_confidence", {})
     assert "Datum" in conf
     assert conf["Datum"] == 1.0
 
 
 def test_boolean_field_voting_consensus():
-    """Testet, dass True/False Stimmen korrekt mit Tier-Gewichten verrechnet werden und ein echter bool zurückgegeben wird."""
+    """Tests that boolean votes are weighted correctly across tiers and return a boolean."""
     from core.extraction_pipeline import _evaluate_field_consensus
 
     winner, k_score, counts = _evaluate_field_consensus(
@@ -721,12 +721,12 @@ def test_stage2_target_fields_only():
         }
     ]
 
-    # Stufe 1 liefert Vorname & Nachname sicher aus Vision + Text, Geburtsdatum fehlt ("----")
-    # Stufe 2 wird mit target_fields=["Geburtsdatum"] aufgerufen
+    # Tier 1 reliably provides first and last name from vision + OCR; birth date is missing ("----")
+    # Tier 2 is invoked with target_fields=["Geburtsdatum"]
     recorded_target_fields = []
 
     def mock_run_tier(group_pages, doc_type, dimension, label, target_fields=None):
-        if dimension == config.tier2_dimension:  # Stufe 2
+        if dimension == config.tier2_dimension:  # Tier 2
             recorded_target_fields.append(target_fields)
             return [{"Geburtsdatum": "15.03.1990"}]
         return [{"Vorname": "Max", "Nachname": "Mustermann", "Geburtsdatum": "----"}]
@@ -741,7 +741,7 @@ def test_stage2_target_fields_only():
 
 
 def test_substring_merging_and_ocr_priority():
-    """Testet, dass Teilnamen ('Wannink') mit vollen Doppelnamen ('Bramkamp-Wannink') gemergt werden und der längste Name gewinnt."""
+    """Tests that partial names are merged with compound names, with longest candidate prevailing."""
     from core.extraction_pipeline import _are_similar_or_substring, _cluster_votes
 
     # 1. Test Substring Check

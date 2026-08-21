@@ -4668,4 +4668,96 @@ color: #fff;
     text-align: center;
 }
 
+/* ═══════════════════════════════════════════════════════════
+   SKILL STEPS & COPILOT UTILITY CLASSES
+   ═══════════════════════════════════════════════════════════ */
+.step-empty-box {
+    padding: 32px 20px;
+    text-align: center;
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 8px;
+    border: 1px dashed var(--border);
+}
+
+.step-empty-icon {
+    font-size: 2rem;
+    margin-bottom: 8px;
+}
+
+.step-empty-title {
+    font-weight: 700;
+    color: #f1f5f9;
+    font-size: 0.95rem;
+    margin-bottom: 4px;
+}
+
+.step-empty-desc {
+    font-size: 0.8rem;
+    color: #94a3b8;
+    max-width: 460px;
+    margin: 0 auto 16px auto;
+}
+
+.step-empty-task-notice {
+    font-size: 0.76rem;
+    color: #64748b;
+    font-style: italic;
+    padding: 6px;
+}
+
+.step-action-desc-col {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
+.btn-danger-icon {
+    color: var(--danger, #ef4444);
+}
+
+.btn-bold {
+    font-weight: 700;
+}
+
+.chat-timestamp-user {
+    font-size: 0.68rem;
+    color: rgba(255, 255, 255, 0.7);
+    text-align: right;
+    margin-top: 3px;
+}
+
+.chat-timestamp-assistant {
+    font-size: 0.68rem;
+    color: var(--text-dim, rgba(255, 255, 255, 0.4));
+    text-align: right;
+    margin-top: 3px;
+}
+
+.skills-spinner-box {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.skills-spinner-sm {
+    width: 14px;
+    height: 14px;
+    border-width: 2px;
+}
+
+.path-picker-error {
+    color: #ef4444;
+}
+
+.inbox-sentinel-loader {
+    grid-column: 1 / -1;
+    height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-muted);
+    font-size: 0.72rem;
+}
+
+
 
