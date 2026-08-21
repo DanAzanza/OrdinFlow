@@ -9,8 +9,9 @@
 
 > ⚠️ **Work in Progress (WIP):** This project is actively under development and may change significantly over time.
 
-> **Autonomous Multimodal Document Management, Visual Information Extraction & Agentic RPA Orchestrator**
-> *100% On-Premise · Air-Gapped & GDPR-Compliant · Dual-Engine Text & Vision Fusion · ~98% Empirical Accuracy*
+> **Autonomous Multimodal Document Management, Visual Information Extraction & Agentic RPA Orchestrator**  
+> *100% On-Premise · Air-Gapped & GDPR-Compliant · Dual-Engine Text & Vision Fusion · ~98% Empirical Accuracy*  
+> **Author & Engineering:** Designed & engineered by **Daniel Azanza Hartmann**.
 
 ---
 
