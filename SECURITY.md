@@ -2,7 +2,7 @@
 
 ## Supported Versions
 
-We actively maintain and provide security updates for the latest versions of OrdinFlow:
+OrdinFlow is actively maintained and receives security updates for the latest versions:
 
 | Version | Supported          |
 | ------- | ------------------ |
@@ -23,13 +23,14 @@ OrdinFlow is engineered for **100% on-premise, air-gapped operation**:
 
 ## 🚨 Reporting a Vulnerability
 
-We take the security and privacy of OrdinFlow very seriously. If you discover a security vulnerability or sensitive data leak risk, please report it responsibly:
+Security and privacy in OrdinFlow are taken very seriously. If you discover a security vulnerability or sensitive data leak risk, please report it responsibly:
 
 1. **Do NOT open a public GitHub issue** for undisclosed security vulnerabilities.
-2. Instead, submit a private advisory through [GitHub Security Advisories](https://github.com/DanAzanza/OrdinFlow/security/advisories/new) or contact the project maintainer via [LinkedIn](https://www.linkedin.com/in/daniel-azanza-hartmann-8a7b59384/).
+2. Instead, submit a private advisory through [GitHub Security Advisories](https://github.com/DanAzanza/OrdinFlow/security/advisories/new) or contact the maintainer via [LinkedIn](https://www.linkedin.com/in/daniel-azanza-hartmann-8a7b59384/).
 3. Please include:
    - A detailed description of the vulnerability.
    - Steps or a minimal proof of concept to reproduce the issue.
    - Potential impact and affected components.
 
-We will acknowledge receipt within 48 hours and work with you to release a patch promptly.
+Reports will be acknowledged within 48 hours to release a patch promptly.
+

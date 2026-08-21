@@ -1,5 +1,5 @@
 name: 🐛 Bug Report
-description: Create a report to help us reproduce and fix an issue
+description: Create a report to help reproduce and fix an issue
 title: "[Bug]: "
 labels: ["bug"]
 body:
@@ -12,7 +12,7 @@ body:
     attributes:
       label: What happened?
       description: A clear and concise description of the unexpected behavior.
-      placeholder: Tell us what went wrong...
+      placeholder: Describe what went wrong...
     validations:
       required: true
   - type: textarea
