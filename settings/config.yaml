@@ -6,11 +6,13 @@ mmproj_path: models/mmproj-BF16.gguf
 n_gpu_layers: -1
 n_batch: 2048
 n_ubatch: 512
+n_ctx: 16384
 flash_attn: true
-max_dimension: 2048
+n_threads: 0
+max_dimension: 1008
 crop_padding: 5
 white_border: 8
-contrast_limit: 1
+contrast_limit: 1.0
 dashboard_port: 8080
 crop_edge_threshold: 45
 min_contour_area: 10
@@ -18,19 +20,11 @@ classify_dimension: 1008
 tier1_dimension: 1260
 tier2_dimension: 1512
 tier3_dimension: 1764
-vision_api_timeout: 120
+vision_api_timeout: 120.0
 vision_api_retries: 3
 base_dir: .
-watch_dir: C:\OrdinFlowTest\Inbox
-target_base_dir: C:\OrdinFlowTest\Cases
+watch_dir: ''
+target_base_dir: C:\Users\danie\AppData\Local\Temp\tmptkajrkoo\Cases
 folder_delimiter: __
-folder_structure:
-- '{Datum}'
-- '{Produkt}'
-- '{Nachname}'
-- '{Vorname}'
-- '{Titel}'
-match_folder_by:
-- Nachname
-- Vorname
-- Titel
+folder_structure: []
+match_folder_by: []

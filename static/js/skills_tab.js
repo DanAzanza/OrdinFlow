@@ -4,32 +4,19 @@
 
 let selectedSkillId = null;
 let currentEditingSkill = null;
+let currentEditingSkillOriginalName = null;
 let activeInputField = null;
 let isNewSkillCreation = false;
 
-function slugifySkillName(name) {
-	if (!name) return "";
-	return name
-		.toLowerCase()
-		.trim()
-		.replace(/[^a-z0-9_]+/g, "_")
-		.replace(/^_+|_+$/g, "");
-}
+const FORBIDDEN_NAME_CHARS_REGEX = /[\\/:*?"<>|]/;
 
 function onSkillNameInput(val) {
 	const headerTitle = document.getElementById("skillHeaderTitle");
 	if (headerTitle) {
 		headerTitle.textContent = val.trim() || "Untitled Skill";
 	}
-	if (isNewSkillCreation) {
-		const slug = slugifySkillName(val) || "custom_skill";
-		const idInput = document.getElementById("editorSkillId");
-		if (idInput) {
-			idInput.value = slug;
-		}
-		if (currentEditingSkill) {
-			currentEditingSkill.id = slug;
-		}
+	if (currentEditingSkill) {
+		currentEditingSkill.name = val.trim();
 	}
 }
 
@@ -200,8 +187,7 @@ async function selectSkill(skillId) {
 	const headerTitle = document.getElementById("skillHeaderTitle");
 	if (headerTitle) headerTitle.textContent = skillObj.name || skillObj.id;
 
-	document.getElementById("editorSkillId").value = skillObj.id || "";
-	document.getElementById("editorSkillName").value = skillObj.name || "";
+	document.getElementById("editorSkillName").value = skillObj.name || skillObj.id || "";
 	document.getElementById("editorSkillDesc").value = skillObj.description || "";
 	document.getElementById("editorSkillType").value = skillObj.type || "export";
 
@@ -231,70 +217,8 @@ async function selectSkill(skillId) {
 
 	onSkillTypeChange(skillObj.type || "export");
 	renderEditorSteps();
-	renderVariableBadges();
+	switchSkillView("visual");
 	renderQueueInspector();
-}
-
-function renderVariableBadges() {
-	const container = document.getElementById("variableBadges");
-	if (!container) return;
-
-	const caseVars = new Set();
-	const extractedVars = new Set();
-	const systemVars = new Set(["{document_fullpath}"]);
-
-	// Extract variables from configured folder structure (e.g. {Datum}, {Produkt}, {Person})
-	if (state.config && Array.isArray(state.config.folder_structure)) {
-		state.config.folder_structure.forEach((part) => {
-			const cleaned = String(part).trim();
-			if (cleaned) {
-				const formatted = cleaned.startsWith("{") && cleaned.endsWith("}") ? cleaned : `{${cleaned}}`;
-				caseVars.add(formatted);
-			}
-		});
-	}
-
-	// Extract variables from configured document extraction fields
-	if (state.config && state.config.document_types) {
-		Object.values(state.config.document_types).forEach((doc) => {
-			if (doc && doc.extraction_fields) {
-				Object.keys(doc.extraction_fields).forEach((f) => {
-					extractedVars.add(`{${f}}`);
-				});
-			}
-		});
-	}
-
-	let html = "";
-
-	if (caseVars.size > 0) {
-		html += `<div class="variable-chip-group">
-			<span class="variable-group-label">📁 Case / Folder:</span>
-			<div class="variable-chip-list">
-				${Array.from(caseVars).map((v) => `<span class="badge variable-badge variable-badge-case" onclick="insertVariable('${escapeHtml(v)}')" title="Insert ${escapeHtml(v)} into active field">${escapeHtml(v)}</span>`).join("")}
-			</div>
-		</div>`;
-	}
-
-	if (extractedVars.size > 0) {
-		html += `<div class="variable-chip-group">
-			<span class="variable-group-label">📑 Extracted Fields:</span>
-			<div class="variable-chip-list">
-				${Array.from(extractedVars).map((v) => `<span class="badge variable-badge variable-badge-extracted" onclick="insertVariable('${escapeHtml(v)}')" title="Insert ${escapeHtml(v)} into active field">${escapeHtml(v)}</span>`).join("")}
-			</div>
-		</div>`;
-	}
-
-	if (systemVars.size > 0) {
-		html += `<div class="variable-chip-group">
-			<span class="variable-group-label">⚙️ System Paths:</span>
-			<div class="variable-chip-list">
-				${Array.from(systemVars).map((v) => `<span class="badge variable-badge variable-badge-system" onclick="insertVariable('${escapeHtml(v)}')" title="Insert ${escapeHtml(v)} into active field">${escapeHtml(v)}</span>`).join("")}
-			</div>
-		</div>`;
-	}
-
-	container.innerHTML = html || `<span class="variables-empty-note">No variables configured.</span>`;
 }
 
 function onSkillTypeChange(type) {
@@ -449,8 +373,9 @@ function createNewSkill(skillType = "export", copyDefaultDocs = true) {
 		currentEditingTasks = JSON.parse(JSON.stringify(newSkill.tasks));
 	}
 
-	selectedSkillId = newSkill.id;
+	selectedSkillId = newSkill.name;
 	currentEditingSkill = newSkill;
+	currentEditingSkillOriginalName = null;
 
 	renderSkillsSidebar(state.skills || []);
 
@@ -462,7 +387,6 @@ function createNewSkill(skillType = "export", copyDefaultDocs = true) {
 	const headerTitle = document.getElementById("skillHeaderTitle");
 	if (headerTitle) headerTitle.textContent = newSkill.name;
 
-	document.getElementById("editorSkillId").value = newSkill.id;
 	document.getElementById("editorSkillName").value = newSkill.name;
 	document.getElementById("editorSkillDesc").value = "";
 	document.getElementById("editorSkillType").value = newSkill.type;
@@ -491,7 +415,7 @@ function createNewSkill(skillType = "export", copyDefaultDocs = true) {
 	} else if (typeof renderDocTypesSidebar === "function") {
 		renderDocTypesSidebar();
 	}
-	renderVariableBadges();
+	switchSkillView("visual");
 	renderQueueInspector();
 
 	// Focus and select skill name input so the user can type immediately
@@ -502,69 +426,59 @@ function createNewSkill(skillType = "export", copyDefaultDocs = true) {
 	}
 }
 
-function insertVariable(varName) {
-	if (activeInputField) {
-		const start = activeInputField.selectionStart || 0;
-		const end = activeInputField.selectionEnd || 0;
-		const val = activeInputField.value;
-		activeInputField.value = val.substring(0, start) + varName + val.substring(end);
-		activeInputField.focus();
-		activeInputField.dispatchEvent(new Event("change"));
+// ═══════════════════════════════════════════════════════════
+// SKILL VIEW MODE & YAML EXPERT MODE
+// ═══════════════════════════════════════════════════════════
+
+let currentSkillViewMode = "visual";
+
+function switchSkillView(mode) {
+	currentSkillViewMode = mode;
+	const visualSection = document.getElementById("skillVisualSection");
+	const yamlSection = document.getElementById("skillYamlSection");
+	const btnVisual = document.getElementById("btnSkillViewVisual");
+	const btnYaml = document.getElementById("btnSkillViewYaml");
+
+	if (mode === "yaml") {
+		if (visualSection) visualSection.style.display = "none";
+		if (yamlSection) yamlSection.style.display = "block";
+		if (btnVisual) btnVisual.classList.remove("active");
+		if (btnYaml) btnYaml.classList.add("active");
+		syncYamlFromVisual();
 	} else {
-		toast("Click into an input field first to insert a variable.", "info");
+		if (visualSection) visualSection.style.display = "block";
+		if (yamlSection) yamlSection.style.display = "none";
+		if (btnVisual) btnVisual.classList.add("active");
+		if (btnYaml) btnYaml.classList.remove("active");
 	}
 }
 
-// Step rendering, accordion cards & step operations are modularized in skills_steps.js
-
-async function saveSkillFromEditor() {
-	let skill_id = document.getElementById("editorSkillId").value.trim();
-	const name = document.getElementById("editorSkillName").value.trim();
-	const type = document.getElementById("editorSkillType").value;
-	const description = document.getElementById("editorSkillDesc").value.trim();
-	const allowedExtsRaw = (document.getElementById("editorSkillAllowedExtensions") || {}).value || "";
-	const allowedExtensions = allowedExtsRaw
-		? allowedExtsRaw
-				.split(",")
-				.map((s) => s.trim().toLowerCase())
-				.filter(Boolean)
-				.map((s) => (s.startsWith(".") ? s : "." + s))
-		: [".pdf", ".png", ".jpg", ".jpeg", ".tif", ".tiff"];
-
-	const flatSteps = typeof getFlattenedSteps === "function" ? getFlattenedSteps() : [];
-	const explicitTargetWin = (document.getElementById("editorSkillTargetWindow")?.value || "").trim();
-	const firstFocusWin = (flatSteps.find((s) => s.action_type === "FOCUS_WINDOW")?.window_title || "").trim();
-	const target_window = explicitTargetWin || firstFocusWin || "Remote Desktop*";
-	const rdp_path_prefix = (document.getElementById("editorSkillRdpPrefix")?.value || "").trim() || "\\\\tsclient\\C";
-	const docTypesRaw = (document.getElementById("editorSkillDocTypes")?.value || "*").trim();
-	const docTypes = docTypesRaw
-		? docTypesRaw
-				.split(",")
-				.map((s) => s.trim())
-				.filter(Boolean)
-		: ["*"];
-	const uploadMode = document.getElementById("editorSkillUploadMode")?.value || "single_file";
-
-	if (!name) {
-		toast("Please enter a skill name.", "error");
-		return;
-	}
-
-	if (!skill_id) {
-		skill_id = slugifySkillName(name) || "custom_skill";
-		document.getElementById("editorSkillId").value = skill_id;
-	}
+function getSkillPayloadFromForm() {
+	const name = (document.getElementById("editorSkillName")?.value || "").trim() || "Untitled Skill";
+	const type = document.getElementById("editorSkillType")?.value || "export";
+	const description = (document.getElementById("editorSkillDesc")?.value || "").trim();
 
 	const payload = {
-		id: skill_id,
+		id: name,
 		name: name,
 		type: type,
 		description: description,
 		enabled: true,
 	};
 
+	if (currentEditingSkillOriginalName && currentEditingSkillOriginalName !== name) {
+		payload.original_name = currentEditingSkillOriginalName;
+	}
+
 	if (type === "import") {
-		payload.allowed_extensions = allowedExtensions;
+		const allowedExtsRaw = (document.getElementById("editorSkillAllowedExtensions") || {}).value || "";
+		payload.allowed_extensions = allowedExtsRaw
+			? allowedExtsRaw
+					.split(",")
+					.map((s) => s.trim().toLowerCase())
+					.filter(Boolean)
+					.map((s) => (s.startsWith(".") ? s : "." + s))
+			: [".pdf", ".png", ".jpg", ".jpeg", ".tif", ".tiff"];
 		payload.split_multi_documents = document.getElementById("editorSkillSplitMulti")
 			? document.getElementById("editorSkillSplitMulti").checked
 			: true;
@@ -573,12 +487,191 @@ async function saveSkillFromEditor() {
 			: false;
 		payload.document_types = state.editingDocTypes || {};
 	} else {
-		payload.target_window = target_window;
-		payload.rdp_path_prefix = rdp_path_prefix;
-		payload.document_types = docTypes;
-		payload.upload_mode = uploadMode;
+		const explicitTargetWin = (document.getElementById("editorSkillTargetWindow")?.value || "").trim();
+		const flatSteps = typeof getFlattenedSteps === "function" ? getFlattenedSteps() : [];
+		const firstFocusWin = (flatSteps.find((s) => s.action_type === "FOCUS_WINDOW")?.window_title || "").trim();
+		payload.target_window = explicitTargetWin || firstFocusWin || "Remote Desktop*";
+		payload.rdp_path_prefix = (document.getElementById("editorSkillRdpPrefix")?.value || "").trim() || "\\\\tsclient\\C";
+		const docTypesRaw = (document.getElementById("editorSkillDocTypes")?.value || "*").trim();
+		payload.document_types = docTypesRaw
+			? docTypesRaw
+					.split(",")
+					.map((s) => s.trim())
+					.filter(Boolean)
+			: ["*"];
+		payload.upload_mode = document.getElementById("editorSkillUploadMode")?.value || "single_file";
 		payload.tasks = currentEditingTasks;
 		payload.steps = flatSteps;
+	}
+
+	return payload;
+}
+
+async function syncYamlFromVisual() {
+	const textarea = document.getElementById("skillYamlEditorTextarea");
+	if (!textarea) return;
+	const payload = getSkillPayloadFromForm();
+	try {
+		const res = await api("/api/skills/to_yaml", {
+			method: "POST",
+			body: JSON.stringify({ skill: payload }),
+		});
+		if (res && res.yaml) {
+			textarea.value = res.yaml;
+		}
+	} catch (e) {
+		console.error("Error generating YAML:", e);
+	}
+}
+
+async function applyYamlToVisualAndSave() {
+	const textarea = document.getElementById("skillYamlEditorTextarea");
+	if (!textarea) return;
+	const yamlStr = textarea.value.trim();
+	if (!yamlStr) {
+		toast("YAML content cannot be empty", "error");
+		return;
+	}
+
+	try {
+		const res = await api("/api/skills/from_yaml", {
+			method: "POST",
+			body: JSON.stringify({ yaml: yamlStr }),
+		});
+
+		if (res && res.skill) {
+			const skillObj = res.skill;
+			await api("/api/skills", {
+				method: "POST",
+				body: JSON.stringify(skillObj),
+			});
+
+			selectedSkillId = skillObj.id;
+			isNewSkillCreation = false;
+			await loadSkills(true);
+			await selectSkill(skillObj.id);
+			switchSkillView("visual");
+			toast(`✨ YAML for skill '${skillObj.name || skillObj.id}' saved successfully!`, "success");
+		}
+	} catch (e) {
+		toast("Error applying YAML: " + e.message, "error");
+	}
+}
+
+// ═══════════════════════════════════════════════════════════
+// INLINE AI SKILL COPILOT
+// ═══════════════════════════════════════════════════════════
+
+function setCopilotSuggestion(text) {
+	const input = document.getElementById("skillCopilotPromptInput");
+	if (input) {
+		input.value = text;
+		executeInlineCopilot();
+	}
+}
+
+async function executeInlineCopilot() {
+	const input = document.getElementById("skillCopilotPromptInput");
+	const promptText = (input?.value || "").trim();
+	if (!promptText) {
+		toast("Please enter an instruction for the AI Copilot.", "info");
+		return;
+	}
+
+	const btn = document.getElementById("btnSkillCopilotApply");
+	if (btn) {
+		btn.disabled = true;
+		btn.innerHTML = `<span>⏳</span> Applying...`;
+	}
+
+	const currentPayload = getSkillPayloadFromForm();
+
+	try {
+		const res = await api("/api/skills/ai_modify", {
+			method: "POST",
+			body: JSON.stringify({
+				skill: currentPayload,
+				instruction: promptText,
+			}),
+		});
+
+		if (res && res.skill) {
+			const updated = res.skill;
+			if (updated.name) {
+				const nameEl = document.getElementById("editorSkillName");
+				if (nameEl) nameEl.value = updated.name;
+				onSkillNameInput(updated.name);
+			}
+			if (updated.description) {
+				const descEl = document.getElementById("editorSkillDesc");
+				if (descEl) descEl.value = updated.description;
+			}
+			if (updated.target_window) {
+				const winEl = document.getElementById("editorSkillTargetWindow");
+				if (winEl) winEl.value = updated.target_window;
+			}
+			if (updated.document_types) {
+				const dtEl = document.getElementById("editorSkillDocTypes");
+				if (dtEl) {
+					dtEl.value = Array.isArray(updated.document_types)
+						? updated.document_types.join(", ")
+						: updated.document_types;
+				}
+			}
+			if (Array.isArray(updated.tasks) && updated.tasks.length > 0) {
+				currentEditingTasks = updated.tasks;
+			} else if (Array.isArray(updated.steps) && updated.steps.length > 0) {
+				currentEditingTasks = [
+					{
+						id: "task_1",
+						title: "Task 1: Execute Application Flow",
+						actions: updated.steps,
+					},
+				];
+			}
+
+			if (currentEditingSkill) {
+				Object.assign(currentEditingSkill, updated);
+				currentEditingSkill.tasks = currentEditingTasks;
+			}
+
+			renderEditorSteps();
+			if (input) input.value = "";
+			toast("✨ Skill updated by AI Copilot!", "success");
+		}
+	} catch (e) {
+		console.error("Error executing inline copilot:", e);
+		toast("AI Copilot error: " + e.message, "error");
+	} finally {
+		if (btn) {
+			btn.disabled = false;
+			btn.innerHTML = `<span>✨</span> Apply with AI`;
+		}
+	}
+}
+
+function duplicateCurrentSkill() {
+	const activeName = currentEditingSkill?.name || selectedSkillId;
+	if (activeName) {
+		duplicateSkillById(activeName);
+	}
+}
+
+function deleteCurrentSkill() {
+	const activeName = currentEditingSkill?.name || selectedSkillId;
+	if (activeName) {
+		deleteSkillById(activeName);
+	}
+}
+
+async function saveSkillFromEditor() {
+	const payload = getSkillPayloadFromForm();
+	const name = payload.name;
+	const type = payload.type;
+
+	if (FORBIDDEN_NAME_CHARS_REGEX.test(name)) {
+		toast("Skill name cannot contain path characters (:, /, \\, *, ?, \", <, >, |)", "error");
+		return;
 	}
 
 	try {
@@ -587,18 +680,19 @@ async function saveSkillFromEditor() {
 			body: JSON.stringify(payload),
 		});
 
-		const finalId = (res && res.skill_id) || skill_id;
+		const finalName = (res && (res.name || res.skill_id)) || name;
 
 		if (type === "import" && state.editingDocTypes) {
-			await api(`/api/skills/${encodeURIComponent(finalId)}/documents`, {
+			await api(`/api/skills/${encodeURIComponent(finalName)}/documents`, {
 				method: "PUT",
 				body: JSON.stringify({ document_types: state.editingDocTypes }),
 			});
 		}
 
-		toast("Skill '" + name + "' saved successfully!");
+		toast("Skill '" + finalName + "' saved successfully!");
 		isNewSkillCreation = false;
-		selectedSkillId = finalId;
+		selectedSkillId = finalName;
+		currentEditingSkillOriginalName = finalName;
 		await loadSkills(true);
 	} catch (e) {
 		toast("Error saving skill: " + e.message, "error");
@@ -611,10 +705,10 @@ async function duplicateSkillById(skillId) {
 		const res = await api(`/api/skills/${encodeURIComponent(skillId)}/duplicate`, {
 			method: "POST",
 		});
-		toast("Skill duplicated: " + (res.skill ? res.skill.name : skillId));
-		if (res.skill && res.skill.id) {
-			selectedSkillId = res.skill.id;
-		}
+		const newName = res.skill ? (res.skill.name || res.skill.id) : skillId;
+		toast("Skill duplicated: " + newName);
+		selectedSkillId = newName;
+		currentEditingSkillOriginalName = newName;
 		await loadSkills(true);
 	} catch (e) {
 		toast("Error duplicating skill: " + e.message, "error");
@@ -623,14 +717,15 @@ async function duplicateSkillById(skillId) {
 
 async function deleteSkillById(skillId) {
 	if (!skillId) return;
-	const skillObj = (state.skills || []).find((s) => s.id === skillId);
+	const skillObj = (state.skills || []).find((s) => (s.name === skillId || s.id === skillId));
 	const displayName = skillObj ? skillObj.name : skillId;
 	if (!confirm(`Really delete skill '${displayName}'?`)) return;
 	try {
 		await api(`/api/skills/${encodeURIComponent(skillId)}`, { method: "DELETE" });
 		toast("Skill deleted.");
-		if (selectedSkillId === skillId) {
+		if (selectedSkillId === skillId || selectedSkillId === displayName) {
 			selectedSkillId = null;
+			currentEditingSkillOriginalName = null;
 		}
 		await loadSkills(true);
 	} catch (e) {

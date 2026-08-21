@@ -165,13 +165,13 @@ function renderEditorSteps() {
 
 	if (currentEditingTasks.length === 0) {
 		container.innerHTML = `
-			<div class="step-empty-box" style="padding: 24px; text-align: center; background: rgba(0,0,0,0.2); border-radius: 8px; border: 1px dashed var(--border);">
-				<div style="font-size: 1.8rem; margin-bottom: 8px;">🤖✨</div>
-				<div style="font-weight: 700; color: #f1f5f9; margin-bottom: 4px;">No tasks in this skill yet</div>
-				<div style="font-size: 0.8rem; color: #94a3b8; max-width: 440px; margin: 0 auto 14px auto;">
-					Click <strong>"Start Live Recording"</strong> below to demonstrate the workflow, or add a task manually.
+			<div class="step-empty-box" style="padding: 32px 20px; text-align: center; background: rgba(0,0,0,0.2); border-radius: 8px; border: 1px dashed var(--border);">
+				<div style="font-size: 2rem; margin-bottom: 8px;">🤖✨</div>
+				<div style="font-weight: 700; color: #f1f5f9; font-size: 0.95rem; margin-bottom: 4px;">No actions recorded yet</div>
+				<div style="font-size: 0.8rem; color: #94a3b8; max-width: 460px; margin: 0 auto 16px auto;">
+					Click <strong>"Start Live Recording"</strong> to demonstrate your routine on screen, or use the <strong>AI Skill Copilot</strong> above to generate tasks automatically.
 				</div>
-				<button type="button" class="btn btn-sm btn-danger" onclick="startLiveRecording(currentEditingSkill ? currentEditingSkill.name : 'New Skill')">
+				<button type="button" class="btn btn-sm btn-danger" onclick="startLiveRecording(currentEditingSkill ? currentEditingSkill.name : 'New Skill')" style="font-weight: 700;">
 					<span>🔴</span> Start Live Recording
 				</button>
 			</div>
@@ -195,9 +195,6 @@ function renderEditorSteps() {
 					<div class="task-header-right">
 						<button type="button" class="btn btn-icon btn-sm" onclick="moveTaskUp(${taskIdx})" ${isFirstTask ? "disabled" : ""} title="Move task up">⬆️</button>
 						<button type="button" class="btn btn-icon btn-sm" onclick="moveTaskDown(${taskIdx})" ${isLastTask ? "disabled" : ""} title="Move task down">⬇️</button>
-						<button type="button" class="btn btn-sm btn-secondary" onclick="addEditorAction(${taskIdx})" title="Add action to this task" style="font-size: 0.72rem; padding: 2px 7px;">
-							<span>➕</span> Action
-						</button>
 						<button type="button" class="btn btn-icon btn-sm" onclick="removeEditorTask(${taskIdx})" title="Delete task" style="color: var(--danger);">🗑️</button>
 					</div>
 				</div>
@@ -210,33 +207,26 @@ function renderEditorSteps() {
 									.map((act, actIdx) => {
 										const isFirstAct = actIdx === 0;
 										const isLastAct = actIdx === actions.length - 1;
-										const targetVal = (act.locator && (act.locator.prompt || act.locator.value || act.locator.target)) || "";
+										const badgeStyle = getActionBadgeStyle(act.action_type);
+										let paramText = "";
+										if (act.action_type === "FOCUS_WINDOW") paramText = act.window_title || "Remote Desktop*";
+										else if (act.action_type === "TYPE_FILE_PATH") paramText = act.file_path || "{document_fullpath}";
+										else if (act.action_type === "TYPE_TEXT") paramText = act.text || "";
+										else if (act.action_type === "CALL_SKILL") paramText = `Skill: ${act.skill_id || ""}`;
+										else if (act.locator) paramText = act.locator.prompt || act.locator.value || act.locator.target || "";
 
 										return `
-										<div class="action-row-item" id="actionItem_${act.id || actIdx}" style="display: flex; gap: 8px; align-items: center; padding: 8px 10px; background: rgba(0,0,0,0.25); border-radius: 6px; margin-bottom: 6px; border: 1px solid rgba(255,255,255,0.06);">
-											<select class="doc-editor-input" style="width: 150px; flex-shrink: 0; padding: 4px 6px; font-size: 0.78rem;" onchange="currentEditingTasks[${taskIdx}].actions[${actIdx}].action_type = this.value; renderEditorSteps();">
-												<option value="CLICK" ${act.action_type === "CLICK" ? "selected" : ""}>🎯 Click (Button / Element)</option>
-												<option value="DOUBLE_CLICK" ${act.action_type === "DOUBLE_CLICK" ? "selected" : ""}>🖱️ Double Click</option>
-												<option value="TYPE_FILE_PATH" ${act.action_type === "TYPE_FILE_PATH" ? "selected" : ""}>📄 File Path</option>
-												<option value="TYPE_TEXT" ${act.action_type === "TYPE_TEXT" ? "selected" : ""}>⌨️ Text / Variable</option>
-												<option value="FOCUS_WINDOW" ${act.action_type === "FOCUS_WINDOW" ? "selected" : ""}>🪟 Focus Window</option>
-												<option value="VERIFY_SCREEN" ${act.action_type === "VERIFY_SCREEN" ? "selected" : ""}>👁️ Verify Screen</option>
-												<option value="CALL_SKILL" ${act.action_type === "CALL_SKILL" ? "selected" : ""}>⚡ Call Sub-Skill</option>
-											</select>
-
-											${
-												act.action_type === "FOCUS_WINDOW"
-													? `<input type="text" class="doc-editor-input" style="flex: 1; padding: 4px 8px; font-size: 0.8rem;" value="${escapeHtml(act.window_title || "Remote Desktop*")}" placeholder="Window title (e.g. CorelDRAW*)" onchange="currentEditingTasks[${taskIdx}].actions[${actIdx}].window_title = this.value;" />`
-													: act.action_type === "TYPE_FILE_PATH"
-													? `<input type="text" class="doc-editor-input" style="flex: 1; padding: 4px 8px; font-size: 0.8rem;" value="${escapeHtml(act.file_path || "{document_fullpath}")}" placeholder="File path (e.g. {document_fullpath})" onchange="currentEditingTasks[${taskIdx}].actions[${actIdx}].file_path = this.value;" />`
-													: act.action_type === "TYPE_TEXT"
-													? `<input type="text" class="doc-editor-input" style="flex: 1; padding: 4px 8px; font-size: 0.8rem;" value="${escapeHtml(act.text || "")}" placeholder="Text to type (e.g. {Nachname})" onchange="currentEditingTasks[${taskIdx}].actions[${actIdx}].text = this.value;" />`
-													: `<input type="text" class="doc-editor-input" style="flex: 1; padding: 4px 8px; font-size: 0.8rem;" value="${escapeHtml(targetVal)}" placeholder="Button label or element name (e.g. File, Save)" onchange="if(!currentEditingTasks[${taskIdx}].actions[${actIdx}].locator) currentEditingTasks[${taskIdx}].actions[${actIdx}].locator={}; currentEditingTasks[${taskIdx}].actions[${actIdx}].locator.prompt = this.value; currentEditingTasks[${taskIdx}].actions[${actIdx}].locator.type = 'auto';" />`
-											}
-
-											<input type="text" class="doc-editor-input" style="width: 170px; flex-shrink: 0; padding: 4px 8px; font-size: 0.78rem; opacity: 0.8;" value="${escapeHtml(act.description || "")}" placeholder="Description..." onchange="currentEditingTasks[${taskIdx}].actions[${actIdx}].description = this.value;" />
-
-											<div class="action-item-right" style="display: flex; gap: 4px; flex-shrink: 0;">
+										<div class="action-row-item" id="actionItem_${act.id || actIdx}">
+											<div class="action-item-left">
+												<span class="action-type-pill ${badgeStyle.badgeClass || "action-pill-focus"}">
+													${badgeStyle.label || act.action_type}
+												</span>
+												<div style="display: flex; flex-direction: column; min-width: 0;">
+													<span class="action-item-desc">${escapeHtml(act.description || act.action_type || "Action")}</span>
+													${paramText ? `<span class="action-item-param" title="${escapeHtml(paramText)}">${escapeHtml(paramText)}</span>` : ""}
+												</div>
+											</div>
+											<div class="action-item-right">
 												<button type="button" class="btn btn-icon btn-sm" onclick="moveActionUp(${taskIdx}, ${actIdx})" ${isFirstAct ? "disabled" : ""} title="Move up">⬆️</button>
 												<button type="button" class="btn btn-icon btn-sm" onclick="moveActionDown(${taskIdx}, ${actIdx})" ${isLastAct ? "disabled" : ""} title="Move down">⬇️</button>
 												<button type="button" class="btn btn-icon btn-sm" onclick="removeEditorAction(${taskIdx}, ${actIdx})" title="Remove action" style="color: var(--danger);">🗑️</button>

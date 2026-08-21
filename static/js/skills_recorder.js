@@ -296,14 +296,10 @@ function applyAiSynthesisToEditor() {
 		return;
 	}
 
-	// 1. Skill Name & ID
+	// 1. Skill Name
 	const name = (document.getElementById("aiSynthesisSkillName")?.value || "").trim() || currentSynthesisData.name || "New Skill";
 	const nameEl = document.getElementById("editorSkillName");
 	if (nameEl) nameEl.value = name;
-
-	const newSkillId = (typeof slugifySkillName === "function" ? slugifySkillName(name) : "custom_skill") || "new_recorded_skill";
-	const idEl = document.getElementById("editorSkillId");
-	if (idEl) idEl.value = newSkillId;
 
 	// 2. Set Skill Type to Export
 	const typeEl = document.getElementById("editorSkillType");

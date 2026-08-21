@@ -128,19 +128,18 @@ def test_api_skills_crud(client):
     res_save = client.post("/api/skills", json=new_skill)
     assert res_save.status_code == 200
     assert res_save.get_json()["status"] == "ok"
-    assert res_save.get_json()["skill_id"] == "test_api_skill_1"
+    assert res_save.get_json()["name"] == "API Test Skill"
 
     # 3. POST /api/skills/<id>/duplicate (Duplizieren)
-    res_dup = client.post("/api/skills/test_api_skill_1/duplicate")
+    res_dup = client.post("/api/skills/API Test Skill/duplicate")
     assert res_dup.status_code == 200
     dup_skill = res_dup.get_json()["skill"]
-    assert dup_skill["id"].startswith("test_api_skill_1_copy_")
-    assert "Copy" in dup_skill["name"] or "Kopie" in dup_skill["name"]
+    assert "Copy" in dup_skill["name"]
 
     # 4. DELETE /api/skills/<id> (Löschen)
-    res_del1 = client.delete("/api/skills/test_api_skill_1")
+    res_del1 = client.delete("/api/skills/API Test Skill")
     assert res_del1.status_code == 200
-    res_del2 = client.delete(f"/api/skills/{dup_skill['id']}")
+    res_del2 = client.delete(f"/api/skills/{dup_skill['name']}")
     assert res_del2.status_code == 200
 
 
