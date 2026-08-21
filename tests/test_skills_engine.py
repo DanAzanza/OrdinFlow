@@ -114,33 +114,37 @@ def test_skill_manager_name_validation_and_cascading_rename(temp_skills_dir):
     # 4. Perform cascading rename
     from routes.state import DashboardState
     from core.config import AppConfig
-    cfg = AppConfig()
+    cfg = AppConfig(base_dir=temp_skills_dir)
     cfg.target_base_dir = cases_dir
     cfg.default_export_skill = "Export Routine"
     cfg.document_types = {"Rezept": {"export_skill": "Export Routine"}}
-    DashboardState.config = cfg
+    orig_cfg = DashboardState.config
+    try:
+        DashboardState.config = cfg
 
-    renamed = mgr.rename_skill("Export Routine", "Sanivision Export")
-    assert renamed == "Sanivision Export"
-    assert not os.path.exists(os.path.join(temp_skills_dir, "Export Routine.yaml"))
-    assert os.path.exists(os.path.join(temp_skills_dir, "Sanivision Export.yaml"))
+        renamed = mgr.rename_skill("Export Routine", "Sanivision Export")
+        assert renamed == "Sanivision Export"
+        assert not os.path.exists(os.path.join(temp_skills_dir, "Export Routine.yaml"))
+        assert os.path.exists(os.path.join(temp_skills_dir, "Sanivision Export.yaml"))
 
-    # Verify skill B was cascaded
-    loaded_b = mgr.get_skill("Master Workflow")
-    assert loaded_b is not None
-    assert loaded_b["tasks"][0]["actions"][0]["skill_id"] == "Sanivision Export"
-    assert loaded_b["document_types"]["Rezept"]["export_skill"] == "Sanivision Export"
+        # Verify skill B was cascaded
+        loaded_b = mgr.get_skill("Master Workflow")
+        assert loaded_b is not None
+        assert loaded_b["tasks"][0]["actions"][0]["skill_id"] == "Sanivision Export"
+        assert loaded_b["document_types"]["Rezept"]["export_skill"] == "Sanivision Export"
 
-    # Verify config was cascaded
-    assert DashboardState.config.default_export_skill == "Sanivision Export"
-    assert DashboardState.config.document_types["Rezept"]["export_skill"] == "Sanivision Export"
+        # Verify config was cascaded
+        assert DashboardState.config.default_export_skill == "Sanivision Export"
+        assert DashboardState.config.document_types["Rezept"]["export_skill"] == "Sanivision Export"
 
-    # Verify .meta file was cascaded
-    with open(meta_path, "r", encoding="utf-8") as f:
-        updated_meta = json.load(f)
-    assert "Sanivision Export" in updated_meta["executed_skills"]
-    assert "Export Routine" not in updated_meta["executed_skills"]
-    assert "Sanivision Export" in updated_meta["skill_execution_history"]
+        # Verify .meta file was cascaded
+        with open(meta_path, "r", encoding="utf-8") as f:
+            updated_meta = json.load(f)
+        assert "Sanivision Export" in updated_meta["executed_skills"]
+        assert "Export Routine" not in updated_meta["executed_skills"]
+        assert "Sanivision Export" in updated_meta["skill_execution_history"]
+    finally:
+        DashboardState.config = orig_cfg
 
 
 

@@ -4,15 +4,16 @@
 
 function docEmoji(type) {
 	if (!type || typeof type !== "string") return "📄";
-	if (!state.config || !state.config.document_types) return "📄";
-	const docTypes = state.config.document_types;
+	const docTypes = typeof getImportSkillsDocTypes === "function"
+		? getImportSkillsDocTypes()
+		: (state.config && state.config.document_types) || {};
 	const matchKey = Object.keys(docTypes).find(
 		(k) =>
 			k.toLowerCase() === type.toLowerCase() ||
 			type.toLowerCase().includes(k.toLowerCase()) ||
 			k.toLowerCase().includes(type.toLowerCase()),
 	);
-	if (matchKey && docTypes[matchKey].emoji) {
+	if (matchKey && docTypes[matchKey] && docTypes[matchKey].emoji) {
 		return docTypes[matchKey].emoji;
 	}
 	return "📄";
@@ -20,8 +21,9 @@ function docEmoji(type) {
 
 function docLabel(type) {
 	if (!type || typeof type !== "string") return type || "";
-	if (!state.config || !state.config.document_types) return type;
-	const docTypes = state.config.document_types;
+	const docTypes = typeof getImportSkillsDocTypes === "function"
+		? getImportSkillsDocTypes()
+		: (state.config && state.config.document_types) || {};
 	const matchKey = Object.keys(docTypes).find(
 		(k) =>
 			k.toLowerCase() === type.toLowerCase() ||
@@ -67,6 +69,7 @@ async function fetchCases() {
 		}
 
 		renderCases();
+		if (typeof renderLegend === "function") renderLegend();
 		bindDetailEvents();
 	} catch (e) {
 		console.error("Error fetching Cases:", e);
@@ -178,13 +181,14 @@ function renderCases() {
 	const casesWrap = document.querySelector("#tab-cases .table-wrap");
 	if (casesWrap) casesWrap.style.display = data.length ? "" : "none";
 
+	const docTypesMap = typeof getImportSkillsDocTypes === "function"
+		? getImportSkillsDocTypes()
+		: (state.config && state.config.document_types) || {};
+	const docKeys = Object.keys(docTypesMap);
+
 	let html = "";
 	data.forEach((a, i) => {
 		const isExpanded = state.expandedFolder === a.folder;
-		const docKeys =
-			state.config && state.config.document_types
-				? Object.keys(state.config.document_types)
-				: [];
 		const sortedTypes = (a.doc_types || []).slice().sort((x, y) => {
 			const ix = docKeys.findIndex(
 				(k) => k.toLowerCase() === (x || "").toLowerCase(),

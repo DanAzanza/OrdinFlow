@@ -100,14 +100,6 @@ def api_cases():
                     and not fname.lower().endswith(".meta")
                 ):
                     files.append(fname)
-                    parts = fname.split(delimiter)
-                    if len(parts) >= 1:
-                        for dt in parts[0].split("+"):
-                            dt_clean = dt.strip()
-                            if dt_clean:
-                                doc_types_set.add(dt_clean)
-
-        doc_types = sorted(doc_types_set)
 
         # Calculate granular multi-skill execution status
         folder_executed_skills: set[str] = set()
@@ -124,6 +116,17 @@ def api_cases():
                 parts = fname.split("__")
                 if len(parts) >= 2:
                     f_doc_type = parts[0]
+
+            if f_doc_type == "UNKNOWN" and delimiter and delimiter in fname:
+                parts = fname.split(delimiter)
+                if len(parts) >= 1:
+                    f_doc_type = parts[0]
+
+            if f_doc_type and f_doc_type != "UNKNOWN":
+                for dt in f_doc_type.split("+"):
+                    dt_clean = dt.strip()
+                    if dt_clean:
+                        doc_types_set.add(dt_clean)
 
             executed_skills = f_meta.get("executed_skills", [])
             if not isinstance(executed_skills, list):
@@ -154,6 +157,8 @@ def api_cases():
             export_status = "partially_exported"
         else:
             export_status = "approved"
+
+        doc_types = sorted(doc_types_set)
 
         result.append(
             {

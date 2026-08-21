@@ -207,18 +207,136 @@ async function selectSkill(skillId) {
 	document.getElementById("editorSkillTargetWindow").value = skillObj.target_window || "Remote Desktop*";
 	document.getElementById("editorSkillRdpPrefix").value = skillObj.rdp_path_prefix || "\\\\tsclient\\C";
 
-	const docTypesVal = skillObj.document_types
-		? Array.isArray(skillObj.document_types)
-			? skillObj.document_types.join(", ")
-			: skillObj.document_types
-		: "*";
-	document.getElementById("editorSkillDocTypes").value = docTypesVal;
-	document.getElementById("editorSkillUploadMode").value = skillObj.upload_mode || "single_file";
+	if (Array.isArray(skillObj.document_types)) {
+		currentSkillDocTypes = skillObj.document_types.filter((t) => t && t !== "*");
+	} else if (typeof skillObj.document_types === "string" && skillObj.document_types.trim()) {
+		currentSkillDocTypes = skillObj.document_types
+			.split(",")
+			.map((s) => s.trim())
+			.filter((s) => s && s !== "*");
+	} else {
+		currentSkillDocTypes = [];
+	}
+	renderSkillDocTypesTags();
 
 	onSkillTypeChange(skillObj.type || "export");
 	renderEditorSteps();
 	switchSkillView("visual");
 	renderQueueInspector();
+}
+
+/* ═══════════════════════════════════════════════════════════
+   ALLOWED DOCUMENT TYPES (Integrated Tokenfield & Plus Menu)
+   ═══════════════════════════════════════════════════════════ */
+
+let currentSkillDocTypes = [];
+
+function getImportSkillDocTypesMap() {
+	const map = {};
+	if (state.config && state.config.document_types) {
+		for (const [name, cfg] of Object.entries(state.config.document_types)) {
+			map[name] = cfg || {};
+		}
+	}
+	if (Array.isArray(state.skills)) {
+		for (const s of state.skills) {
+			if (s.type === "import" && s.document_types && typeof s.document_types === "object") {
+				for (const [name, cfg] of Object.entries(s.document_types)) {
+					if (!map[name]) {
+						map[name] = cfg || {};
+					}
+				}
+			}
+		}
+	}
+	return map;
+}
+
+function renderSkillDocTypesTags() {
+	const container = document.getElementById("editorSkillDocTypesTags");
+	if (!container) return;
+
+	container.innerHTML = "";
+	const knownMap = getImportSkillDocTypesMap();
+
+	// Clean out any legacy wildcard values
+	currentSkillDocTypes = (currentSkillDocTypes || []).filter((t) => t && t !== "*");
+
+	if (currentSkillDocTypes.length === 0) {
+		const placeholder = document.createElement("span");
+		placeholder.className = "skill-doctype-empty-placeholder";
+		placeholder.textContent = "All documents (no filter)";
+		container.appendChild(placeholder);
+	} else {
+		for (const dt of currentSkillDocTypes) {
+			const emoji = knownMap[dt]?.emoji || "📄";
+			const chip = document.createElement("span");
+			chip.className = "skill-doctype-chip";
+			chip.innerHTML = `<span>${escapeHtml(emoji)}</span> <span>${escapeHtml(dt)}</span> <button type="button" class="skill-doctype-chip-remove" onclick="removeDocTypeFromSkill('${escapeHtml(dt)}')" title="Remove ${escapeHtml(dt)}">✕</button>`;
+			container.appendChild(chip);
+		}
+	}
+}
+
+function toggleDocTypeDropdown(event) {
+	if (event) event.stopPropagation();
+	const menu = document.getElementById("docTypeDropdownMenu");
+	if (!menu) return;
+
+	if (menu.style.display === "block") {
+		menu.style.display = "none";
+		return;
+	}
+
+	const knownMap = getImportSkillDocTypesMap();
+	const availableNames = Object.keys(knownMap)
+		.filter((name) => !currentSkillDocTypes.includes(name))
+		.sort();
+
+	if (availableNames.length === 0) {
+		menu.innerHTML = `<div class="doctype-popover-empty">All defined document types added</div>`;
+	} else {
+		menu.innerHTML = availableNames
+			.map((name) => {
+				const emoji = knownMap[name]?.emoji || "📄";
+				return `<div class="doctype-popover-item" onclick="addDocTypeToSkill('${escapeHtml(name)}')">
+					<span>${escapeHtml(emoji)}</span>
+					<span>${escapeHtml(name)}</span>
+				</div>`;
+			})
+			.join("");
+	}
+
+	menu.style.display = "block";
+}
+
+function closeDocTypeDropdown() {
+	const menu = document.getElementById("docTypeDropdownMenu");
+	if (menu) menu.style.display = "none";
+}
+
+document.addEventListener("click", (e) => {
+	const menu = document.getElementById("docTypeDropdownMenu");
+	const btn = document.getElementById("btnDocTypeAddMenu");
+	if (menu && menu.style.display === "block" && !menu.contains(e.target) && e.target !== btn) {
+		menu.style.display = "none";
+	}
+});
+
+function addDocTypeToSkill(docType) {
+	const trimmed = (docType || "").trim();
+	if (!trimmed || trimmed === "*") return;
+
+	if (!currentSkillDocTypes.includes(trimmed)) {
+		currentSkillDocTypes.push(trimmed);
+	}
+	closeDocTypeDropdown();
+	renderSkillDocTypesTags();
+}
+
+function removeDocTypeFromSkill(docType) {
+	currentSkillDocTypes = currentSkillDocTypes.filter((t) => t !== docType);
+	renderSkillDocTypesTags();
 }
 
 function onSkillTypeChange(type) {
@@ -352,8 +470,7 @@ function createNewSkill(skillType = "export", copyDefaultDocs = true) {
 			description: "",
 			target_window: "Remote Desktop*",
 			rdp_path_prefix: "\\\\tsclient\\C",
-			document_types: ["*"],
-			upload_mode: "single_file",
+			document_types: [],
 			enabled: true,
 			tasks: [
 				{
@@ -403,10 +520,8 @@ function createNewSkill(skillType = "export", copyDefaultDocs = true) {
 		if (targetWinEl) targetWinEl.value = "";
 		const rdpPrefixEl = document.getElementById("editorSkillRdpPrefix");
 		if (rdpPrefixEl) rdpPrefixEl.value = newSkill.rdp_path_prefix || "\\\\tsclient\\C";
-		const docTypesEl = document.getElementById("editorSkillDocTypes");
-		if (docTypesEl) docTypesEl.value = "*";
-		const uploadModeEl = document.getElementById("editorSkillUploadMode");
-		if (uploadModeEl) uploadModeEl.value = "single_file";
+		currentSkillDocTypes = [];
+		renderSkillDocTypesTags();
 	}
 
 	onSkillTypeChange(newSkill.type);
@@ -492,14 +607,9 @@ function getSkillPayloadFromForm() {
 		const firstFocusWin = (flatSteps.find((s) => s.action_type === "FOCUS_WINDOW")?.window_title || "").trim();
 		payload.target_window = explicitTargetWin || firstFocusWin || "Remote Desktop*";
 		payload.rdp_path_prefix = (document.getElementById("editorSkillRdpPrefix")?.value || "").trim() || "\\\\tsclient\\C";
-		const docTypesRaw = (document.getElementById("editorSkillDocTypes")?.value || "*").trim();
-		payload.document_types = docTypesRaw
-			? docTypesRaw
-					.split(",")
-					.map((s) => s.trim())
-					.filter(Boolean)
-			: ["*"];
-		payload.upload_mode = document.getElementById("editorSkillUploadMode")?.value || "single_file";
+		payload.document_types = Array.isArray(currentSkillDocTypes)
+			? currentSkillDocTypes.filter((t) => t && t !== "*")
+			: [];
 		payload.tasks = currentEditingTasks;
 		payload.steps = flatSteps;
 	}
@@ -610,13 +720,13 @@ async function executeInlineCopilot() {
 				const winEl = document.getElementById("editorSkillTargetWindow");
 				if (winEl) winEl.value = updated.target_window;
 			}
-			if (updated.document_types) {
-				const dtEl = document.getElementById("editorSkillDocTypes");
-				if (dtEl) {
-					dtEl.value = Array.isArray(updated.document_types)
-						? updated.document_types.join(", ")
-						: updated.document_types;
-				}
+			if (updated.document_types !== undefined) {
+				currentSkillDocTypes = Array.isArray(updated.document_types)
+					? updated.document_types.filter((t) => t && t !== "*")
+					: typeof updated.document_types === "string"
+						? updated.document_types.split(",").map((s) => s.trim()).filter((s) => s && s !== "*")
+						: [];
+				renderSkillDocTypesTags();
 			}
 			if (Array.isArray(updated.tasks) && updated.tasks.length > 0) {
 				currentEditingTasks = updated.tasks;

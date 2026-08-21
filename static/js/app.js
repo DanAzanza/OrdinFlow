@@ -27,6 +27,10 @@ function switchTab(name) {
 		if (typeof stopLogPolling === "function") stopLogPolling();
 		if (typeof loadSkills === "function") loadSkills();
 		if (typeof renderQueueInspector === "function") renderQueueInspector();
+	} else if (name === "cases") {
+		if (typeof stopLogPolling === "function") stopLogPolling();
+		if (typeof renderLegend === "function") renderLegend();
+		if (typeof renderCases === "function") renderCases();
 	} else {
 		if (typeof stopLogPolling === "function") stopLogPolling();
 	}
@@ -219,11 +223,11 @@ async function confirmAction() {
    DYNAMIC Dokument
    ═══════════════════════════════════════════════════════════ */
 function getDokArtOptions() {
-	if (state.config && state.config.document_types) {
-		const keys = Object.keys(state.config.document_types);
-		return keys.filter((k) => k !== "UNKNOWN");
-	}
-	return [];
+	const docTypes = typeof getImportSkillsDocTypes === "function"
+		? getImportSkillsDocTypes()
+		: (state.config && state.config.document_types) || {};
+	const keys = Object.keys(docTypes);
+	return keys.filter((k) => k.toUpperCase() !== "UNKNOWN").sort();
 }
 
 function addDokArtRow(containerId, value = "") {
@@ -534,7 +538,12 @@ function renderLegend() {
 	const container = document.getElementById("legendContainer");
 	if (!container) return;
 
-	if (!state.config || !state.config.document_types) {
+	const docTypes = typeof getImportSkillsDocTypes === "function"
+		? getImportSkillsDocTypes()
+		: (state.config && state.config.document_types) || {};
+
+	const entries = Object.entries(docTypes).filter(([name]) => name.toUpperCase() !== "UNKNOWN");
+	if (entries.length === 0) {
 		container.style.display = "none";
 		return;
 	}
@@ -542,12 +551,10 @@ function renderLegend() {
 	container.style.display = "flex";
 	let html = '<span class="legend-title">Legend:</span>';
 
-	const docTypes = state.config.document_types;
-	for (const [name, info] of Object.entries(docTypes)) {
-		if (name.toUpperCase() === "UNKNOWN") continue;
-		if (info.routing && info.routing.archive === false) continue;
-		const emoji = info.emoji || "📄";
-		html += `<span class="legend-item"><span class="doc-emoji">${emoji}</span>${name}</span>`;
+	for (const [name, info] of entries) {
+		if (info && info.routing && info.routing.archive === false) continue;
+		const emoji = (info && info.emoji) || "📄";
+		html += `<span class="legend-item"><span class="doc-emoji">${emoji}</span>${escapeHtml(name)}</span>`;
 	}
 	container.innerHTML = html;
 }
@@ -566,21 +573,23 @@ async function pollJobs() {
 			(j) => j.status === "RUNNING" || j.status === "PENDING",
 		);
 		const ticker = document.getElementById("jobTicker");
-		if (activeJobs.length > 0) {
-			_hadActiveJobs = true;
-			ticker.style.display = "flex";
-			const running =
-				activeJobs.find((j) => j.status === "RUNNING") || activeJobs[0];
-			document.getElementById("jobTickerText").textContent =
-				`🔄 Processing job: ${running.name} ...`;
-			document.getElementById("jobTickerCount").textContent =
-				activeJobs.length === 1 ? "1 active" : `${activeJobs.length} active`;
-		} else {
-			ticker.style.display = "none";
-			if (_hadActiveJobs) {
-				_hadActiveJobs = false;
-				fetchCases();
-				fetchInbox();
+		if (ticker) {
+			if (activeJobs.length > 0) {
+				_hadActiveJobs = true;
+				ticker.style.display = "flex";
+				const running =
+					activeJobs.find((j) => j.status === "RUNNING") || activeJobs[0];
+				const tickerText = document.getElementById("jobTickerText");
+				if (tickerText) tickerText.textContent = `🔄 Processing job: ${running.name} ...`;
+				const tickerCount = document.getElementById("jobTickerCount");
+				if (tickerCount) tickerCount.textContent = activeJobs.length === 1 ? "1 active" : `${activeJobs.length} active`;
+			} else {
+				ticker.style.display = "none";
+				if (_hadActiveJobs) {
+					_hadActiveJobs = false;
+					fetchCases();
+					fetchInbox();
+				}
 			}
 		}
 	} catch (e) {

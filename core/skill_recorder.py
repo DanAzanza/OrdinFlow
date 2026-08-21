@@ -75,7 +75,6 @@ class SkillRecorder:
         self.target_window: str = "Remote Desktop*"
         self.rdp_path_prefix: str = "\\\\tsclient\\C"
         self.document_types: list[str] = ["*"]
-        self.upload_mode: str = "single_file"
 
         self.steps: list[dict[str, Any]] = []
         self.current_window: str = ""
@@ -332,7 +331,6 @@ class SkillRecorder:
             "target_window": self.target_window or "Remote Desktop*",
             "rdp_path_prefix": self.rdp_path_prefix,
             "document_types": self.document_types,
-            "upload_mode": self.upload_mode,
             "enabled": True,
             "steps": cleaned_steps,
         }

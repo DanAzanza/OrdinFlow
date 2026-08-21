@@ -311,9 +311,11 @@ function applyAiSynthesisToEditor() {
 	}
 
 	// 3. Doc Types
-	const selectedDocType = document.getElementById("aiSynthesisDocTypeSelect")?.value || "*";
-	const docTypesEl = document.getElementById("editorSkillDocTypes");
-	if (docTypesEl) docTypesEl.value = selectedDocType;
+	const selectedDocType = document.getElementById("aiSynthesisDocTypeSelect")?.value || "";
+	if (typeof renderSkillDocTypesTags === "function") {
+		currentSkillDocTypes = selectedDocType && selectedDocType !== "*" ? [selectedDocType] : [];
+		renderSkillDocTypesTags();
+	}
 
 	// 4. Description
 	const descEl = document.getElementById("editorSkillDesc");
@@ -326,7 +328,7 @@ function applyAiSynthesisToEditor() {
 
 	isNewSkillCreation = true;
 	currentEditingSkill = {
-		id: newSkillId,
+		id: name,
 		name: name,
 		type: "export",
 		description: currentSynthesisData.description || "",

@@ -23,8 +23,12 @@ tier3_dimension: 1764
 vision_api_timeout: 120.0
 vision_api_retries: 3
 base_dir: .
-watch_dir: ''
-target_base_dir: C:\Users\danie\AppData\Local\Temp\tmptkajrkoo\Cases
+watch_dir: Inbox
+target_base_dir: Cases
 folder_delimiter: __
-folder_structure: []
-match_folder_by: []
+folder_structure:
+  - '{Datum}'
+  - '{Produkt}'
+  - '{Person}'
+match_folder_by:
+  - '{Person}'
