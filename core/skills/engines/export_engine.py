@@ -18,6 +18,7 @@ from core.skills.base import BaseSkill
 from core.skills.grounder import SoMGrounder
 from core.skills.models import SkillTask, TaskProgress, TaskResult
 from core.skills.shield import input_shield
+from core.utils import is_sensitive_credential_text, sanitize_safe_path
 
 logger = logging.getLogger(__name__)
 
@@ -345,6 +346,9 @@ class ExportEngine(BaseSkill):
                 raw_text = str(step.get("text", ""))
                 text_to_type = self._substitute_placeholders(raw_text, context)
                 press_enter = bool(step.get("press_enter", False))
+                is_secret = bool(step.get("is_secret", False)) or is_sensitive_credential_text(raw_text, step.get("description", ""))
+                if is_secret:
+                    logger.info("  [Action %s] TYPE_TEXT: [PROTECTED SENSITIVE CREDENTIAL MASKED]", step_id)
                 with input_shield():
                     _type_unicode_text(text_to_type, press_enter=press_enter)
 
@@ -352,7 +356,13 @@ class ExportEngine(BaseSkill):
             elif action_type == "TYPE_FILE_PATH":
                 raw_path = str(step.get("file_path", context.get("document_fullpath", "")))
                 sub_path = self._substitute_placeholders(raw_path, context)
-                final_path = os.path.abspath(sub_path)
+                is_safe, clean_path = sanitize_safe_path(sub_path)
+                if not is_safe:
+                    logger.error("[Security] Aborted TYPE_FILE_PATH due to directory traversal pattern: %r", sub_path)
+                    self._save_failure_screenshot(step_id, f"Security Block: {sub_path}", self.target_window)
+                    return False
+
+                final_path = os.path.abspath(clean_path)
                 if self.rdp_prefix and final_path.startswith("C:"):
                     final_path = self.rdp_prefix + final_path[2:]
 

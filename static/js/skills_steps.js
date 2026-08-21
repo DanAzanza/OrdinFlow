@@ -152,6 +152,33 @@ function getFlattenedActions() {
 
 const getFlattenedSteps = getFlattenedActions;
 
+function isActionSensitive(act) {
+	if (!act) return false;
+	if (act.is_secret) return true;
+	const text = `${act.description || ""} ${act.text || ""}`.toLowerCase();
+	return /\b(password|passwort|kennwort|geheim|secret|pin|api_key|token|access_key|auth_token|bearer)\b/i.test(text);
+}
+
+function toggleActionSecret(taskIdx, actIdx) {
+	if (taskIdx >= 0 && taskIdx < currentEditingTasks.length) {
+		const actions = currentEditingTasks[taskIdx].actions || [];
+		if (actIdx >= 0 && actIdx < actions.length) {
+			actions[actIdx].is_secret = !actions[actIdx].is_secret;
+			renderEditorSteps();
+		}
+	}
+}
+
+function toggleActionReveal(taskIdx, actIdx) {
+	if (taskIdx >= 0 && taskIdx < currentEditingTasks.length) {
+		const actions = currentEditingTasks[taskIdx].actions || [];
+		if (actIdx >= 0 && actIdx < actions.length) {
+			actions[actIdx]._revealed = !actions[actIdx]._revealed;
+			renderEditorSteps();
+		}
+	}
+}
+
 function renderEditorSteps() {
 	const container = document.getElementById("editorStepsList");
 	if (!container) return;
@@ -203,10 +230,16 @@ function renderEditorSteps() {
 										const isFirstAct = actIdx === 0;
 										const isLastAct = actIdx === actions.length - 1;
 										const badgeStyle = getActionBadgeStyle(act.action_type);
+										const isSensitive = isActionSensitive(act);
 										let paramText = "";
 										if (act.action_type === "FOCUS_WINDOW") paramText = act.window_title || "Remote Desktop*";
 										else if (act.action_type === "TYPE_FILE_PATH") paramText = act.file_path || "{document_fullpath}";
-										else if (act.action_type === "TYPE_TEXT") paramText = act.text || "";
+										else if (act.action_type === "TYPE_TEXT") {
+											paramText = act.text || "";
+											if (isSensitive && !act._revealed) {
+												paramText = "••••••••••••";
+											}
+										}
 										else if (act.action_type === "CALL_SKILL") paramText = `Skill: ${act.skill_id || ""}`;
 										else if (act.locator) paramText = act.locator.prompt || act.locator.value || act.locator.target || "";
 
@@ -216,12 +249,15 @@ function renderEditorSteps() {
 												<span class="action-type-pill ${badgeStyle.badgeClass || "action-pill-focus"}">
 													${badgeStyle.label || act.action_type}
 												</span>
+												${isSensitive ? `<span class="action-type-pill action-pill-secret" title="Security Warning: Sensitive credential or password detected. Plaintext inputs are executed on screen.">🔒 Sensitive</span>` : ""}
 												<div style="display: flex; flex-direction: column; min-width: 0;">
 													<span class="action-item-desc">${escapeHtml(act.description || act.action_type || "Action")}</span>
-													${paramText ? `<span class="action-item-param" title="${escapeHtml(paramText)}">${escapeHtml(paramText)}</span>` : ""}
+													${paramText ? `<span class="action-item-param" title="${escapeHtml(act.text || paramText)}">${escapeHtml(paramText)}</span>` : ""}
 												</div>
 											</div>
 											<div class="action-item-right">
+												${act.action_type === "TYPE_TEXT" && isSensitive ? `<button type="button" class="btn btn-icon btn-sm" onclick="toggleActionReveal(${taskIdx}, ${actIdx})" title="${act._revealed ? 'Hide sensitive text' : 'Reveal sensitive text'}">${act._revealed ? '🙈' : '👁️'}</button>` : ""}
+												${act.action_type === "TYPE_TEXT" ? `<button type="button" class="btn btn-icon btn-sm" onclick="toggleActionSecret(${taskIdx}, ${actIdx})" title="${act.is_secret ? 'Remove secret flag' : 'Mark as secret/credential'}">${act.is_secret ? '🔒' : '🔓'}</button>` : ""}
 												<button type="button" class="btn btn-icon btn-sm" onclick="moveActionUp(${taskIdx}, ${actIdx})" ${isFirstAct ? "disabled" : ""} title="Move up">⬆️</button>
 												<button type="button" class="btn btn-icon btn-sm" onclick="moveActionDown(${taskIdx}, ${actIdx})" ${isLastAct ? "disabled" : ""} title="Move down">⬇️</button>
 												<button type="button" class="btn btn-icon btn-sm" onclick="removeEditorAction(${taskIdx}, ${actIdx})" title="Remove action" style="color: var(--danger);">🗑️</button>

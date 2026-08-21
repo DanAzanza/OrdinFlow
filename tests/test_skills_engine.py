@@ -516,3 +516,80 @@ def test_sub_skill_execution_with_tasks_hierarchy(temp_skills_dir):
     # Test execute_actions alias
     assert hasattr(executor, "execute_actions")
     assert executor.execute_actions == executor.execute_steps
+
+
+def test_path_traversal_sanitization_and_rejection(temp_skills_dir):
+    from core.utils import sanitize_safe_path
+
+    # 1. Traversal sequences rejected
+    is_safe, _ = sanitize_safe_path("..\\..\\Windows\\System32\\cmd.exe")
+    assert not is_safe
+    is_safe, _ = sanitize_safe_path("../../etc/passwd")
+    assert not is_safe
+    is_safe, _ = sanitize_safe_path("C:\\Cases\\..\\..\\malicious.exe")
+    assert not is_safe
+
+    # 2. Null byte rejected
+    is_safe, _ = sanitize_safe_path("C:\\safe\\path\x00.exe")
+    assert not is_safe
+
+    # 3. Valid paths accepted and normalized
+    is_safe, clean = sanitize_safe_path("C:\\Users\\danie\\Desktop\\output.pdf")
+    assert is_safe
+    assert "output.pdf" in clean
+
+    # 4. SkillManager rejects saving skill with path traversal in TYPE_FILE_PATH
+    mgr = SkillManager(skills_dir=temp_skills_dir)
+    malicious_skill = {
+        "name": "Malicious Traversal Skill",
+        "tasks": [
+            {
+                "id": "t1",
+                "title": "Unsafe Task",
+                "actions": [
+                    {
+                        "id": "act_1",
+                        "action_type": "TYPE_FILE_PATH",
+                        "file_path": "..\\..\\sensitive_file.txt",
+                    }
+                ],
+            }
+        ],
+    }
+    with pytest.raises(ValueError, match="Security error: Invalid path with directory traversal"):
+        mgr.save_skill(malicious_skill)
+
+
+def test_sensitive_credential_detection_and_masking():
+    from core.utils import is_sensitive_credential_text
+    from core.skills.engines.export_engine import ExportEngine
+
+    # 1. Detection
+    assert is_sensitive_credential_text("mySecretPassword123", "Enter Password") is True
+    assert is_sensitive_credential_text("1234", "PIN Eingabe") is True
+    assert is_sensitive_credential_text("sk-live-12345", "API Token") is True
+    assert is_sensitive_credential_text("Normal text", "Click on Button") is False
+
+    # 2. ExportEngine execution masks sensitive credential
+    skill_def = {
+        "name": "Credential Masking Skill",
+        "tasks": [
+            {
+                "id": "task_1",
+                "title": "Login Task",
+                "actions": [
+                    {
+                        "id": "act_sec",
+                        "action_type": "TYPE_TEXT",
+                        "description": "Enter user password",
+                        "text": "SuperSecretPass!",
+                        "is_secret": True,
+                    }
+                ],
+            }
+        ],
+    }
+    engine = ExportEngine(skill_def)
+    assert len(engine.actions) == 1
+    assert engine.actions[0]["is_secret"] is True
+

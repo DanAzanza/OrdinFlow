@@ -183,7 +183,7 @@ def refine_step():
                 f"- skill_id: string (if CALL_SKILL)\n"
                 f"Return ONLY valid JSON matching this schema."
             )
-            extracted = DashboardState.processor.llm_extractor.extract_fields_from_text(prompt, {})
+            extracted = DashboardState.processor.llm_extractor.call_vision_api_json({"messages": [{"role": "user", "content": prompt}]})
             if isinstance(extracted, dict) and extracted.get("action_type"):
                 refined.update(extracted)
                 if extracted.get("target"):
