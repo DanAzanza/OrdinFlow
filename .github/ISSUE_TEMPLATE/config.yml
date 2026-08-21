@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 💬 Questions & Discussions
+    url: https://github.com/DanAzanza/OrdinFlow/discussions
+    about: Ask questions, discuss architectures, or share ideas with the community.
+  - name: 🔒 Report Security Vulnerabilities
+    url: https://github.com/DanAzanza/OrdinFlow/security/advisories/new
+    about: Report sensitive security vulnerabilities privately.
