@@ -104,7 +104,7 @@ class SkillSynthesizer:
             "}"
         )
 
-        res = llm_extractor.extract_fields_from_text(prompt, {})
+        res = llm_extractor.call_vision_api_json({"messages": [{"role": "user", "content": prompt}]})
         if isinstance(res, dict) and "tasks" in res:
             return res
         return None
@@ -278,46 +278,52 @@ class SkillSynthesizer:
         user_instruction: str,
         history: list[dict[str, str]] | None = None,
     ) -> tuple[dict[str, Any], str]:
-        """Modifies an existing skill using conversational natural language instructions and returns (skill, reply)."""
-        if not user_instruction.strip():
+        """Modifies or chats about an existing skill using natural language and returns (skill, reply)."""
+        instruction_clean = user_instruction.strip()
+        if not instruction_clean:
             return existing_skill, "No instruction provided."
 
         updated = dict(existing_skill)
         known_categories, known_variables = cls._get_domain_context()
-        reply_message = "Changes were applied successfully."
 
-        history_text = ""
-        if history and isinstance(history, list):
-            history_lines = []
-            for h in history[-6:]:
-                role = "User" if h.get("role") == "user" else "Assistant"
-                content = str(h.get("content", "")).strip()
-                if content:
-                    history_lines.append(f"{role}: {content}")
-            if history_lines:
-                history_text = "Previous conversation history:\n" + "\n".join(history_lines) + "\n\n"
+        # Detect user language (German vs English)
+        is_german = bool(re.search(
+            r"(?i)\b(hi|hallo|was|kannst|du|denn|schließe|schließen|beende|beenden|klick|klicke|warte|pause|ablauf|fenster|datei|pfad|bitte|danke)\b",
+            instruction_clean,
+        ))
 
+        # 1. Real LLM Inference if model backend is loaded
         llm_extractor = DashboardState.processor.llm_extractor if DashboardState.processor else None
         if llm_extractor is not None:
             try:
-                prompt = (
-                    "You are an intelligent workflow automation assistant (RPA).\n"
-                    "The user wants to modify, extend, or refine an existing skill based on a conversation with you.\n\n"
-                    f"{history_text}"
-                    f"Existing skill definition:\n{json.dumps(existing_skill, ensure_ascii=False, indent=2)}\n\n"
-                    f"Known document categories: {json.dumps(known_categories, ensure_ascii=False)}\n"
-                    f"Available variables: {json.dumps(known_variables, ensure_ascii=False)}\n"
-                    f"User instruction: \"{user_instruction}\"\n\n"
-                    "Rules:\n"
-                    "1. Accurately implement the user's intent (e.g. add new actions, adjust delays, fix order, set window titles, use variables).\n"
-                    "2. Preserve valid existing tasks and actions unless the user requested to remove or replace them.\n"
-                    "3. When adding actions, use standard action types (CLICK, DOUBLE_CLICK, TYPE_TEXT, TYPE_FILE_PATH, FOCUS_WINDOW, DELAY, VERIFY_SCREEN, CALL_SKILL).\n"
-                    "4. Return a JSON object with two top-level fields:\n"
-                    "   - 'reply': A concise, helpful English explanation for the chat feed summarizing what was modified or added.\n"
-                    "   - 'skill': The complete updated skill object with all fields.\n\n"
-                    "Return ONLY the valid JSON object."
+                system_prompt = (
+                    "You are OrdinFlow AI Copilot, an expert assistant for robotic process automation (RPA) and medical workflow engineering.\n"
+                    "You engage in natural, helpful, friendly conversations with the user in their language (German or English).\n"
+                    "You can answer questions about the skill, explain what you can do, or update the skill according to instructions.\n\n"
+                    "CRITICAL OUTPUT FORMAT RULES:\n"
+                    "Respond with a valid JSON object containing EXACTLY two top-level keys:\n"
+                    "1. 'reply': A string with your conversational response to the user in their language. Answer questions directly, explain capabilities, or describe what was changed.\n"
+                    "2. 'skill': The complete skill dictionary. If the user's message was purely conversational (e.g. greetings, asking questions, inquiries), return the existing skill unchanged. If the user requested workflow modifications, return the updated skill object with all fields and tasks.\n\n"
+                    "Return ONLY the JSON object."
                 )
-                res = llm_extractor.extract_fields_from_text(prompt, {})
+
+                messages: list[dict[str, str]] = [{"role": "system", "content": system_prompt}]
+                if history and isinstance(history, list):
+                    for h in history[-6:]:
+                        r = "user" if h.get("role") == "user" else "assistant"
+                        c = str(h.get("content", "")).strip()
+                        if c:
+                            messages.append({"role": r, "content": c})
+
+                context_prompt = (
+                    f"Current Skill State:\n{json.dumps(existing_skill, ensure_ascii=False, indent=2)}\n\n"
+                    f"Known Document Categories: {json.dumps(known_categories, ensure_ascii=False)}\n"
+                    f"Available Variables: {json.dumps(known_variables, ensure_ascii=False)}\n\n"
+                    f"User Message: {instruction_clean}"
+                )
+                messages.append({"role": "user", "content": context_prompt})
+
+                res = llm_extractor.call_vision_api_json({"messages": messages})
                 if isinstance(res, dict):
                     if "skill" in res and isinstance(res["skill"], dict):
                         skill_res = res["skill"]
@@ -325,17 +331,88 @@ class SkillSynthesizer:
                         for k, v in skill_res.items():
                             if v is not None:
                                 updated[k] = v
-                        return updated, reply_res or "I have updated the skill according to your instruction."
+                        default_rep = (
+                            "Ich habe den Skill entsprechend deinen Wünschen aktualisiert."
+                            if is_german
+                            else "I have updated the skill according to your instruction."
+                        )
+                        return updated, reply_res or default_rep
+                    elif "reply" in res and isinstance(res["reply"], str):
+                        return existing_skill, res["reply"]
                     elif "tasks" in res or "steps" in res or "name" in res:
                         for k, v in res.items():
                             if v is not None:
                                 updated[k] = v
-                        return updated, "I have updated the skill according to your instruction."
+                        rep = (
+                            "Ich habe den Skill entsprechend angepasst."
+                            if is_german
+                            else "I have updated the skill according to your instruction."
+                        )
+                        return updated, rep
             except Exception as e:
-                logger.warning("[SkillSynthesizer] LLM skill modification failed, applying heuristic fallback: %s", e)
+                logger.warning("[SkillSynthesizer] LLM skill modification failed, applying conversational fallback: %s", e)
 
-        # Heuristic fallback for common instructions
-        lower = user_instruction.lower()
+        # 2. Conversational & Heuristic Fallback
+        lower = instruction_clean.lower()
+
+        # A. Greetings ("Hi", "Hallo", "Hello")
+        if re.search(r"^(hi|hallo|hey|moin|guten\s*(tag|morgen|abend)|servus|hello|greetings)[!?,.\s]*$", lower):
+            if is_german:
+                return existing_skill, (
+                    "Hallo! Ich bin dein KI-Copilot für diesen Skill. Ich helfe dir, den Ablauf anzupassen "
+                    "(z. B. Klicks hinzufügen, Fenster steuern, Wartezeiten einstellen oder das Programm am Ende schließen). "
+                    "Wie kann ich dir helfen?"
+                )
+            return existing_skill, (
+                "Hello! I am your AI Copilot for this skill. I can help you adjust the workflow "
+                "(e.g. adding clicks, controlling windows, configuring delays, or closing the application at the end). "
+                "How can I help you?"
+            )
+
+        # B. Capabilities & Help ("Was kannst du...", "Help")
+        if any(k in lower for k in ["was kannst du", "was tust du", "was machst du", "hilfe", "what can you do", "help", "fähigkeiten", "funktionen"]):
+            if is_german:
+                return existing_skill, (
+                    "Ich kann diesen Automations-Skill für dich anpassen und erweitern:\n\n"
+                    "• 🖱️ **Klicks & Tasten**: Klicks auf Buttons oder Menüs hinzufügen (z. B. *'Klicke auf Speichern'*)\n"
+                    "• 🪟 **Fenster steuern & schließen**: Fenster aktivieren oder am Ende beenden (z. B. *'Schließe am Ende CorelDraw'*)\n"
+                    "• ⌨️ **Dateipfade übergeben**: Automatisches Übergeben von `{document_fullpath}`\n"
+                    "• ⏱️ **Pausen einstellen**: Wartezeiten konfigurieren (z. B. *'Warte 500ms'*)\n"
+                    "• 📑 **Dokumententypen**: Den Skill auf bestimmte Dokumentenarten beschränken\n\n"
+                    "Sag mir einfach, welchen Schritt du ändern oder hinzufügen möchtest!"
+                )
+            return existing_skill, (
+                "I can configure and refine this automation skill for you:\n\n"
+                "• 🖱️ **Clicks & Keys**: Add clicks on buttons or menus (e.g. *'Click on Save'*)\n"
+                "• 🪟 **Window Control**: Focus windows or close applications (e.g. *'Close CorelDraw at the end'*)\n"
+                "• ⌨️ **File Paths**: Insert variables like `{document_fullpath}`\n"
+                "• ⏱️ **Delays**: Insert pauses between steps (e.g. *'Wait 500ms'*)\n"
+                "• 📑 **Document Types**: Assign allowed document categories\n\n"
+                "Just tell me what you'd like to add or change in the workflow!"
+            )
+
+        # C. Query current workflow status ("Was denn?", "Zeige Ablauf", "Welche Schritte")
+        if any(k in lower for k in ["was denn", "welche schritte", "zeige ablauf", "was ist bisher", "what steps", "show steps", "explain workflow"]):
+            tasks = existing_skill.get("tasks", [])
+            total_actions = sum(len(t.get("actions", [])) for t in tasks if isinstance(t, dict))
+            if is_german:
+                lines = [f"Aktuell besteht der Skill aus **{len(tasks)} Tasks** mit insgesamt **{total_actions} Aktionen**:"]
+                for i, t in enumerate(tasks, 1):
+                    lines.append(f"\n**Task {i}: {t.get('title', 'Aufgabe')}**")
+                    for a in t.get("actions", []):
+                        lines.append(f"  • {a.get('description', a.get('action_type', 'Aktion'))}")
+                lines.append("\nMöchtest du einen Schritt ergänzen, entfernen oder anpassen?")
+                return existing_skill, "\n".join(lines)
+            else:
+                lines = [f"Currently, this skill contains **{len(tasks)} Tasks** with **{total_actions} Actions**:"]
+                for i, t in enumerate(tasks, 1):
+                    lines.append(f"\n**Task {i}: {t.get('title', 'Task')}**")
+                    for a in t.get("actions", []):
+                        lines.append(f"  • {a.get('description', a.get('action_type', 'Action'))}")
+                lines.append("\nWould you like to add, remove, or adjust any steps?")
+                return existing_skill, "\n".join(lines)
+
+        # D. Workflow Actions Modification
         tasks = updated.get("tasks")
         if not isinstance(tasks, list) or not tasks:
             tasks = [{"id": "task_1", "title": "Execution Workflow", "actions": []}]
@@ -347,7 +424,19 @@ class SkillSynthesizer:
 
         added_descriptions = []
 
-        # Check for delay/pause first
+        # Check for closing application/window (e.g. "Schließe am ende CorelDraw")
+        if any(k in lower for k in ["schließe", "schließen", "beende", "beenden", "close", "exit", "quit"]):
+            target_app = re.sub(r"(?i).*(schließe am ende|schließe|schließen|beende|beenden|close|exit|quit)\s*", "", instruction_clean).strip("\"' .")
+            target_app = target_app or "Application"
+            last_task["actions"].append({
+                "id": f"act_{int(time.time())}_close",
+                "action_type": "CLICK",
+                "description": f"Schließe {target_app}" if is_german else f"Close {target_app}",
+                "locator": {"type": "auto", "prompt": "Close"},
+            })
+            added_descriptions.append(f"Schließen von '{target_app}'" if is_german else f"close '{target_app}'")
+
+        # Check for delay/pause
         if any(k in lower for k in ["warte", "pause", "delay", "sleep", "wait"]):
             m_delay = re.search(r"(\d+)\s*(ms|millisekunden|milliseconds|sekunden|seconds|s|sec)?", lower)
             delay_ms = 500
@@ -358,54 +447,60 @@ class SkillSynthesizer:
             last_task["actions"].append({
                 "id": f"act_{int(time.time())}_delay",
                 "action_type": "DELAY",
-                "description": f"Wait {delay_ms} ms",
+                "description": f"Warte {delay_ms} ms" if is_german else f"Wait {delay_ms} ms",
                 "delay_ms": delay_ms,
             })
-            added_descriptions.append(f"delay of {delay_ms} ms")
+            added_descriptions.append(f"Wartezeit von {delay_ms} ms" if is_german else f"delay of {delay_ms} ms")
 
         # Check for click
         if any(k in lower for k in ["klick", "click"]):
-            m_quote = re.search(r"['\"]([^'\"]+)['\"]", user_instruction)
+            m_quote = re.search(r"['\"]([^'\"]+)['\"]", instruction_clean)
             if m_quote:
                 target = m_quote.group(1).strip()
             else:
-                target = re.sub(r"(?i).*(klicke auf|klick auf|click on|klicke|click|klick ein auf|klick ein)\s*", "", user_instruction).strip("\"' .")
+                target = re.sub(r"(?i).*(klicke auf|klick auf|click on|klicke|click|klick ein auf|klick ein)\s*", "", instruction_clean).strip("\"' .")
             last_task["actions"].append({
                 "id": f"act_{int(time.time())}_click",
                 "action_type": "CLICK",
-                "description": f"Click on {target or 'Element'}",
+                "description": f"Klicke auf '{target or 'Element'}'" if is_german else f"Click on '{target or 'Element'}'",
                 "locator": {"type": "auto", "prompt": target or "Button"},
             })
-            added_descriptions.append(f"click on '{target or 'Element'}'")
+            added_descriptions.append(f"Klick auf '{target or 'Element'}'" if is_german else f"click on '{target or 'Element'}'")
 
         # Check for file path
         if any(k in lower for k in ["datei", "file", "pfad", "path"]) and not any(k in lower for k in ["klick", "click"]):
             last_task["actions"].append({
                 "id": f"act_{int(time.time())}_path",
                 "action_type": "TYPE_FILE_PATH",
-                "description": "Pass file path",
+                "description": "Dateipfad übergeben" if is_german else "Pass file path",
                 "file_path": "{document_fullpath}",
                 "press_enter": True,
             })
-            added_descriptions.append("pass file path ({document_fullpath})")
+            added_descriptions.append("Übergabe des Dateipfads ({document_fullpath})" if is_german else "pass file path ({document_fullpath})")
 
         # Check for window focus
         if any(k in lower for k in ["fenster", "window", "fokus", "focus"]):
-            m_win = re.search(r"['\"]([^'\"]+)['\"]", user_instruction)
+            m_win = re.search(r"['\"]([^'\"]+)['\"]", instruction_clean)
             title = m_win.group(1) if m_win else "Remote Desktop*"
             updated["target_window"] = title
             last_task["actions"].insert(0, {
                 "id": f"act_{int(time.time())}_win",
                 "action_type": "FOCUS_WINDOW",
-                "description": f"Focus window {title}",
+                "description": f"Fokussiere Fenster: {title}" if is_german else f"Focus window: {title}",
                 "window_title": title,
             })
-            added_descriptions.append(f"focus window '{title}'")
+            added_descriptions.append(f"Fokussieren des Fensters '{title}'" if is_german else f"focus window '{title}'")
 
         if added_descriptions:
-            reply_message = "I have added the following actions: " + ", ".join(added_descriptions) + "."
+            if is_german:
+                reply_message = "Erledigt! Ich habe folgende Aktionen ergänzt: " + ", ".join(added_descriptions) + "."
+            else:
+                reply_message = "Done! I have added the following actions: " + ", ".join(added_descriptions) + "."
         else:
-            reply_message = "I have analyzed your instruction and updated the workflow in the editor."
+            if is_german:
+                reply_message = f"Ich habe deine Anweisung verstanden: '{instruction_clean}'. Was genau möchtest du am Ablauf anpassen?"
+            else:
+                reply_message = f"I understood your message: '{instruction_clean}'. What specific workflow step would you like to modify?"
 
         return updated, reply_message
 

@@ -399,3 +399,37 @@ def cleanup_empty_folder(folder_path: str, stop_at: str | None = None) -> None:
         except OSError as e:
             logger.debug("[Utils] Could not clean folder %s: %s", cur_path, e)
             break
+
+
+def is_sensitive_credential_text(text: str, description: str = "") -> bool:
+    """Checks if a string or description contains suspected credentials, passwords, or secret tokens."""
+    if not text and not description:
+        return False
+    combined = f"{description} {text}".lower()
+    pattern = r"\b(password|passwort|kennwort|geheim|secret|pin|api_key|token|access_key|auth_token|bearer)\b"
+    return bool(re.search(pattern, combined))
+
+
+def sanitize_safe_path(path: str) -> tuple[bool, str]:
+    """Validates and sanitizes a file path against null bytes, traversal, and dangerous characters.
+
+    Returns (is_safe, sanitized_normalized_path).
+    """
+    if not path or not isinstance(path, str):
+        return True, ""
+
+    # 1. Null byte check
+    if "\x00" in path:
+        logger.warning("[Security] Blocked path containing null bytes: %r", path)
+        return False, ""
+
+    # 2. Directory traversal checks (reject '..' components)
+    parts = re.split(r"[\\/]", path)
+    if ".." in parts:
+        logger.warning("[Security] Blocked path containing directory traversal sequence '..': %r", path)
+        return False, ""
+
+    # 3. Clean and normalize
+    normalized = os.path.normpath(path.strip())
+    return True, normalized
+

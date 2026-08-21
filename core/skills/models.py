@@ -29,6 +29,7 @@ class SkillActionDict(TypedDict, total=False):
     on_failure: str
     on_failure_action: str
     on_failure_skill: str
+    is_secret: bool
 
 
 class SkillTaskBlockDict(TypedDict, total=False):

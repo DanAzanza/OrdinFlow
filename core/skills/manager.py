@@ -15,6 +15,7 @@ import yaml
 from core.skills.base import BaseSkill
 from core.skills.engines.export_engine import ExportEngine
 from core.skills.engines.import_engine import ImportEngine
+from core.utils import sanitize_safe_path
 
 logger = logging.getLogger(__name__)
 
@@ -196,6 +197,19 @@ class SkillManager:
         is_valid, err_msg = self.validate_name(name)
         if not is_valid:
             raise ValueError(err_msg)
+
+        # Path Traversal & Injection Security Gate
+        raw_tasks = skill_data.get("tasks", [])
+        if isinstance(raw_tasks, list):
+            for t in raw_tasks:
+                if isinstance(t, dict):
+                    for act in t.get("actions", []):
+                        if isinstance(act, dict) and act.get("action_type") == "TYPE_FILE_PATH":
+                            fp = str(act.get("file_path", "") or "")
+                            if fp:
+                                is_safe, _ = sanitize_safe_path(fp)
+                                if not is_safe:
+                                    raise ValueError(f"Security error: Invalid path with directory traversal ('..') in action: '{fp}'")
 
         clean_filename = self.sanitize_name(name)
         skill_data["name"] = name
