@@ -478,6 +478,21 @@ def api_config_put():
     return jsonify({"status": "ok", "changed": changed})
 
 
+def _get_system_drives() -> list[str]:
+    """Returns available drive letters on Windows or root directory on POSIX."""
+    drives = []
+    if os.name == "nt":
+        import string
+
+        for letter in string.ascii_uppercase:
+            drive = f"{letter}:\\"
+            if os.path.exists(drive):
+                drives.append(drive)
+    else:
+        drives.append("/")
+    return drives
+
+
 def _pick_path_dialog(picker_type: str = "folder", initial_dir: str = "", title: str = "") -> str | None:
     """Opens a native GUI picker dialog to choose a folder or file."""
     selected_path = None
@@ -510,9 +525,155 @@ def _pick_path_dialog(picker_type: str = "folder", initial_dir: str = "", title:
         if selected:
             selected_path = os.path.normpath(selected)
     except Exception as e:
-        logger.warning("[!] Native file/folder dialog failed: %s", e)
+        logger.debug("[!] Native tkinter dialog failed: %s", e)
+
+    # PowerShell fallback on Windows if tkinter didn't produce a path
+    if not selected_path and os.name == "nt":
+        try:
+            import subprocess
+
+            init_dir = initial_dir if (initial_dir and os.path.exists(initial_dir)) else os.getcwd()
+            fallback_title = "Datei auswählen" if picker_type == "file" else "Ordner auswählen"
+            diag_title = title if title else fallback_title
+            if picker_type == "file":
+                ps_cmd = (
+                    f"Add-Type -AssemblyName System.Windows.Forms; "
+                    f"$f = New-Object System.Windows.Forms.OpenFileDialog; "
+                    f"$f.InitialDirectory = '{init_dir}'; "
+                    f"$f.Title = '{diag_title}'; "
+                    f"if ($f.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {{ $f.FileName }}"
+                )
+            else:
+                ps_cmd = (
+                    f"Add-Type -AssemblyName System.Windows.Forms; "
+                    f"$f = New-Object System.Windows.Forms.FolderBrowserDialog; "
+                    f"$f.SelectedPath = '{init_dir}'; "
+                    f"$f.Description = '{diag_title}'; "
+                    f"if ($f.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {{ $f.SelectedPath }}"
+                )
+            res = subprocess.run(
+                ["powershell", "-NoProfile", "-NonInteractive", "-Command", ps_cmd],
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+            out = (res.stdout or "").strip()
+            if out and os.path.exists(out):
+                selected_path = os.path.normpath(out)
+        except Exception as e:
+            logger.debug("[!] PowerShell picker fallback failed: %s", e)
 
     return selected_path
+
+
+@system_api_bp.route("/api/system/fs_list", methods=["GET"])
+def api_system_fs_list():
+    """Lists filesystem items for the in-app file/folder browser."""
+    raw_path = request.args.get("path", "").strip()
+    picker_type = request.args.get("type", "folder").strip().lower()
+    ext_filter = request.args.get("filter", "").strip().lower()
+
+    base_dir = DashboardState.config.base_dir if DashboardState.config else os.getcwd()
+
+    if not raw_path:
+        target_dir = os.path.abspath(base_dir)
+    elif os.path.isfile(raw_path):
+        target_dir = os.path.dirname(os.path.abspath(raw_path))
+    else:
+        target_dir = os.path.abspath(raw_path)
+
+    if not os.path.exists(target_dir) or not os.path.isdir(target_dir):
+        target_dir = os.path.abspath(base_dir)
+
+    # Breadcrumbs
+    parts: list[tuple[str, str]] = []
+    curr = target_dir
+    while True:
+        parent, name = os.path.split(curr)
+        if not name:
+            if curr:
+                drive_label = curr.rstrip("\\/") if len(parts) > 0 else curr
+                parts.append((drive_label, curr))
+            break
+        parts.append((name, curr))
+        if parent == curr:
+            break
+        curr = parent
+
+    breadcrumbs = [{"name": name or p, "path": p} for name, p in reversed(parts)]
+
+    # Parent path
+    parent_path = os.path.dirname(target_dir)
+    if parent_path == target_dir:
+        parent_path = None
+
+    # Quick locations
+    quick_locations = [{"name": "Project Root", "path": os.path.abspath(base_dir)}]
+    if DashboardState.config:
+        if DashboardState.config.watch_dir and os.path.exists(DashboardState.config.watch_dir):
+            quick_locations.append({"name": "Inbox", "path": os.path.abspath(DashboardState.config.watch_dir)})
+        if DashboardState.config.target_base_dir and os.path.exists(DashboardState.config.target_base_dir):
+            quick_locations.append({"name": "Cases", "path": os.path.abspath(DashboardState.config.target_base_dir)})
+    models_dir = os.path.join(base_dir, "models")
+    if os.path.exists(models_dir):
+        quick_locations.append({"name": "models", "path": os.path.abspath(models_dir)})
+
+    # List entries
+    entries: list[dict[str, Any]] = []
+    try:
+        scanned = sorted(os.scandir(target_dir), key=lambda e: (not e.is_dir(), e.name.lower()))
+        for e in scanned:
+            if e.name.startswith("."):
+                continue
+
+            try:
+                is_directory = e.is_dir()
+                stat = e.stat()
+                size_bytes = stat.st_size
+                mtime_str = time.strftime("%Y-%m-%d %H:%M", time.localtime(stat.st_mtime))
+            except OSError:
+                continue
+
+            if is_directory:
+                entries.append({
+                    "name": e.name,
+                    "path": os.path.abspath(e.path),
+                    "is_dir": True,
+                    "size_str": "",
+                    "modified_str": mtime_str,
+                })
+            elif picker_type == "file":
+                if ext_filter and not e.name.lower().endswith(ext_filter):
+                    continue
+                # Format size
+                if size_bytes >= 1024 * 1024 * 1024:
+                    sz_str = f"{size_bytes / (1024**3):.2f} GB"
+                elif size_bytes >= 1024 * 1024:
+                    sz_str = f"{size_bytes / (1024**2):.1f} MB"
+                elif size_bytes >= 1024:
+                    sz_str = f"{size_bytes / 1024:.0f} KB"
+                else:
+                    sz_str = f"{size_bytes} B"
+
+                entries.append({
+                    "name": e.name,
+                    "path": os.path.abspath(e.path),
+                    "is_dir": False,
+                    "size_str": sz_str,
+                    "modified_str": mtime_str,
+                })
+    except OSError as err:
+        logger.warning("[!] Could not list directory %s: %s", target_dir, err)
+
+    return jsonify({
+        "status": "ok",
+        "current_path": target_dir,
+        "parent_path": parent_path,
+        "breadcrumbs": breadcrumbs,
+        "drives": _get_system_drives(),
+        "quick_locations": quick_locations,
+        "entries": entries,
+    })
 
 
 @system_api_bp.route("/api/system/browse", methods=["POST"])

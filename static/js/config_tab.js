@@ -50,8 +50,8 @@ const CONFIG_GROUPS = [
 const PATH_CONFIG = {
     watch_dir: { type: "folder", title: "Inbox-Ordner auswählen" },
     target_base_dir: { type: "folder", title: "Vorgänge-Archivordner auswählen" },
-    llm_model_path: { type: "file", title: "GGUF Vision-Modelldatei auswählen" },
-    mmproj_path: { type: "file", title: "GGUF mmproj-Projektordatei auswählen" }
+    llm_model_path: { type: "file", title: "GGUF Vision-Modelldatei auswählen", filter: ".gguf" },
+    mmproj_path: { type: "file", title: "GGUF mmproj-Projektordatei auswählen", filter: ".gguf" }
 };
 
 function markConfigDirty(dirty = true) {
@@ -75,32 +75,177 @@ function attachConfigInputListeners() {
     });
 }
 
-async function browseSystemPath(key) {
+let _activePathPicker = null;
+
+function browseSystemPath(key) {
     const pCfg = PATH_CONFIG[key];
     if (!pCfg) return;
     const inputEl = document.getElementById(`cfg_${key}`);
     const currentVal = inputEl ? inputEl.value.trim() : "";
 
-    try {
-        const res = await api("/api/system/browse", {
-            method: "POST",
-            body: JSON.stringify({
-                picker_type: pCfg.type,
-                initial_dir: currentVal,
-                title: pCfg.title
-            })
-        });
+    _activePathPicker = {
+        key: key,
+        type: pCfg.type,
+        title: pCfg.title,
+        filter: pCfg.filter || "",
+        currentPath: currentVal,
+        selectedPath: currentVal,
+        inputEl: inputEl
+    };
 
-        if (res && res.status === "ok" && res.path) {
-            if (inputEl) {
-                inputEl.value = res.path;
-                markConfigDirty(true);
+    const modal = document.getElementById("systemPathPickerModal");
+    const titleEl = document.getElementById("pathPickerTitle");
+    const inputPathEl = document.getElementById("pathPickerSelectedInput");
+    if (titleEl) {
+        titleEl.textContent = (pCfg.type === "file" ? "📄 " : "📁 ") + pCfg.title;
+    }
+    if (inputPathEl) {
+        inputPathEl.value = currentVal;
+    }
+    if (modal) {
+        modal.classList.add("active");
+        modal.classList.add("show");
+    }
+
+    loadPathPickerDirectory(currentVal);
+}
+
+async function loadPathPickerDirectory(targetPath = "") {
+    if (!_activePathPicker) return;
+    const listEl = document.getElementById("pathPickerList");
+    const drivesEl = document.getElementById("pathPickerDrives");
+    const quickEl = document.getElementById("pathPickerQuick");
+    const breadcrumbsEl = document.getElementById("pathPickerBreadcrumbs");
+    const inputPathEl = document.getElementById("pathPickerSelectedInput");
+
+    if (listEl) {
+        listEl.innerHTML = '<div class="path-picker-empty">Lade Verzeichnis...</div>';
+    }
+
+    try {
+        const queryParams = new URLSearchParams({
+            path: targetPath || "",
+            type: _activePathPicker.type || "folder",
+            filter: _activePathPicker.filter || ""
+        });
+        const res = await api(`/api/system/fs_list?${queryParams.toString()}`);
+        if (!res || res.status !== "ok") {
+            if (listEl) listEl.innerHTML = '<div class="path-picker-empty" style="color: #ef4444;">Verzeichnis konnte nicht geladen werden</div>';
+            return;
+        }
+
+        _activePathPicker.currentPath = res.current_path;
+        if (!_activePathPicker.selectedPath || _activePathPicker.type === "folder") {
+            _activePathPicker.selectedPath = res.current_path;
+            if (inputPathEl) inputPathEl.value = res.current_path;
+        }
+
+        // Render Drives
+        if (drivesEl) {
+            drivesEl.innerHTML = (res.drives || []).map(d => {
+                const isActive = res.current_path && res.current_path.toUpperCase().startsWith(d.toUpperCase());
+                return `<button type="button" class="path-picker-pill-btn ${isActive ? "active" : ""}" onclick="loadPathPickerDirectory('${escapeHtml(d.replace(/\\/g, "\\\\"))}')">💾 ${escapeHtml(d)}</button>`;
+            }).join("");
+        }
+
+        // Render Quick Shortcuts
+        if (quickEl) {
+            quickEl.innerHTML = (res.quick_locations || []).map(q => {
+                return `<button type="button" class="path-picker-pill-btn" onclick="loadPathPickerDirectory('${escapeHtml(q.path.replace(/\\/g, "\\\\"))}')">📍 ${escapeHtml(q.name)}</button>`;
+            }).join("");
+        }
+
+        // Render Breadcrumbs
+        if (breadcrumbsEl) {
+            let crumbsHtml = "";
+            (res.breadcrumbs || []).forEach((c, idx) => {
+                if (idx > 0) crumbsHtml += '<span class="path-crumb-sep">\\</span>';
+                const isLast = idx === res.breadcrumbs.length - 1;
+                crumbsHtml += `<span class="path-crumb ${isLast ? "current" : ""}" onclick="loadPathPickerDirectory('${escapeHtml(c.path.replace(/\\/g, "\\\\"))}')">${escapeHtml(c.name)}</span>`;
+            });
+            breadcrumbsEl.innerHTML = crumbsHtml;
+        }
+
+        // Render Items
+        if (listEl) {
+            let itemsHtml = "";
+            if (res.parent_path) {
+                itemsHtml += `
+                    <div class="path-picker-item" onclick="loadPathPickerDirectory('${escapeHtml(res.parent_path.replace(/\\/g, "\\\\"))}')">
+                        <div class="path-picker-item-left">
+                            <span class="path-picker-item-icon">📁</span>
+                            <span class="path-picker-item-name">.. (Übergeordneter Ordner)</span>
+                        </div>
+                    </div>`;
             }
+
+            if (!res.entries || res.entries.length === 0) {
+                itemsHtml += `<div class="path-picker-empty">${_activePathPicker.type === "file" ? "Keine passenden Dateien gefunden" : "Dieser Ordner ist leer"}</div>`;
+            } else {
+                for (const entry of res.entries) {
+                    const isSelected = _activePathPicker.selectedPath === entry.path;
+                    const icon = entry.is_dir ? "📁" : (entry.name.endsWith(".gguf") ? "🤖" : "📄");
+                    const clickAction = entry.is_dir
+                        ? `ondblclick="loadPathPickerDirectory('${escapeHtml(entry.path.replace(/\\/g, "\\\\"))}')" onclick="selectPathPickerItem('${escapeHtml(entry.path.replace(/\\/g, "\\\\"))}', true, this)"`
+                        : `onclick="selectPathPickerItem('${escapeHtml(entry.path.replace(/\\/g, "\\\\"))}', false, this)" ondblclick="confirmSystemPathPicker()"`;
+
+                    itemsHtml += `
+                        <div class="path-picker-item ${isSelected ? "selected" : ""}" ${clickAction}>
+                            <div class="path-picker-item-left">
+                                <span class="path-picker-item-icon">${icon}</span>
+                                <span class="path-picker-item-name" title="${escapeHtml(entry.name)}">${escapeHtml(entry.name)}</span>
+                            </div>
+                            <div class="path-picker-item-meta">
+                                <span>${escapeHtml(entry.size_str || "")}</span>
+                                <span>${escapeHtml(entry.modified_str || "")}</span>
+                            </div>
+                        </div>`;
+                }
+            }
+            listEl.innerHTML = itemsHtml;
         }
     } catch (e) {
-        console.error("Browse path error:", e);
-        toast("Fehler beim Öffnen des Auswahldialogs", "error");
+        console.error("loadPathPickerDirectory error:", e);
+        if (listEl) listEl.innerHTML = '<div class="path-picker-empty" style="color: #ef4444;">Fehler beim Laden des Verzeichnisses</div>';
     }
+}
+
+function selectPathPickerItem(path, isDir, el) {
+    if (!_activePathPicker) return;
+    _activePathPicker.selectedPath = path;
+    const inputPathEl = document.getElementById("pathPickerSelectedInput");
+    if (inputPathEl) inputPathEl.value = path;
+
+    const listEl = document.getElementById("pathPickerList");
+    if (listEl) {
+        listEl.querySelectorAll(".path-picker-item").forEach(item => item.classList.remove("selected"));
+    }
+    if (el) {
+        el.classList.add("selected");
+    }
+}
+
+function confirmSystemPathPicker() {
+    if (!_activePathPicker) return;
+    const inputPathEl = document.getElementById("pathPickerSelectedInput");
+    const chosen = inputPathEl ? inputPathEl.value.trim() : (_activePathPicker.selectedPath || _activePathPicker.currentPath);
+
+    if (chosen) {
+        if (_activePathPicker.inputEl) {
+            _activePathPicker.inputEl.value = chosen;
+            markConfigDirty(true);
+        }
+    }
+    closeSystemPathPicker();
+}
+
+function closeSystemPathPicker() {
+    const modal = document.getElementById("systemPathPickerModal");
+    if (modal) {
+        modal.classList.remove("active");
+        modal.classList.remove("show");
+    }
+    _activePathPicker = null;
 }
 
 async function loadConfigTab() {

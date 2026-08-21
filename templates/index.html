@@ -863,6 +863,40 @@
             </div>
         </div>
 
+        <!-- ═══════ SYSTEM FILE & FOLDER PICKER MODAL ═══════ -->
+        <div class="modal-overlay" id="systemPathPickerModal">
+            <div class="modal modal-md path-picker-modal">
+                <div class="modal-header">
+                    <h3 id="pathPickerTitle" style="font-size: 0.95rem; font-weight: 700; color: var(--text); margin: 0;">📁 Ordner auswählen</h3>
+                    <button type="button" class="modal-close-btn" onclick="closeSystemPathPicker()" title="Schließen">✕</button>
+                </div>
+                <div class="modal-body path-picker-modal-body">
+                    <!-- Quick Bar & Drives -->
+                    <div class="path-picker-top-bar">
+                        <div class="path-picker-drives" id="pathPickerDrives"></div>
+                        <div class="path-picker-quick" id="pathPickerQuick"></div>
+                    </div>
+                    <!-- Breadcrumbs & Search -->
+                    <div class="path-picker-breadcrumb-bar" id="pathPickerBreadcrumbs"></div>
+                    <!-- File / Folder Items List -->
+                    <div class="path-picker-list-wrapper">
+                        <div class="path-picker-list" id="pathPickerList">
+                            <div class="path-picker-empty">Lade Verzeichnis...</div>
+                        </div>
+                    </div>
+                    <!-- Selected Path Display -->
+                    <div class="path-picker-selected-row">
+                        <label class="doc-editor-label" style="margin: 0; white-space: nowrap; font-size: 0.75rem;">Ausgewählter Pfad:</label>
+                        <input type="text" class="doc-editor-input path-picker-input" id="pathPickerSelectedInput" placeholder="Pfad eingeben oder oben auswählen..." />
+                    </div>
+                </div>
+                <div class="modal-footer path-picker-footer">
+                    <button type="button" class="btn btn-secondary" onclick="closeSystemPathPicker()">Abbrechen</button>
+                    <button type="button" class="btn btn-primary" id="btnPathPickerConfirm" onclick="confirmSystemPathPicker()">Auswählen</button>
+                </div>
+            </div>
+        </div>
+
         <div class="footer-container">
             &copy; 2026 OrdinFlow | Local AI Document Management System<br />
             <a href="#" onclick="openLegal('privacy')" class="footer-link">Privacy Policy</a>

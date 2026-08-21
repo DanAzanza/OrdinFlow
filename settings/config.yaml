@@ -20,15 +20,16 @@ classify_dimension: 1008
 tier1_dimension: 1260
 tier2_dimension: 1512
 tier3_dimension: 1764
-vision_api_timeout: 120.0
+vision_api_timeout: 120
 vision_api_retries: 3
 base_dir: .
-watch_dir: Inbox
-target_base_dir: Cases
+watch_dir: C:\OrdinFlowTest\Inbox
+target_base_dir: C:\OrdinFlowTest\Cases
 folder_delimiter: __
 folder_structure:
-  - '{Datum}'
-  - '{Produkt}'
-  - '{Person}'
-match_folder_by:
-  - '{Person}'
+- '{Datum}'
+- '{Produkt}'
+- '{Nachname}'
+- '{Vorname}'
+- '{Titel}'
+match_folder_by: []
