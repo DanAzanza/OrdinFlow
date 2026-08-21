@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+import time
 from typing import Any
 
 from routes.state import DashboardState
@@ -30,32 +31,7 @@ class SkillSynthesizer:
             )
 
         # 1. Gather domain context (configured document categories & extraction fields)
-        known_categories: list[str] = []
-        known_variables: list[str] = ["{document_fullpath}"]
-
-        if DashboardState.config:
-            if DashboardState.config.document_types:
-                known_categories = list(DashboardState.config.document_types.keys())
-                for doc in DashboardState.config.document_types.values():
-                    ext_fields = doc.get("extraction_fields") if isinstance(doc, dict) else getattr(doc, "extraction_fields", None)
-                    if ext_fields:
-                        for f in ext_fields:
-                            var_tag = f"{{{f}}}"
-                            if var_tag not in known_variables:
-                                known_variables.append(var_tag)
-
-            if DashboardState.config.folder_structure:
-                for part in DashboardState.config.folder_structure:
-                    p = str(part).strip()
-                    if p:
-                        tag = p if p.startswith("{") and p.endswith("}") else f"{{{p}}}"
-                        if tag not in known_variables:
-                            known_variables.append(tag)
-
-        if existing_doc_types:
-            for cat in existing_doc_types:
-                if cat not in known_categories:
-                    known_categories.append(cat)
+        known_categories, known_variables = cls._get_domain_context(existing_doc_types)
 
         # 2. Try LLM synthesis
         llm_extractor = DashboardState.processor.llm_extractor if DashboardState.processor else None
@@ -252,3 +228,125 @@ class SkillSynthesizer:
                 }
             ],
         }
+
+    @classmethod
+    def _get_domain_context(
+        cls, existing_doc_types: list[str] | None = None
+    ) -> tuple[list[str], list[str]]:
+        """Extracts available categories and variables from runtime configuration."""
+        known_categories: list[str] = []
+        known_variables: list[str] = [
+            "{document_fullpath}",
+            "{document_filename}",
+            "{document_name}",
+        ]
+
+        if DashboardState.config:
+            if DashboardState.config.document_types:
+                known_categories = list(DashboardState.config.document_types.keys())
+                for doc in DashboardState.config.document_types.values():
+                    ext_fields = (
+                        doc.get("extraction_fields")
+                        if isinstance(doc, dict)
+                        else getattr(doc, "extraction_fields", None)
+                    )
+                    if ext_fields:
+                        for f in ext_fields:
+                            var_tag = f"{{{f}}}"
+                            if var_tag not in known_variables:
+                                known_variables.append(var_tag)
+
+            if DashboardState.config.folder_structure:
+                for part in DashboardState.config.folder_structure:
+                    p = str(part).strip()
+                    if p:
+                        tag = p if p.startswith("{") and p.endswith("}") else f"{{{p}}}"
+                        if tag not in known_variables:
+                            known_variables.append(tag)
+
+        if existing_doc_types:
+            for cat in existing_doc_types:
+                if cat not in known_categories:
+                    known_categories.append(cat)
+
+        return known_categories, known_variables
+
+    @classmethod
+    def modify_skill(
+        cls,
+        existing_skill: dict[str, Any],
+        user_instruction: str,
+    ) -> dict[str, Any]:
+        """Modifies an existing skill using conversational natural language instructions."""
+        if not user_instruction.strip():
+            return existing_skill
+
+        updated = dict(existing_skill)
+        known_categories, known_variables = cls._get_domain_context()
+
+        llm_extractor = DashboardState.processor.llm_extractor if DashboardState.processor else None
+        if llm_extractor is not None:
+            try:
+                prompt = (
+                    "Du bist ein intelligenter Assistent für Praxis- und Büroautomation (RPA).\n"
+                    "Der Nutzer möchte einen bestehenden Skill anhand einer natürlichen Sprachanweisung anpassen, erweitern oder korrigieren.\n\n"
+                    f"Bestehende Skill-Definition:\n{json.dumps(existing_skill, ensure_ascii=False, indent=2)}\n\n"
+                    f"Bekannte Dokument-Kategorien im System: {json.dumps(known_categories, ensure_ascii=False)}\n"
+                    f"Verfügbare Variablen: {json.dumps(known_variables, ensure_ascii=False)}\n"
+                    f"Nutzer-Anweisung: \"{user_instruction}\"\n\n"
+                    "Regeln:\n"
+                    "1. Setze die Anweisung des Nutzers präzise um (z.B. neue Aktionen hinzufügen, Reihenfolge anpassen, Fenstertitel ändern, Variablen einsetzen).\n"
+                    "2. Behalte bestehende valide Tasks und Actions bei, sofern der Nutzer sie nicht löschen oder ersetzen möchte.\n"
+                    "3. Wenn eine neue Aktion hinzugefügt wird, nutze passende Action-Typen (CLICK, DOUBLE_CLICK, TYPE_TEXT, TYPE_FILE_PATH, FOCUS_WINDOW, VERIFY_SCREEN, CALL_SKILL).\n"
+                    "4. Gib den vollständig aktualisierten Skill als valides JSON-Objekt zurück mit Feldern wie 'name', 'description', 'document_types', 'target_window', 'tasks'.\n\n"
+                    "Gib AUSSCHLIESSLICH das finale JSON-Objekt zurück."
+                )
+                res = llm_extractor.extract_fields_from_text(prompt, {})
+                if isinstance(res, dict) and ("tasks" in res or "steps" in res or "name" in res):
+                    for k, v in res.items():
+                        if v is not None:
+                            updated[k] = v
+                    return updated
+            except Exception as e:
+                logger.warning("[SkillSynthesizer] LLM skill modification failed, applying heuristic fallback: %s", e)
+
+        # Heuristic fallback for common instructions
+        lower = user_instruction.lower()
+        tasks = updated.get("tasks")
+        if not isinstance(tasks, list) or not tasks:
+            tasks = [{"id": "task_1", "title": "Ablauf", "actions": []}]
+            updated["tasks"] = tasks
+
+        last_task = tasks[-1]
+        if not isinstance(last_task.get("actions"), list):
+            last_task["actions"] = []
+
+        if any(k in lower for k in ["klick", "click"]):
+            target = re.sub(r"(?i)^(klicke auf|klick auf|click on|klicke|click|füge klick auf ein|füge klick auf)\s*", "", user_instruction).strip("\"' ")
+            last_task["actions"].append({
+                "id": f"act_{int(time.time())}",
+                "action_type": "CLICK",
+                "description": f"Klicke auf {target or 'Element'}",
+                "locator": {"type": "auto", "prompt": target or "Button"},
+            })
+        elif any(k in lower for k in ["datei", "file", "pfad", "path"]):
+            last_task["actions"].append({
+                "id": f"act_{int(time.time())}",
+                "action_type": "TYPE_FILE_PATH",
+                "description": "Dateipfad übergeben",
+                "file_path": "{document_fullpath}",
+                "press_enter": True,
+            })
+        elif any(k in lower for k in ["fenster", "window", "fokus", "focus"]):
+            m = re.search(r"['\"]([^'\"]+)['\"]", user_instruction)
+            title = m.group(1) if m else "Remote Desktop*"
+            updated["target_window"] = title
+            last_task["actions"].insert(0, {
+                "id": f"act_{int(time.time())}",
+                "action_type": "FOCUS_WINDOW",
+                "description": f"Fokussiere Fenster {title}",
+                "window_title": title,
+            })
+
+        return updated
+

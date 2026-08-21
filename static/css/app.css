@@ -3949,3 +3949,168 @@ color: #fff;
     flex-shrink: 0;
 }
 
+/* ═══════════════════════════════════════════════════════════
+   SKILL AI COPILOT & YAML EXPERT MODE STYLES
+   ═══════════════════════════════════════════════════════════ */
+.skill-editor-top-bar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 14px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--border, rgba(255, 255, 255, 0.08));
+    flex-wrap: wrap;
+}
+
+.skill-view-segmented {
+    display: inline-flex;
+    background: rgba(0, 0, 0, 0.35);
+    border: 1px solid var(--border, rgba(255, 255, 255, 0.1));
+    border-radius: 8px;
+    padding: 3px;
+    gap: 4px;
+}
+
+.skill-view-btn {
+    background: transparent;
+    border: none;
+    color: var(--text-dim, #94a3b8);
+    font-size: 0.8rem;
+    font-weight: 600;
+    padding: 5px 12px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.skill-view-btn.active {
+    background: var(--surface-container-high, rgba(255, 255, 255, 0.12));
+    color: #f8fafc;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+
+.skill-view-btn:hover:not(.active) {
+    color: #cbd5e1;
+    background: rgba(255, 255, 255, 0.04);
+}
+
+/* ─── INLINE AI COPILOT CARD ─── */
+.skill-copilot-card {
+    background: linear-gradient(135deg, rgba(99, 102, 241, 0.12), rgba(168, 85, 247, 0.08));
+    border: 1px solid rgba(168, 85, 247, 0.3);
+    border-radius: 10px;
+    padding: 14px 16px;
+    margin-bottom: 16px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.15);
+}
+
+.skill-copilot-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 8px;
+}
+
+.skill-copilot-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.88rem;
+    font-weight: 700;
+    color: #e0e7ff;
+}
+
+.skill-copilot-input-row {
+    display: flex;
+    gap: 8px;
+    margin-top: 6px;
+}
+
+.skill-copilot-input {
+    flex: 1;
+    background: rgba(0, 0, 0, 0.4);
+    border: 1px solid rgba(168, 85, 247, 0.35);
+    color: #f1f5f9;
+    padding: 8px 12px;
+    border-radius: 6px;
+    font-size: 0.84rem;
+    transition: all 0.2s ease;
+}
+
+.skill-copilot-input:focus {
+    outline: none;
+    border-color: #a855f7;
+    box-shadow: 0 0 0 2px rgba(168, 85, 247, 0.25);
+    background: rgba(0, 0, 0, 0.55);
+}
+
+.skill-copilot-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 10px;
+}
+
+.skill-copilot-chip {
+    font-size: 0.74rem;
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    color: #cbd5e1;
+    padding: 3px 8px;
+    border-radius: 5px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    user-select: none;
+}
+
+.skill-copilot-chip:hover {
+    background: rgba(99, 102, 241, 0.2);
+    border-color: rgba(99, 102, 241, 0.4);
+    color: #e0e7ff;
+}
+
+/* ─── YAML CODE EDITOR (EXPERT MODE) ─── */
+.skill-yaml-container {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.skill-yaml-textarea {
+    width: 100%;
+    min-height: 480px;
+    font-family: "Cascadia Code", "Fira Code", "Consolas", "Courier New", monospace;
+    font-size: 0.85rem;
+    line-height: 1.5;
+    background: #0f172a;
+    color: #38bdf8;
+    border: 1px solid var(--border, rgba(255, 255, 255, 0.15));
+    border-radius: 8px;
+    padding: 14px;
+    tab-size: 2;
+    resize: vertical;
+    white-space: pre;
+    box-sizing: border-box;
+}
+
+.skill-yaml-textarea:focus {
+    outline: none;
+    border-color: var(--primary, #3b82f6);
+    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+}
+
+.skill-yaml-toolbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 12px;
+    background: rgba(0, 0, 0, 0.25);
+    border-radius: 6px;
+    border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+

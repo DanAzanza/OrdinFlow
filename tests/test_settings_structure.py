@@ -30,7 +30,7 @@ def test_settings_modular_structure():
         }
         config.save_to_yaml()
 
-        test_skill_path = os.path.join(skills_dir, "import_eingang.yaml")
+        test_skill_path = os.path.join(skills_dir, "Inbox Folder Import.yaml")
         assert os.path.exists(test_skill_path)
 
         with open(test_skill_path, encoding="utf-8") as f:

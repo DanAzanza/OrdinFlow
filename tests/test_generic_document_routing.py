@@ -6,6 +6,7 @@ def test_generic_document_naming_and_routing():
     # Load configuration
     config = AppConfig()
     config.load_from_yaml()
+    config.folder_structure = ["{Produkt}", "{Nachname}", "{Vorname}"]
 
     # 1. Simulate data extracted from a document (e.g., invoice/Rechnung)
     doc_data = {

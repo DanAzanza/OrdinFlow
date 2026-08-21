@@ -115,3 +115,72 @@ def test_synthesize_api_endpoint(client):
     assert "synthesis" in data
     assert "tasks" in data["synthesis"]
 
+
+def test_ai_modify_and_yaml_api_endpoints(client):
+    skill = {
+        "id": "test_yaml_skill",
+        "name": "Test YAML Skill",
+        "type": "export",
+        "tasks": [
+            {
+                "id": "task_1",
+                "title": "Task 1",
+                "actions": [
+                    {"id": "act_1", "action_type": "FOCUS_WINDOW", "window_title": "Sanivision*"}
+                ],
+            }
+        ],
+    }
+
+    # 1. Test to_yaml
+    res_to_yaml = client.post("/api/skills/to_yaml", json={"skill": skill})
+    assert res_to_yaml.status_code == 200
+    yaml_str = res_to_yaml.get_json()["yaml"]
+    assert "name: Test YAML Skill" in yaml_str
+
+    # 2. Test from_yaml
+    res_from_yaml = client.post("/api/skills/from_yaml", json={"yaml": yaml_str})
+    assert res_from_yaml.status_code == 200
+    parsed = res_from_yaml.get_json()["skill"]
+    assert parsed["id"] == "test_yaml_skill"
+
+    # 3. Test ai_modify
+    res_mod = client.post("/api/skills/ai_modify", json={
+        "skill": skill,
+        "instruction": "Füge am Ende einen Klick auf Speichern ein"
+    })
+    assert res_mod.status_code == 200
+    mod_skill = res_mod.get_json()["skill"]
+    assert "tasks" in mod_skill
+    actions = mod_skill["tasks"][0]["actions"]
+    assert any(a.get("action_type") == "CLICK" for a in actions)
+
+    # 4. Save and GET/POST skill yaml
+    client.post("/api/skills", json=skill)
+    res_get_yaml = client.get("/api/skills/Test YAML Skill/yaml")
+    assert res_get_yaml.status_code == 200
+    assert "name: Test YAML Skill" in res_get_yaml.get_json()["yaml"]
+
+    res_put_yaml = client.post("/api/skills/Test YAML Skill/yaml", json={"yaml": yaml_str})
+    assert res_put_yaml.status_code == 200
+
+    # 5. Test validation rejection for forbidden character
+    res_invalid = client.post("/api/skills", json={"name": "Invalid:Skill:Name"})
+    assert res_invalid.status_code == 400
+    assert "forbidden" in res_invalid.get_json()["error"]
+
+    # 6. Test rename via API
+    res_rename = client.post("/api/skills", json={
+        "name": "Renamed YAML Skill",
+        "original_name": "Test YAML Skill",
+        "type": "export"
+    })
+    assert res_rename.status_code == 200
+    assert res_rename.get_json()["name"] == "Renamed YAML Skill"
+
+    # Clean up
+    client.delete("/api/skills/Renamed YAML Skill")
+    client.delete("/api/skills/Test YAML Skill")
+
+
+

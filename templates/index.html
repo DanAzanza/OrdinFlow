@@ -218,20 +218,43 @@
                             </div>
                         </div>
                         <div id="skillFormWrapper" class="doc-form-wrapper" style="display: none;">
-                            <!-- Metadata Editor -->
-                            <div class="doc-editor-section">
-                                <h4>⚙️ General Settings</h4>
-                                <div class="grid-2col">
-                                    <div class="form-group" style="margin: 0;">
-                                        <label class="doc-editor-label">Skill Name</label>
-                                        <input type="text" id="editorSkillName" class="doc-editor-input" placeholder="e.g. Export to RDP Database" oninput="onSkillNameInput(this.value)" />
-                                    </div>
-                                    <div class="form-group" style="margin: 0;">
-                                        <label class="doc-editor-label">Skill ID <span style="font-size: 0.72rem; color: var(--text-dim); font-weight: normal;">(Auto-generated file identifier)</span></label>
-                                        <input type="text" id="editorSkillId" class="doc-editor-input" placeholder="auto-generated" readonly style="opacity: 0.7; background: rgba(0,0,0,0.25); cursor: default;" />
-                                    </div>
+                            <!-- Skill Header & View Mode Bar -->
+                            <div class="skill-editor-top-bar">
+                                <div style="display: flex; align-items: center; gap: 10px;">
+                                    <span id="skillHeaderBadge" class="badge" style="background: rgba(99, 102, 241, 0.2); color: #c7d2fe;">Export Skill</span>
+                                    <h3 id="skillHeaderTitle" style="margin: 0; font-size: 1.1rem; color: #f8fafc;">Untitled Skill</h3>
                                 </div>
-                                    <div class="grid-2col" style="margin-top: 10px;">
+                                <div style="display: flex; align-items: center; gap: 8px;">
+                                    <div class="skill-view-segmented" id="skillViewSegmented">
+                                        <button type="button" class="skill-view-btn active" id="btnSkillViewVisual" onclick="switchSkillView('visual')">
+                                            <span>👁️</span> Visual
+                                        </button>
+                                        <button type="button" class="skill-view-btn" id="btnSkillViewYaml" onclick="switchSkillView('yaml')">
+                                            <span>📝</span> YAML (Expert)
+                                        </button>
+                                    </div>
+                                    <button type="button" class="btn btn-sm btn-secondary" onclick="duplicateCurrentSkill()" title="Duplicate this skill">
+                                        <span>📄</span> Duplicate
+                                    </button>
+                                    <button type="button" class="btn btn-sm btn-danger" onclick="deleteCurrentSkill()" title="Delete this skill">
+                                        <span>🗑️</span>
+                                    </button>
+                                    <button type="button" class="btn btn-sm btn-primary" onclick="saveSkillFromEditor()" id="btnSaveSkillTop" style="font-weight: 700;">
+                                        <span>💾</span> Save Skill
+                                    </button>
+                                </div>
+                            </div>
+
+                            <!-- ═══════ VISUAL MODE ═══════ -->
+                            <div id="skillVisualSection">
+                                <!-- Metadata Editor -->
+                                <div class="doc-editor-section">
+                                    <h4>⚙️ General Settings</h4>
+                                    <div class="grid-2col">
+                                        <div class="form-group" style="margin: 0;">
+                                            <label class="doc-editor-label">Skill Name <span style="font-size: 0.72rem; color: var(--text-dim); font-weight: normal;">(Cannot contain :, /, \, *, ?, ", &lt;, &gt;, |)</span></label>
+                                            <input type="text" id="editorSkillName" class="doc-editor-input" placeholder="e.g. Export to Sanivision" oninput="onSkillNameInput(this.value)" />
+                                        </div>
                                         <div class="form-group" style="margin: 0;">
                                             <label class="doc-editor-label">Skill Type</label>
                                             <select id="editorSkillType" class="doc-editor-input" onchange="onSkillTypeChange(this.value)">
@@ -239,10 +262,10 @@
                                                 <option value="import">Import Skill (Folder Import & AI Classification)</option>
                                             </select>
                                         </div>
-                                        <div class="form-group" style="margin: 0;">
-                                            <label class="doc-editor-label">Description</label>
-                                            <input type="text" id="editorSkillDesc" class="doc-editor-input" placeholder="Short explanation of the skill..." />
-                                        </div>
+                                    </div>
+                                    <div class="form-group" style="margin-top: 10px;">
+                                        <label class="doc-editor-label">Description</label>
+                                        <input type="text" id="editorSkillDesc" class="doc-editor-input" placeholder="Short explanation of the skill..." />
                                     </div>
 
                                     <!-- IMPORT SPECIFIC SETTINGS -->
@@ -300,39 +323,46 @@
                                     </div>
                                 </div>
 
-                                <!-- EXPORT SKILL: VARIABLES & STEPS TIMELINE EDITOR -->
+                                <!-- EXPORT SKILL: AI COPILOT & TASKS TIMELINE -->
                                 <div id="exportSkillSection">
-                                    <div class="doc-editor-section" style="padding: 14px 18px;">
-                                        <span class="variable-title" style="font-size: 0.78rem; font-weight: 700; color: #a5b4fc; text-transform: uppercase; letter-spacing: 0.5px;">Available Variables (Click to insert into active field):</span>
-                                        <div id="variableBadges" class="variable-badges" style="margin-top: 6px;">
-                                            <span class="badge variable-badge" onclick="insertVariable('{Nachname}')">{Nachname}</span>
-                                            <span class="badge variable-badge" onclick="insertVariable('{Vorname}')">{Vorname}</span>
-                                            <span class="badge variable-badge" onclick="insertVariable('{Datum}')">{Datum}</span>
-                                            <span class="badge variable-badge" onclick="insertVariable('{Produkt}')">{Produkt}</span>
-                                            <span class="badge variable-badge" onclick="insertVariable('{document_fullpath}')">{document_fullpath}</span>
+                                    <!-- INLINE AI COPILOT CARD -->
+                                    <div class="skill-copilot-card">
+                                        <div class="skill-copilot-header">
+                                            <div class="skill-copilot-title">
+                                                <span>✨</span> <span>AI Skill Copilot</span>
+                                            </div>
+                                            <span style="font-size: 0.74rem; color: #a5b4fc;">Instruct the local AI to modify, extend, or parameterize this routine</span>
+                                        </div>
+                                        <div class="skill-copilot-input-row">
+                                            <input type="text" id="skillCopilotPromptInput" class="skill-copilot-input" placeholder="e.g. 'Add a click on Save at the end' or 'Set window title to Sanivision' or 'Use {document_fullpath}'" onkeydown="if(event.key==='Enter') executeInlineCopilot()" />
+                                            <button type="button" class="btn btn-primary" id="btnSkillCopilotApply" onclick="executeInlineCopilot()" style="background: linear-gradient(135deg, #6366f1, #a855f7); font-weight: 700; white-space: nowrap;">
+                                                <span>✨</span> Apply with AI
+                                            </button>
+                                        </div>
+                                        <div class="skill-copilot-chips">
+                                            <span class="skill-copilot-chip" onclick="setCopilotSuggestion('Füge am Ende einen Klick auf Speichern ein')">➕ Click Save</span>
+                                            <span class="skill-copilot-chip" onclick="setCopilotSuggestion('Ersetze den Dateipfad durch {document_fullpath}')">📄 {document_fullpath}</span>
+                                            <span class="skill-copilot-chip" onclick="setCopilotSuggestion('Setze den Zielfenstertitel auf Remote Desktop*')">🪟 Remote Desktop</span>
+                                            <span class="skill-copilot-chip" onclick="setCopilotSuggestion('Warte 500ms vor dem nächsten Klick')">⏱️ Add Delay</span>
+                                            <span class="skill-copilot-chip" onclick="setCopilotSuggestion('Nur für Rezept-Dokumente ausführen')">📑 Filter Rezept</span>
                                         </div>
                                     </div>
 
+                                    <!-- TASKS & ACTIONS TIMELINE -->
                                     <div class="doc-editor-section">
-                                        <div class="steps-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; flex-wrap: wrap; gap: 8px;">
+                                        <div class="steps-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 8px;">
                                             <div style="display: flex; align-items: center; gap: 10px;">
                                                 <h4 class="steps-title" style="margin: 0;">📋 Tasks & Actions</h4>
                                                 <div id="workflowStatsBadge" class="workflow-stats-badge"></div>
                                             </div>
+                                            <div style="display: flex; gap: 8px;">
+                                                <button type="button" class="btn btn-sm btn-danger" onclick="startLiveRecording(currentEditingSkill ? currentEditingSkill.name : 'New Skill')" style="font-weight: 700;">
+                                                    <span>🔴</span> Start Live Recording
+                                                </button>
+                                            </div>
                                         </div>
                                         <div id="editorStepsList" class="steps-list steps-timeline-container">
                                             <!-- Tasks and Action Items rendered dynamically via JS -->
-                                        </div>
-                                        <div class="steps-bottom-actions" style="display: flex; gap: 8px; margin-top: 14px; flex-wrap: wrap;">
-                                            <button type="button" class="btn btn-sm btn-danger" onclick="startLiveRecording(currentEditingSkill ? currentEditingSkill.name : 'New Skill')" style="font-weight: 700;">
-                                                <span>🔴</span> Start Live Recording
-                                            </button>
-                                            <button type="button" class="btn btn-sm btn-secondary" onclick="addEditorTask()" style="font-weight: 600;">
-                                                <span>📦</span> Add Task
-                                            </button>
-                                            <button type="button" class="btn btn-sm btn-primary" onclick="addEditorStep()">
-                                                <span>🎯</span> Add Action
-                                            </button>
                                         </div>
                                     </div>
                                 </div>
@@ -359,10 +389,26 @@
                                         </div>
                                     </div>
                                 </div>
+                            </div>
 
-                                <!-- SAVE BAR -->
-                                <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 10px;">
-                                    <button class="btn btn-primary" onclick="saveSkillFromEditor()">💾 Save Skill</button>
+                            <!-- ═══════ YAML EXPERT MODE ═══════ -->
+                            <div id="skillYamlSection" style="display: none;">
+                                <div class="doc-editor-section">
+                                    <div class="skill-yaml-toolbar">
+                                        <div style="display: flex; align-items: center; gap: 8px;">
+                                            <span style="font-size: 1.1rem;">📝</span>
+                                            <span style="font-weight: 700; font-size: 0.88rem; color: #f8fafc;">Raw Skill YAML (Expert Mode)</span>
+                                        </div>
+                                        <div style="display: flex; gap: 8px;">
+                                            <button type="button" class="btn btn-sm btn-secondary" onclick="syncYamlFromVisual()" title="Refresh YAML from current skill">
+                                                🔄 Reload YAML
+                                            </button>
+                                            <button type="button" class="btn btn-sm btn-primary" onclick="applyYamlToVisualAndSave()" style="font-weight: 700;">
+                                                💾 Save YAML
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <textarea id="skillYamlEditorTextarea" class="skill-yaml-textarea" placeholder="# Loading YAML..." spellcheck="false"></textarea>
                                 </div>
                             </div>
                         </div>

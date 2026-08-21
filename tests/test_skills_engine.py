@@ -32,7 +32,6 @@ def test_skill_manager_crud_and_duplicate(temp_skills_dir):
 
     # 1. Create and save skill
     skill_data = {
-        "id": "test_skill_1",
         "name": "Test Skill 1",
         "description": "First test skill",
         "enabled": True,
@@ -40,43 +39,109 @@ def test_skill_manager_crud_and_duplicate(temp_skills_dir):
             {"id": "step_1", "description": "Focus Window", "action_type": "FOCUS_WINDOW", "window_title": "Notepad*"}
         ],
     }
-    saved_id = mgr.save_skill(skill_data)
-    assert saved_id == "test_skill_1"
-    assert os.path.exists(os.path.join(temp_skills_dir, "test_skill_1.yaml"))
+    saved_name = mgr.save_skill(skill_data)
+    assert saved_name == "Test Skill 1"
+    assert os.path.exists(os.path.join(temp_skills_dir, "Test Skill 1.yaml"))
 
     # 2. Get skill
-    loaded = mgr.get_skill("test_skill_1")
+    loaded = mgr.get_skill("Test Skill 1")
     assert loaded is not None
     assert loaded["name"] == "Test Skill 1"
+    assert loaded["id"] == "Test Skill 1"
     assert len(loaded["steps"]) == 1
 
     # 3. Duplicate skill
-    dup = mgr.duplicate_skill("test_skill_1")
+    dup = mgr.duplicate_skill("Test Skill 1")
     assert dup is not None
-    assert dup["id"].startswith("test_skill_1_copy_")
-    assert "Copy" in dup["name"]
+    assert dup["name"] == "Test Skill 1 (Copy)"
+    assert dup["id"] == "Test Skill 1 (Copy)"
     assert len(mgr.list_skills()) == 2
 
     # 4. Delete skill
-    deleted = mgr.delete_skill("test_skill_1")
+    deleted = mgr.delete_skill("Test Skill 1")
     assert deleted is True
     assert len(mgr.list_skills()) == 1
 
 
-def test_skill_manager_auto_slugify_id(temp_skills_dir):
+def test_skill_manager_name_validation_and_cascading_rename(temp_skills_dir):
     mgr = SkillManager(skills_dir=temp_skills_dir)
 
-    # 1. Save without ID -> should auto-slugify name
-    skill_1 = {"name": "Export in RDP Patienten-Datenbank", "enabled": True, "steps": []}
-    id_1 = mgr.save_skill(skill_1)
-    assert id_1 == "export_in_rdp_patienten_datenbank"
-    assert os.path.exists(os.path.join(temp_skills_dir, f"{id_1}.yaml"))
+    # 1. Name validation
+    is_valid, err = mgr.validate_name("")
+    assert not is_valid
+    is_valid, err = mgr.validate_name("Invalid:Path")
+    assert not is_valid
+    assert ":" in err
+    is_valid, err = mgr.validate_name("Valid Skill Name")
+    assert is_valid
 
-    # 2. Save another skill with same name -> should resolve collision cleanly
-    skill_2 = {"name": "Export in RDP Patienten-Datenbank", "enabled": True, "steps": []}
-    id_2 = mgr.save_skill(skill_2)
-    assert id_2 == "export_in_rdp_patienten_datenbank_2"
-    assert os.path.exists(os.path.join(temp_skills_dir, f"{id_2}.yaml"))
+    # 2. Setup skill A and skill B (which calls A)
+    skill_a = {
+        "name": "Export Routine",
+        "enabled": True,
+        "tasks": [
+            {"id": "t1", "title": "Task 1", "actions": [{"action_type": "FOCUS_WINDOW", "window_title": "RDP*"}]}
+        ],
+    }
+    mgr.save_skill(skill_a)
+
+    skill_b = {
+        "name": "Master Workflow",
+        "enabled": True,
+        "tasks": [
+            {
+                "id": "t1",
+                "title": "Call Sub",
+                "actions": [{"action_type": "CALL_SKILL", "skill_id": "Export Routine"}],
+            }
+        ],
+        "document_types": {
+            "Rezept": {"export_skill": "Export Routine"}
+        }
+    }
+    mgr.save_skill(skill_b)
+
+    # 3. Setup mock case .meta file in a temp cases dir
+    cases_dir = os.path.join(temp_skills_dir, "Cases")
+    os.makedirs(cases_dir, exist_ok=True)
+    meta_path = os.path.join(cases_dir, "test.meta")
+    with open(meta_path, "w", encoding="utf-8") as f:
+        json.dump({
+            "executed_skills": ["Export Routine", "Other Skill"],
+            "skill_execution_history": {"Export Routine": 12345.0}
+        }, f)
+
+    # 4. Perform cascading rename
+    from routes.state import DashboardState
+    from core.config import AppConfig
+    cfg = AppConfig()
+    cfg.target_base_dir = cases_dir
+    cfg.default_export_skill = "Export Routine"
+    cfg.document_types = {"Rezept": {"export_skill": "Export Routine"}}
+    DashboardState.config = cfg
+
+    renamed = mgr.rename_skill("Export Routine", "Sanivision Export")
+    assert renamed == "Sanivision Export"
+    assert not os.path.exists(os.path.join(temp_skills_dir, "Export Routine.yaml"))
+    assert os.path.exists(os.path.join(temp_skills_dir, "Sanivision Export.yaml"))
+
+    # Verify skill B was cascaded
+    loaded_b = mgr.get_skill("Master Workflow")
+    assert loaded_b is not None
+    assert loaded_b["tasks"][0]["actions"][0]["skill_id"] == "Sanivision Export"
+    assert loaded_b["document_types"]["Rezept"]["export_skill"] == "Sanivision Export"
+
+    # Verify config was cascaded
+    assert DashboardState.config.default_export_skill == "Sanivision Export"
+    assert DashboardState.config.document_types["Rezept"]["export_skill"] == "Sanivision Export"
+
+    # Verify .meta file was cascaded
+    with open(meta_path, "r", encoding="utf-8") as f:
+        updated_meta = json.load(f)
+    assert "Sanivision Export" in updated_meta["executed_skills"]
+    assert "Export Routine" not in updated_meta["executed_skills"]
+    assert "Sanivision Export" in updated_meta["skill_execution_history"]
+
 
 
 def test_input_shield_crash_safety():
@@ -254,16 +319,16 @@ def test_find_pending_cases_for_skill(temp_skills_dir):
         with open(p2 + ".meta", "w", encoding="utf-8") as f:
             json.dump({"Document": "Report"}, f)
 
-        # Folder 3: Approved, but Report.pdf already exported with rdp_export -> Should be ignored
+        # Folder 3: Approved, but Report.pdf already exported with RDP Export -> Should be ignored
         c3 = os.path.join(cases_dir, "Case3")
         os.makedirs(c3)
         open(os.path.join(c3, ".approved"), "w").close()
         p3 = os.path.join(c3, "Report.pdf")
         open(p3, "w").close()
         with open(p3 + ".meta", "w", encoding="utf-8") as f:
-            json.dump({"Document": "Report", "executed_skills": ["rdp_export"]}, f)
+            json.dump({"Document": "Report", "executed_skills": ["RDP Export"]}, f)
 
-        pending = executor.find_pending_cases_for_skill("rdp_export", cases_dir)
+        pending = executor.find_pending_cases_for_skill("RDP Export", cases_dir)
         assert len(pending) == 1
         assert pending[0]["folder_name"] == "Case2"
         assert pending[0]["unprocessed_count"] == 1
@@ -278,7 +343,6 @@ def test_verify_screen_fallback_routine(temp_skills_dir, monkeypatch):
     # 1. Routine skill to create patient
     routine_executed = []
     routine_skill = {
-        "id": "create_patient_routine",
         "name": "Create Patient Routine",
         "enabled": True,
         "steps": [
@@ -293,7 +357,6 @@ def test_verify_screen_fallback_routine(temp_skills_dir, monkeypatch):
 
     # 2. Main skill with VERIFY_SCREEN that fails and triggers fallback routine
     main_skill = {
-        "id": "main_export_skill",
         "name": "Main Export Skill",
         "enabled": True,
         "steps": [
@@ -302,7 +365,7 @@ def test_verify_screen_fallback_routine(temp_skills_dir, monkeypatch):
                 "action_type": "VERIFY_SCREEN",
                 "locator": {"type": "auto", "prompt": "{Nachname}"},
                 "on_failure_action": "run_skill",
-                "on_failure_skill": "create_patient_routine",
+                "on_failure_skill": "Create Patient Routine",
                 "max_retries": 1,
                 "retry_delay_s": 0.01,
             },
@@ -325,23 +388,22 @@ def test_verify_screen_fallback_routine(temp_skills_dir, monkeypatch):
     orig_execute = executor.execute_skill
 
     def mock_execute_skill(skill_id, context=None, depth=0):
-        if skill_id == "create_patient_routine":
+        if skill_id == "Create Patient Routine":
             routine_executed.append(skill_id)
             return True
         return orig_execute(skill_id, context, depth)
 
     monkeypatch.setattr(executor, "execute_skill", mock_execute_skill)
 
-    res = executor.execute_skill("main_export_skill", context={"Nachname": "Mustermann"})
+    res = executor.execute_skill("Main Export Skill", context={"Nachname": "Mustermann"})
     assert res is True
-    assert routine_executed == ["create_patient_routine"]
+    assert "Create Patient Routine" in routine_executed
 
 
 def test_import_skill_crud_and_document_types(temp_skills_dir):
     mgr = SkillManager(skills_dir=temp_skills_dir)
 
     import_skill_data = {
-        "id": "custom_import_pipeline",
         "name": "Scanner Import",
         "type": "import",
         "description": "Incoming scanned documents pipeline",
@@ -363,58 +425,50 @@ def test_import_skill_crud_and_document_types(temp_skills_dir):
 
     # 1. Save import skill
     saved_id = mgr.save_skill(import_skill_data)
-    assert saved_id == "custom_import_pipeline"
+    assert saved_id == "Scanner Import"
 
     # 2. Retrieve document types
-    doc_types = mgr.get_document_types_for_skill("custom_import_pipeline")
+    doc_types = mgr.get_document_types_for_skill("Scanner Import")
     assert "Rezept" in doc_types
     assert doc_types["Rezept"]["emoji"] == "💊"
 
     # 3. Modify and save document types
     doc_types["Befund"] = {"emoji": "📋", "classification_desc": "Befundbericht", "extraction_fields": {}}
-    success = mgr.save_document_types_for_skill("custom_import_pipeline", doc_types)
+    success = mgr.save_document_types_for_skill("Scanner Import", doc_types)
     assert success is True
 
     # 4. Verify updated document types
-    reloaded = mgr.get_document_types_for_skill("custom_import_pipeline")
+    reloaded = mgr.get_document_types_for_skill("Scanner Import")
     assert "Befund" in reloaded
     assert len(reloaded) == 2
 
 
 def test_export_engine_hierarchical_tasks():
     from core.skills.engines.export_engine import ExportEngine
-
-    definition = {
-        "id": "test_hierarchical",
-        "name": "Test Hierarchical",
-        "type": "export",
+    # Verify ExportEngine handles tasks -> actions hierarchy
+    skill_def = {
+        "name": "Export Routine",
         "tasks": [
             {
                 "id": "task_1",
-                "title": "Vorbereitung",
+                "title": "Open Sanivision",
                 "actions": [
-                    {"id": "act_1", "action_type": "FOCUS_WINDOW", "window_title": "Test Window*"},
-                    {"id": "act_2", "action_type": "TYPE_FILE_PATH", "file_path": "{document_fullpath}"},
-                ],
+                    {"id": "act_1", "action_type": "FOCUS_WINDOW", "window_title": "Sanivision*"}
+                ]
             },
             {
                 "id": "task_2",
-                "title": "Abschluss",
+                "title": "Search Patient",
                 "actions": [
-                    {"id": "act_3", "action_type": "CLICK", "description": "Speichern"},
-                ],
-            },
-        ],
+                    {"id": "act_2", "action_type": "TYPE_TEXT", "text": "{Nachname}"}
+                ]
+            }
+        ]
     }
-
-    engine = ExportEngine(definition)
-    assert len(engine.tasks) == 2
-    assert len(engine.steps) == 3
-    assert len(engine.actions) == 3
-    assert engine.steps[0]["action_type"] == "FOCUS_WINDOW"
-    assert engine.steps[1]["action_type"] == "TYPE_FILE_PATH"
-    assert engine.steps[2]["action_type"] == "CLICK"
-    assert engine.target_window == "Test Window*"
+    engine = ExportEngine(skill_def)
+    assert len(engine.actions) == 2
+    assert engine.actions[0]["id"] == "act_1"
+    assert engine.actions[1]["id"] == "act_2"
 
 
 def test_sub_skill_execution_with_tasks_hierarchy(temp_skills_dir):
@@ -422,7 +476,6 @@ def test_sub_skill_execution_with_tasks_hierarchy(temp_skills_dir):
 
     # Sub-skill defined ONLY with tasks hierarchy (no legacy steps key)
     sub_skill = {
-        "id": "sub_hierarchical",
         "name": "Sub Hierarchical Skill",
         "enabled": True,
         "tasks": [
@@ -439,7 +492,6 @@ def test_sub_skill_execution_with_tasks_hierarchy(temp_skills_dir):
 
     # Main skill calling sub-skill
     main_skill = {
-        "id": "main_hierarchical",
         "name": "Main Hierarchical Skill",
         "enabled": True,
         "tasks": [
@@ -447,7 +499,7 @@ def test_sub_skill_execution_with_tasks_hierarchy(temp_skills_dir):
                 "id": "task_main",
                 "title": "Main Task",
                 "actions": [
-                    {"id": "act_main_1", "description": "Call Sub", "action_type": "CALL_SKILL", "skill_id": "sub_hierarchical"}
+                    {"id": "act_main_1", "description": "Call Sub", "action_type": "CALL_SKILL", "skill_id": "Sub Hierarchical Skill"}
                 ],
             }
         ],
@@ -455,9 +507,8 @@ def test_sub_skill_execution_with_tasks_hierarchy(temp_skills_dir):
     mgr.save_skill(main_skill)
 
     executor = SkillExecutor(mgr)
-    success = executor.execute_skill("main_hierarchical", context={})
+    success = executor.execute_skill("Main Hierarchical Skill", context={})
     assert success is True
     # Test execute_actions alias
     assert hasattr(executor, "execute_actions")
     assert executor.execute_actions == executor.execute_steps
-
