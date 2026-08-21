@@ -130,7 +130,7 @@ async function loadPathPickerDirectory(targetPath = "") {
         });
         const res = await api(`/api/system/fs_list?${queryParams.toString()}`);
         if (!res || res.status !== "ok") {
-            if (listEl) listEl.innerHTML = '<div class="path-picker-empty" style="color: #ef4444;">Verzeichnis konnte nicht geladen werden</div>';
+            if (listEl) listEl.innerHTML = '<div class="path-picker-empty path-picker-error">Directory could not be loaded</div>';
             return;
         }
 
@@ -206,7 +206,7 @@ async function loadPathPickerDirectory(targetPath = "") {
         }
     } catch (e) {
         console.error("loadPathPickerDirectory error:", e);
-        if (listEl) listEl.innerHTML = '<div class="path-picker-empty" style="color: #ef4444;">Fehler beim Laden des Verzeichnisses</div>';
+        if (listEl) listEl.innerHTML = '<div class="path-picker-empty path-picker-error">Error loading directory</div>';
     }
 }
 

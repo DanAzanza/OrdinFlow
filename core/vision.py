@@ -322,7 +322,7 @@ class LLMExtractor:
             "2. STRIKETHROUGH & CROSSED-OUT TEXT RULE (CRITICAL):\n"
             "   - Examine every word (printed OR handwritten) carefully for pen strokes, horizontal lines, or scribbles passing through it.\n"
             "   - Any text, name, or header entry (printed or handwritten) with a line, stroke, or line-through drawn THROUGH or ACROSS it is VOID / CROSSED OUT / DELETED.\n"
-            "   - On scans, drawings, or forms, a line drawn through a patient name or header text means the name is STUCK OUT. DO NOT extract crossed-out names under ANY circumstances.\n"
+            "   - On scans, drawings, or forms, a line drawn through a name, value, or header text means the text is STRUCK OUT. DO NOT extract crossed-out values under ANY circumstances.\n"
             "   - If crossed-out text has a NEW LEGIBLE REPLACEMENT above/beside it -> extract ONLY the replacement.\n"
             f'   - If crossed-out text has NO replacement -> treat that field as missing and enter EXACTLY "{MISSING_PLACEHOLDER}".\n'
             "3. OUTPUT FORMAT: Respond exclusively in the specified JSON format."

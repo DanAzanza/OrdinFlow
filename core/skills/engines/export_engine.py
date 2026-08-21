@@ -617,20 +617,20 @@ class ExportEngine(BaseSkill):
             unprocessed_files = [f for f in matching if self.id not in f.get("executed_skills", [])]
 
             if unprocessed_files:
-                # Parse folder name metadata
+                # Dynamically parse folder name metadata
                 parts = folder_name.split("__")
                 parsed_meta: dict[str, str] = {}
-                if len(parts) >= 4:
-                    parsed_meta["Datum"] = parts[0]
-                    parsed_meta["Dokument"] = parts[1]
-                    parsed_meta["Empfaenger"] = parts[2]
-                    parsed_meta["Person"] = parts[3]
-                    if "," in parts[3]:
-                        p_parts = parts[3].split(",", 1)
-                        parsed_meta["Nachname"] = p_parts[0].strip()
-                        parsed_meta["Vorname"] = p_parts[1].strip()
-                    else:
-                        parsed_meta["Nachname"] = parts[3].strip()
+                folder_struct = []
+                if self.skill_manager and hasattr(self.skill_manager, "config") and self.skill_manager.config:
+                    folder_struct = getattr(self.skill_manager.config, "folder_structure", [])
+
+                if folder_struct and isinstance(folder_struct, list):
+                    for idx, key in enumerate(folder_struct):
+                        if idx < len(parts):
+                            parsed_meta[key] = parts[idx].strip()
+                else:
+                    for idx, part in enumerate(parts):
+                        parsed_meta[f"part_{idx}"] = part.strip()
 
                 pending_cases.append(
                     {

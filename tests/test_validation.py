@@ -232,7 +232,7 @@ def test_person_memory_persists_even_on_validation_failure(processor, tmp_path):
     with patch.object(processor, "extract_hybrid_voting", return_value=mock_extracted):
         processor.process_and_route_file(str(dummy_file))
 
-    # Prüfe: Die Datei musste durch eine .meta Sidecar-Datei im watch_dir für manuelle Prüfung markiert werden
+    # Verify: The file had to be flagged with a .meta sidecar file in watch_dir for manual review
     pruefen_files = os.listdir(processor.config.watch_dir)
     assert any(f.endswith(".meta") for f in pruefen_files)
 
@@ -243,7 +243,7 @@ def test_person_memory_persists_even_on_validation_failure(processor, tmp_path):
 
 
 def test_notiz_routes_to_rejected_vertrag_person(processor, tmp_path):
-    # 1. Vertrag ohne Unterschrift im watch_dir verarbeiten -> schlägt fehl und bleibt im Eingang (.meta wird erstellt)
+    # 1. Process contract without signature in watch_dir -> fails and remains in inbox (.meta is created)
     vertrag_file = tmp_path / "watch" / "vertrag_ohne_signatur.pdf"
     processor.config.folder_structure = ["{Datum}", "{Produkt}", "{Nachname}", "{Vorname}"]
     vertrag_file.write_text("dummy vertrag", encoding="utf-8")
@@ -262,10 +262,10 @@ def test_notiz_routes_to_rejected_vertrag_person(processor, tmp_path):
     with patch.object(processor, "extract_hybrid_voting", return_value=mock_vertrag):
         processor.process_and_route_file(str(vertrag_file))
 
-    # Vertrag ist nicht im target_dir gelandet
+    # Contract did not land in target_dir
     assert len(os.listdir(processor.config.target_base_dir)) == 0
 
-    # 2. Jetzt kommt eine Notiz OHNE Personennamen an
+    # 2. Now a note arrives WITHOUT a person name
     notiz_file = tmp_path / "watch" / "notiz_ohne_name.pdf"
     notiz_file.write_text("dummy notiz", encoding="utf-8")
 
@@ -283,7 +283,7 @@ def test_notiz_routes_to_rejected_vertrag_person(processor, tmp_path):
     with patch.object(processor, "extract_hybrid_voting", return_value=mock_notiz):
         success = processor.process_and_route_file(str(notiz_file))
 
-    # Prüfe: Die Notiz wurde erfolgreich verarbeitet und in den Ordner von Anna Schmidt sortiert!
+    # Verify: The note was successfully processed and sorted into Anna Schmidt's folder
     assert success
     target_folders = os.listdir(processor.config.target_base_dir)
     assert len(target_folders) == 1
@@ -291,7 +291,7 @@ def test_notiz_routes_to_rejected_vertrag_person(processor, tmp_path):
 
 
 def test_unbekannt_doc_type_fails_validation(processor):
-    # Dokument UNBEKANNT -> Fehlschlag
+    # UNKNOWN document -> failure
     data_unbekannt = {
         "Document": "UNKNOWN",
         "Nachname": "Muster",
@@ -358,15 +358,15 @@ def test_dependent_document_inherits_parent_optional_fields(processor):
         "Titel": "[MISSING]",
     }
 
-    # Verarbeite Eltern-Dokument, um den Kontext zu belegen
+    # Process parent document to populate context
     processor.last_context = dict(parent_extracted)
     processor.last_optional_fields = {"titel"}
     processor.last_extraction_fields = {"datum", "nachname", "vorname", "titel", "produkt"}
 
-    # Simuliere abhängiges Dokument (z. B. Anhang, dependent: true)
+    # Simulate dependent document (e.g. attachment, dependent: true)
     dependent_extracted = {"Document": "Anhang"}
 
-    # Simuliere Verarbeitungs-Kontext wie in process_and_route_file
+    # Simulate processing context as in process_and_route_file
     matched_info = {
         "dependent": True,
         "routing": {
@@ -376,11 +376,11 @@ def test_dependent_document_inherits_parent_optional_fields(processor):
         },
     }
 
-    # Initialisiere optionale/Extraktions-Felder für das abhängige Dokument (leer vor Vererbung)
+    # Initialize optional and extraction fields for dependent document (empty before inheritance)
     optional_fields = set()
     extraction_fields = set()
 
-    # 1. Vererbe Daten aus dem vorherigen Kontext
+    # 1. Inherit data from previous context
     prev_ctx = processor.last_context
     for k, v in prev_ctx.items():
         from core.utils import is_missing_value
@@ -388,7 +388,7 @@ def test_dependent_document_inherits_parent_optional_fields(processor):
         if is_missing_value(dependent_extracted.get(k)):
             dependent_extracted[k] = v
 
-    # 2. Vererbe optionale und Extraktionsfelder
+    # 2. Inherit optional and extraction fields
     if processor.last_optional_fields:
         optional_fields = optional_fields | processor.last_optional_fields
     if processor.last_extraction_fields:

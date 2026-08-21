@@ -173,7 +173,7 @@ function appendMoreInboxCards() {
 	if (inboxRenderedCount < currentInboxData.length) {
 		const sentinel = document.createElement("div");
 		sentinel.id = "inboxSentinel";
-		sentinel.style.cssText = "grid-column: 1 / -1; height: 36px; display: flex; align-items: center; justify-content: center; color: var(--text-muted); font-size: 0.72rem;";
+		sentinel.className = "inbox-sentinel-loader";
 		sentinel.textContent = `Showing ${inboxRenderedCount} of ${currentInboxData.length} files...`;
 		list.appendChild(sentinel);
 		if (inboxSentinelObserver) inboxSentinelObserver.observe(sentinel);
