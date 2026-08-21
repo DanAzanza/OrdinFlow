@@ -3,7 +3,7 @@
 [![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
 [![Type Checking: Pyright](https://img.shields.io/badge/Type%20Checking-Pyright-2b5b84?style=flat-square)](https://github.com/microsoft/pyright)
 [![Linter: Ruff](https://img.shields.io/badge/Linter-Ruff-black?style=flat-square&logo=ruff)](https://github.com/astral-sh/ruff)
-[![Tests: Pytest](https://img.shields.io/badge/Tests-103%20Passed-brightgreen?style=flat-square&logo=pytest)](https://pytest.org/)
+[![Tests: Pytest](https://img.shields.io/badge/Tests-125%20Passed-brightgreen?style=flat-square&logo=pytest)](https://pytest.org/)
 [![Privacy: 100% On-Premise](https://img.shields.io/badge/Privacy-100%25%20Local%20%2F%20GDPR-blue?style=flat-square)](docs/legal/PRIVACY_POLICY.md)
 [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-orange?style=flat-square)](LICENSE)
 
@@ -77,12 +77,13 @@ $$\text{Consensus Metric } K(f) = \frac{\sum_{i \in \text{winner}} w_i}{\sum_{j 
 - **Targeted Tier 3 Tiebreaker (1764px, $w=1.5$):** Resolves edge-case ambiguities.
 - **Fuzzy Clustering:** Levenshtein distance clustering with German umlaut normalization (`ä` $\to$ `ae`), phonetic tolerance, and canonical scoring (vote weight $\to$ string length $\to$ casing).
 
-### 🤖 4. Agentic RPA with Set-of-Mark (SoM) Grounding
+### 🤖 4. Agentic RPA & Conversational Skill Studio
 Many enterprise and healthcare systems (e.g., legacy practice management software, ERPs) lack REST APIs and run inside Remote Desktop (RDP) or Citrix sessions:
 - **Set-of-Mark (SoM) Visual Grounding:** Segments UI elements and overlays numbered badges `[1]`, `[2]` on candidate buttons and inputs, allowing the Vision-LLM to click and navigate legacy software without brittle hardcoded pixel coordinates.
+- **Conversational AI Copilot:** Features an interactive 2-column Skill Studio with a real-time conversational AI Copilot on the left and a visual step builder on the right for natural-language automation editing, prompt tweaking, and execution dry-runs.
 - **Crash-Safe Input Shielding:** Protects automation execution with a Windows `BlockInput` context manager and registered `atexit` emergency unblock hooks to prevent user interference or deadlocks.
-- **Built-in Skill Recorder:** Interactively captures user workflows and generates reusable, declarative RPA skill YAML scripts.
-- **Automated Failure Diagnostics:** Automatically saves annotated diagnostic screenshots to `scratch/rpa_failures/` upon step failure.
+- **Built-in Workflow Recorder:** Interactively captures user mouse and keyboard actions with real-time OCR element snippets to generate declarative YAML skills.
+- **Hardened Security & Diagnostics:** Includes path traversal protection, secret masking for RPA credentials, and automatic diagnostic failure screenshots (`scratch/rpa_failures/`).
 
 ### 🔒 5. 100% Local, Air-Gapped & Zero Data Leakage
 - **GDPR / DSGVO & HIPAA Compliant:** No data ever leaves the local network.
@@ -269,5 +270,5 @@ This project is open-source under the **GNU Affero General Public License v3 (AG
 *Note: PyMuPDF is licensed under GNU AGPL v3. Any distribution or network deployment of derivative works must comply with AGPL-3.0 terms.*
 
 ### 💼 Commercial Licensing & Custom Deployments
-For commercial entities, healthcare networks, or legal practices requiring a closed-source license, custom integration, or proprietary on-premise deployments exempt from copyleft obligations, please connect via [LinkedIn](https://www.linkedin.com/in/daniel-azanza/).
+For commercial entities, healthcare networks, or legal practices requiring a closed-source license, custom integration, or proprietary on-premise deployments exempt from copyleft obligations, please connect via [LinkedIn](https://www.linkedin.com/in/daniel-azanza-hartmann-8a7b59384/).
 
