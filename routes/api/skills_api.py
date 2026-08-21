@@ -286,16 +286,18 @@ def ai_modify_skill():
     data = request.json or {}
     existing_skill = data.get("skill") or {}
     user_instruction = str(data.get("instruction") or "").strip()
+    history = data.get("history")
 
     if not user_instruction:
         return jsonify({"error": "Instruction is required"}), 400
 
     try:
-        updated = SkillSynthesizer.modify_skill(
+        updated, reply = SkillSynthesizer.modify_skill(
             existing_skill=existing_skill,
             user_instruction=user_instruction,
+            history=history if isinstance(history, list) else None,
         )
-        return jsonify({"status": "ok", "skill": updated})
+        return jsonify({"status": "ok", "skill": updated, "reply": reply})
     except Exception as e:
         logger.error("[ai_modify_skill] Failed to modify skill: %s", e)
         return jsonify({"error": str(e)}), 500

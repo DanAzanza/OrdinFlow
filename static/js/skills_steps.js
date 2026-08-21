@@ -133,11 +133,6 @@ function updateHeaderStepBadge() {
 	currentEditingTasks.forEach((t) => {
 		totalActions += (t.actions || []).length;
 	});
-	const badge = document.getElementById("skillHeaderBadge");
-	if (badge && currentEditingSkill && currentEditingSkill.type !== "import") {
-		const taskCount = currentEditingTasks.length;
-		badge.textContent = `${taskCount} ${taskCount === 1 ? "Task" : "Tasks"} (${totalActions} ${totalActions === 1 ? "Action" : "Actions"})`;
-	}
 
 	const statsBadge = document.getElementById("workflowStatsBadge");
 	if (statsBadge) {

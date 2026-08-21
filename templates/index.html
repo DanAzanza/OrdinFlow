@@ -186,18 +186,6 @@
 
             <!-- ═══════ TAB: SKILLS ═══════ -->
             <div class="tab-content" id="tab-skills">
-                <div class="toolbar">
-                    <div class="search-box">
-                        <span class="search-icon">🔍</span>
-                        <input
-                            type="text"
-                            id="searchSkills"
-                            placeholder="Search skill..."
-                            oninput="filterSkills()"
-                        />
-                    </div>
-                </div>
-
                 <div class="doc-editor-container">
                     <!-- Left Column: Skills List -->
                     <div class="doc-types-sidebar">
@@ -221,7 +209,6 @@
                             <!-- Skill Header & View Mode Bar -->
                             <div class="skill-editor-top-bar">
                                 <div style="display: flex; align-items: center; gap: 10px;">
-                                    <span id="skillHeaderBadge" class="badge" style="background: rgba(99, 102, 241, 0.2); color: #c7d2fe;">Export Skill</span>
                                     <h3 id="skillHeaderTitle" style="margin: 0; font-size: 1.1rem; color: #f8fafc;">Untitled Skill</h3>
                                 </div>
                                 <div style="display: flex; align-items: center; gap: 8px;">
@@ -247,131 +234,156 @@
 
                             <!-- ═══════ VISUAL MODE ═══════ -->
                             <div id="skillVisualSection">
-                                <!-- Metadata Editor -->
-                                <div class="doc-editor-section">
-                                    <h4>⚙️ General Settings</h4>
-                                    <div class="grid-2col">
-                                        <div class="form-group" style="margin: 0;">
-                                            <label class="doc-editor-label">Skill Name <span style="font-size: 0.72rem; color: var(--text-dim); font-weight: normal;">(Cannot contain :, /, \, *, ?, ", &lt;, &gt;, |)</span></label>
-                                            <input type="text" id="editorSkillName" class="doc-editor-input" placeholder="e.g. Export to Sanivision" oninput="onSkillNameInput(this.value)" />
-                                        </div>
-                                        <div class="form-group" style="margin: 0;">
-                                            <label class="doc-editor-label">Skill Type</label>
-                                            <select id="editorSkillType" class="doc-editor-input" onchange="onSkillTypeChange(this.value)">
-                                                <option value="export">Export Skill (RDP / GUI Automation)</option>
-                                                <option value="import">Import Skill (Folder Import & AI Classification)</option>
-                                            </select>
-                                        </div>
-                                    </div>
-                                    <div class="form-group" style="margin-top: 10px;">
-                                        <label class="doc-editor-label">Description</label>
-                                        <input type="text" id="editorSkillDesc" class="doc-editor-input" placeholder="Short explanation of the skill..." />
-                                    </div>
-
-                                    <!-- IMPORT SPECIFIC SETTINGS -->
-                                    <div id="importSkillMetaSection" style="margin-top: 10px; display: none;">
-                                        <div class="form-group" style="margin: 0 0 10px 0;">
-                                            <label class="doc-editor-label">Allowed file extensions (comma-separated)</label>
-                                            <input type="text" id="editorSkillAllowedExtensions" class="doc-editor-input" placeholder=".pdf, .png, .jpg, .jpeg, .tif, .tiff" />
-                                        </div>
-                                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 8px; margin-top: 8px;">
-                                            <div class="config-toggle-group">
-                                                <input type="checkbox" id="editorSkillSplitMulti" class="config-checkbox">
-                                                <label for="editorSkillSplitMulti" class="config-checkbox-label">
-                                                    Automatically split multi-page PDFs (PDF splitting)
-                                                </label>
-                                            </div>
-                                            <div class="config-toggle-group">
-                                                <input type="checkbox" id="editorSkillSaveEmpty" class="config-checkbox">
-                                                <label for="editorSkillSaveEmpty" class="config-checkbox-label">
-                                                    Keep empty document pages
-                                                </label>
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    <!-- EXPORT SPECIFIC SETTINGS -->
-                                    <div id="exportSkillMetaSection" style="margin-top: 10px;">
-                                        <div class="form-group" style="margin: 0;">
-                                            <label class="doc-editor-label">Allowed Document Types <span style="font-size: 0.72rem; color: var(--text-dim); font-weight: normal;">(Leave empty to match all documents)</span></label>
-                                            <div class="skill-doctype-input-field" id="skillDocTypeInputField">
-                                                <div id="editorSkillDocTypesTags" class="skill-doctype-tags-list">
-                                                    <!-- Badges render here dynamically -->
-                                                </div>
-                                                <div class="skill-doctype-btn-wrapper">
-                                                    <button type="button" class="btn-doctype-add-plus" id="btnDocTypeAddMenu" onclick="toggleDocTypeDropdown(event)" title="Add document type">
-                                                        ➕
-                                                    </button>
-                                                    <div id="docTypeDropdownMenu" class="doctype-popover-menu" style="display: none;">
-                                                        <!-- Populated with document types from Import Skills -->
+                                <!-- EXPORT SKILL: STUDIO 2-COLUMN SPLIT (AI Chat Left | Visual Flow Right) -->
+                                <div id="exportSkillSection" class="skill-studio-split-grid">
+                                    <!-- LEFT COLUMN: AI Copilot Chat -->
+                                    <div class="skill-studio-chat-col">
+                                        <div class="skill-chat-card">
+                                            <div class="skill-chat-header">
+                                                <div class="skill-chat-title">
+                                                    <span class="skill-chat-avatar">✨</span>
+                                                    <div>
+                                                        <div style="font-weight: 700; font-size: 0.92rem; color: #f8fafc;">AI Skill Copilot</div>
+                                                        <div style="font-size: 0.72rem; color: #94a3b8;">Natural language control center for workflow automation</div>
                                                     </div>
                                                 </div>
+                                                <button type="button" class="btn btn-sm btn-secondary skill-chat-reset-btn" onclick="clearSkillCopilotChat()" title="Reset chat history">
+                                                    🧹 New Chat
+                                                </button>
                                             </div>
-                                        </div>
-                                        <details class="advanced-skill-details" style="margin-top: 10px;">
-                                            <summary class="advanced-skill-summary" style="font-size: 0.76rem; color: var(--text-dim); cursor: pointer; user-select: none;">
-                                                ⚙️ Advanced RDP / Window Fallback Settings (Optional)
-                                            </summary>
-                                            <div class="grid-2col" style="margin-top: 8px;">
-                                                <div class="form-group" style="margin: 0;">
-                                                    <label class="doc-editor-label">Fallback Window Title Pattern</label>
-                                                    <input type="text" id="editorSkillTargetWindow" class="doc-editor-input" placeholder="Auto-detected from Focus Window step" />
-                                                </div>
-                                                <div class="form-group" style="margin: 0;">
-                                                    <label class="doc-editor-label">RDP Path Prefix Mapping</label>
-                                                    <input type="text" id="editorSkillRdpPrefix" class="doc-editor-input" placeholder="\\tsclient\C" />
-                                                </div>
+                                            <div class="skill-chat-feed" id="skillCopilotChatFeed">
+                                                <!-- Messages populated dynamically -->
                                             </div>
-                                        </details>
-                                    </div>
-                                </div>
-
-                                <!-- EXPORT SKILL: AI COPILOT & TASKS TIMELINE -->
-                                <div id="exportSkillSection">
-                                    <!-- INLINE AI COPILOT CARD -->
-                                    <div class="skill-copilot-card">
-                                        <div class="skill-copilot-header">
-                                            <div class="skill-copilot-title">
-                                                <span>✨</span> <span>AI Skill Copilot</span>
-                                            </div>
-                                            <span style="font-size: 0.74rem; color: #a5b4fc;">Instruct the local AI to modify, extend, or parameterize this routine</span>
-                                        </div>
-                                        <div class="skill-copilot-input-row">
-                                            <input type="text" id="skillCopilotPromptInput" class="skill-copilot-input" placeholder="e.g. 'Add a click on Save at the end' or 'Set window title to Sanivision' or 'Use {document_fullpath}'" onkeydown="if(event.key==='Enter') executeInlineCopilot()" />
-                                            <button type="button" class="btn btn-primary" id="btnSkillCopilotApply" onclick="executeInlineCopilot()" style="background: linear-gradient(135deg, #6366f1, #a855f7); font-weight: 700; white-space: nowrap;">
-                                                <span>✨</span> Apply with AI
-                                            </button>
-                                        </div>
-                                        <div class="skill-copilot-chips">
-                                            <span class="skill-copilot-chip" onclick="setCopilotSuggestion('Füge am Ende einen Klick auf Speichern ein')">➕ Click Save</span>
-                                            <span class="skill-copilot-chip" onclick="setCopilotSuggestion('Ersetze den Dateipfad durch {document_fullpath}')">📄 {document_fullpath}</span>
-                                            <span class="skill-copilot-chip" onclick="setCopilotSuggestion('Setze den Zielfenstertitel auf Remote Desktop*')">🪟 Remote Desktop</span>
-                                            <span class="skill-copilot-chip" onclick="setCopilotSuggestion('Warte 500ms vor dem nächsten Klick')">⏱️ Add Delay</span>
-                                            <span class="skill-copilot-chip" onclick="setCopilotSuggestion('Nur für Rezept-Dokumente ausführen')">📑 Filter Rezept</span>
-                                        </div>
-                                    </div>
-
-                                    <!-- TASKS & ACTIONS TIMELINE -->
-                                    <div class="doc-editor-section">
-                                        <div class="steps-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 8px;">
-                                            <div style="display: flex; align-items: center; gap: 10px;">
-                                                <h4 class="steps-title" style="margin: 0;">📋 Tasks & Actions</h4>
-                                                <div id="workflowStatsBadge" class="workflow-stats-badge"></div>
-                                            </div>
-                                            <div style="display: flex; gap: 8px;">
-                                                <button type="button" class="btn btn-sm btn-danger" onclick="startLiveRecording(currentEditingSkill ? currentEditingSkill.name : 'New Skill')" style="font-weight: 700;">
-                                                    <span>🔴</span> Start Live Recording
+                                            <div class="skill-chat-input-bar">
+                                                <input type="text" id="skillCopilotChatInput" class="skill-chat-input" placeholder="Describe your change (e.g. 'Add a 500ms delay before the click')..." onkeydown="if(event.key==='Enter' && !event.shiftKey) { event.preventDefault(); sendSkillCopilotMessage(); }" />
+                                                <button type="button" class="btn btn-primary btn-chat-send" id="btnSkillCopilotSend" onclick="sendSkillCopilotMessage()">
+                                                    <span>✨</span> Send
                                                 </button>
                                             </div>
                                         </div>
-                                        <div id="editorStepsList" class="steps-list steps-timeline-container">
-                                            <!-- Tasks and Action Items rendered dynamically via JS -->
+                                    </div>
+
+                                    <!-- RIGHT COLUMN: Live Visual Flow & Settings (Ergebnis) -->
+                                    <div class="skill-studio-flow-col">
+                                        <!-- General & Export Settings -->
+                                        <div class="doc-editor-section">
+                                            <h4>⚙️ General Settings</h4>
+                                            <div class="grid-2col">
+                                                <div class="form-group" style="margin: 0;">
+                                                    <label class="doc-editor-label">Skill Name <span style="font-size: 0.72rem; color: var(--text-dim); font-weight: normal;">(Cannot contain :, /, \, *, ?, ", &lt;, &gt;, |)</span></label>
+                                                    <input type="text" id="editorSkillName" class="doc-editor-input" placeholder="e.g. Export to Sanivision" oninput="onSkillNameInput(this.value)" />
+                                                </div>
+                                                <div class="form-group" style="margin: 0;">
+                                                    <label class="doc-editor-label">Skill Type</label>
+                                                    <select id="editorSkillType" class="doc-editor-input" onchange="onSkillTypeChange(this.value)">
+                                                        <option value="export">Export Skill (RDP / GUI Automation)</option>
+                                                        <option value="import">Import Skill (Folder Import & AI Classification)</option>
+                                                    </select>
+                                                </div>
+                                            </div>
+                                            <div class="form-group" style="margin-top: 10px;">
+                                                <label class="doc-editor-label">Description</label>
+                                                <input type="text" id="editorSkillDesc" class="doc-editor-input" placeholder="Short explanation of the skill..." />
+                                            </div>
+
+                                            <!-- EXPORT SPECIFIC SETTINGS -->
+                                            <div id="exportSkillMetaSection" style="margin-top: 10px;">
+                                                <div class="form-group" style="margin: 0;">
+                                                    <label class="doc-editor-label">Allowed Document Types <span style="font-size: 0.72rem; color: var(--text-dim); font-weight: normal;">(Leave empty to match all documents)</span></label>
+                                                    <div class="skill-doctype-input-field" id="skillDocTypeInputField">
+                                                        <div id="editorSkillDocTypesTags" class="skill-doctype-tags-list">
+                                                            <!-- Badges render here dynamically -->
+                                                        </div>
+                                                        <div class="skill-doctype-btn-wrapper">
+                                                            <button type="button" class="btn-doctype-add-plus" id="btnDocTypeAddMenu" onclick="toggleDocTypeDropdown(event)" title="Add document type">
+                                                                ➕
+                                                            </button>
+                                                            <div id="docTypeDropdownMenu" class="doctype-popover-menu" style="display: none;">
+                                                                <!-- Populated with document types from Import Skills -->
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                <details class="advanced-skill-details" style="margin-top: 10px;">
+                                                    <summary class="advanced-skill-summary" style="font-size: 0.76rem; color: var(--text-dim); cursor: pointer; user-select: none;">
+                                                        ⚙️ Advanced RDP / Window Fallback Settings (Optional)
+                                                    </summary>
+                                                    <div class="grid-2col" style="margin-top: 8px;">
+                                                        <div class="form-group" style="margin: 0;">
+                                                            <label class="doc-editor-label">Fallback Window Title Pattern</label>
+                                                            <input type="text" id="editorSkillTargetWindow" class="doc-editor-input" placeholder="Auto-detected from Focus Window step" />
+                                                        </div>
+                                                        <div class="form-group" style="margin: 0;">
+                                                            <label class="doc-editor-label">RDP Path Prefix Mapping</label>
+                                                            <input type="text" id="editorSkillRdpPrefix" class="doc-editor-input" placeholder="\\tsclient\C" />
+                                                        </div>
+                                                    </div>
+                                                </details>
+                                            </div>
+                                        </div>
+
+                                        <!-- TASKS & ACTIONS TIMELINE -->
+                                        <div class="doc-editor-section">
+                                            <div class="steps-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 8px;">
+                                                <div style="display: flex; align-items: center; gap: 10px;">
+                                                    <h4 class="steps-title" style="margin: 0;">📋 Tasks & Actions</h4>
+                                                    <div id="workflowStatsBadge" class="workflow-stats-badge"></div>
+                                                </div>
+                                                <div style="display: flex; gap: 8px;">
+                                                    <button type="button" class="btn btn-sm btn-danger" onclick="startLiveRecording(currentEditingSkill ? currentEditingSkill.name : 'New Skill')" style="font-weight: 700;">
+                                                        <span>🔴</span> Start Live Recording
+                                                    </button>
+                                                </div>
+                                            </div>
+                                            <div id="editorStepsList" class="steps-list steps-timeline-container">
+                                                <!-- Tasks and Action Items rendered dynamically via JS -->
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
 
-                                <!-- IMPORT SKILL: DOCUMENT TYPES MANAGEMENT -->
+                                <!-- IMPORT SKILL: SETTINGS & DOCUMENT TYPES MANAGEMENT -->
                                 <div id="importSkillSection" style="display: none;">
+                                    <div class="doc-editor-section" style="margin-bottom: 16px;">
+                                        <h4>⚙️ Import Skill Settings</h4>
+                                        <div class="grid-2col">
+                                            <div class="form-group" style="margin: 0;">
+                                                <label class="doc-editor-label">Skill Name</label>
+                                                <input type="text" id="editorImportSkillName" class="doc-editor-input" placeholder="e.g. Inbox Scanner" oninput="onSkillNameInput(this.value)" />
+                                            </div>
+                                            <div class="form-group" style="margin: 0;">
+                                                <label class="doc-editor-label">Skill Type</label>
+                                                <select id="editorImportSkillType" class="doc-editor-input" onchange="onSkillTypeChange(this.value)">
+                                                    <option value="import">Import Skill (Folder Import & AI Classification)</option>
+                                                    <option value="export">Export Skill (RDP / GUI Automation)</option>
+                                                </select>
+                                            </div>
+                                        </div>
+                                        <div class="form-group" style="margin-top: 10px;">
+                                            <label class="doc-editor-label">Description</label>
+                                            <input type="text" id="editorImportSkillDesc" class="doc-editor-input" placeholder="Short explanation of the skill..." />
+                                        </div>
+                                        <div id="importSkillMetaSection" style="margin-top: 10px;">
+                                            <div class="form-group" style="margin: 0 0 10px 0;">
+                                                <label class="doc-editor-label">Allowed file extensions (comma-separated)</label>
+                                                <input type="text" id="editorSkillAllowedExtensions" class="doc-editor-input" placeholder=".pdf, .png, .jpg, .jpeg, .tif, .tiff" />
+                                            </div>
+                                            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 8px; margin-top: 8px;">
+                                                <div class="config-toggle-group">
+                                                    <input type="checkbox" id="editorSkillSplitMulti" class="config-checkbox">
+                                                    <label for="editorSkillSplitMulti" class="config-checkbox-label">
+                                                        Automatically split multi-page PDFs (PDF splitting)
+                                                    </label>
+                                                </div>
+                                                <div class="config-toggle-group">
+                                                    <input type="checkbox" id="editorSkillSaveEmpty" class="config-checkbox">
+                                                    <label for="editorSkillSaveEmpty" class="config-checkbox-label">
+                                                        Keep empty document pages
+                                                    </label>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
                                     <div class="doc-editor-section">
                                         <h4 class="steps-title">📑 Document Types & AI Rules for this Import Skill</h4>
                                         <p class="doc-manage-desc" style="margin-bottom: 12px;">
