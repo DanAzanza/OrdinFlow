@@ -276,37 +276,61 @@ class SkillSynthesizer:
         cls,
         existing_skill: dict[str, Any],
         user_instruction: str,
-    ) -> dict[str, Any]:
-        """Modifies an existing skill using conversational natural language instructions."""
+        history: list[dict[str, str]] | None = None,
+    ) -> tuple[dict[str, Any], str]:
+        """Modifies an existing skill using conversational natural language instructions and returns (skill, reply)."""
         if not user_instruction.strip():
-            return existing_skill
+            return existing_skill, "No instruction provided."
 
         updated = dict(existing_skill)
         known_categories, known_variables = cls._get_domain_context()
+        reply_message = "Changes were applied successfully."
+
+        history_text = ""
+        if history and isinstance(history, list):
+            history_lines = []
+            for h in history[-6:]:
+                role = "User" if h.get("role") == "user" else "Assistant"
+                content = str(h.get("content", "")).strip()
+                if content:
+                    history_lines.append(f"{role}: {content}")
+            if history_lines:
+                history_text = "Previous conversation history:\n" + "\n".join(history_lines) + "\n\n"
 
         llm_extractor = DashboardState.processor.llm_extractor if DashboardState.processor else None
         if llm_extractor is not None:
             try:
                 prompt = (
-                    "Du bist ein intelligenter Assistent für Praxis- und Büroautomation (RPA).\n"
-                    "Der Nutzer möchte einen bestehenden Skill anhand einer natürlichen Sprachanweisung anpassen, erweitern oder korrigieren.\n\n"
-                    f"Bestehende Skill-Definition:\n{json.dumps(existing_skill, ensure_ascii=False, indent=2)}\n\n"
-                    f"Bekannte Dokument-Kategorien im System: {json.dumps(known_categories, ensure_ascii=False)}\n"
-                    f"Verfügbare Variablen: {json.dumps(known_variables, ensure_ascii=False)}\n"
-                    f"Nutzer-Anweisung: \"{user_instruction}\"\n\n"
-                    "Regeln:\n"
-                    "1. Setze die Anweisung des Nutzers präzise um (z.B. neue Aktionen hinzufügen, Reihenfolge anpassen, Fenstertitel ändern, Variablen einsetzen).\n"
-                    "2. Behalte bestehende valide Tasks und Actions bei, sofern der Nutzer sie nicht löschen oder ersetzen möchte.\n"
-                    "3. Wenn eine neue Aktion hinzugefügt wird, nutze passende Action-Typen (CLICK, DOUBLE_CLICK, TYPE_TEXT, TYPE_FILE_PATH, FOCUS_WINDOW, VERIFY_SCREEN, CALL_SKILL).\n"
-                    "4. Gib den vollständig aktualisierten Skill als valides JSON-Objekt zurück mit Feldern wie 'name', 'description', 'document_types', 'target_window', 'tasks'.\n\n"
-                    "Gib AUSSCHLIESSLICH das finale JSON-Objekt zurück."
+                    "You are an intelligent workflow automation assistant (RPA).\n"
+                    "The user wants to modify, extend, or refine an existing skill based on a conversation with you.\n\n"
+                    f"{history_text}"
+                    f"Existing skill definition:\n{json.dumps(existing_skill, ensure_ascii=False, indent=2)}\n\n"
+                    f"Known document categories: {json.dumps(known_categories, ensure_ascii=False)}\n"
+                    f"Available variables: {json.dumps(known_variables, ensure_ascii=False)}\n"
+                    f"User instruction: \"{user_instruction}\"\n\n"
+                    "Rules:\n"
+                    "1. Accurately implement the user's intent (e.g. add new actions, adjust delays, fix order, set window titles, use variables).\n"
+                    "2. Preserve valid existing tasks and actions unless the user requested to remove or replace them.\n"
+                    "3. When adding actions, use standard action types (CLICK, DOUBLE_CLICK, TYPE_TEXT, TYPE_FILE_PATH, FOCUS_WINDOW, DELAY, VERIFY_SCREEN, CALL_SKILL).\n"
+                    "4. Return a JSON object with two top-level fields:\n"
+                    "   - 'reply': A concise, helpful English explanation for the chat feed summarizing what was modified or added.\n"
+                    "   - 'skill': The complete updated skill object with all fields.\n\n"
+                    "Return ONLY the valid JSON object."
                 )
                 res = llm_extractor.extract_fields_from_text(prompt, {})
-                if isinstance(res, dict) and ("tasks" in res or "steps" in res or "name" in res):
-                    for k, v in res.items():
-                        if v is not None:
-                            updated[k] = v
-                    return updated
+                if isinstance(res, dict):
+                    if "skill" in res and isinstance(res["skill"], dict):
+                        skill_res = res["skill"]
+                        reply_res = str(res.get("reply") or "")
+                        for k, v in skill_res.items():
+                            if v is not None:
+                                updated[k] = v
+                        return updated, reply_res or "I have updated the skill according to your instruction."
+                    elif "tasks" in res or "steps" in res or "name" in res:
+                        for k, v in res.items():
+                            if v is not None:
+                                updated[k] = v
+                        return updated, "I have updated the skill according to your instruction."
             except Exception as e:
                 logger.warning("[SkillSynthesizer] LLM skill modification failed, applying heuristic fallback: %s", e)
 
@@ -314,39 +338,74 @@ class SkillSynthesizer:
         lower = user_instruction.lower()
         tasks = updated.get("tasks")
         if not isinstance(tasks, list) or not tasks:
-            tasks = [{"id": "task_1", "title": "Ablauf", "actions": []}]
+            tasks = [{"id": "task_1", "title": "Execution Workflow", "actions": []}]
             updated["tasks"] = tasks
 
         last_task = tasks[-1]
         if not isinstance(last_task.get("actions"), list):
             last_task["actions"] = []
 
-        if any(k in lower for k in ["klick", "click"]):
-            target = re.sub(r"(?i)^(klicke auf|klick auf|click on|klicke|click|füge klick auf ein|füge klick auf)\s*", "", user_instruction).strip("\"' ")
+        added_descriptions = []
+
+        # Check for delay/pause first
+        if any(k in lower for k in ["warte", "pause", "delay", "sleep", "wait"]):
+            m_delay = re.search(r"(\d+)\s*(ms|millisekunden|milliseconds|sekunden|seconds|s|sec)?", lower)
+            delay_ms = 500
+            if m_delay:
+                val = int(m_delay.group(1))
+                unit = m_delay.group(2) or "ms"
+                delay_ms = val * 1000 if unit in ["s", "sekunden", "seconds", "sec"] else val
             last_task["actions"].append({
-                "id": f"act_{int(time.time())}",
+                "id": f"act_{int(time.time())}_delay",
+                "action_type": "DELAY",
+                "description": f"Wait {delay_ms} ms",
+                "delay_ms": delay_ms,
+            })
+            added_descriptions.append(f"delay of {delay_ms} ms")
+
+        # Check for click
+        if any(k in lower for k in ["klick", "click"]):
+            m_quote = re.search(r"['\"]([^'\"]+)['\"]", user_instruction)
+            if m_quote:
+                target = m_quote.group(1).strip()
+            else:
+                target = re.sub(r"(?i).*(klicke auf|klick auf|click on|klicke|click|klick ein auf|klick ein)\s*", "", user_instruction).strip("\"' .")
+            last_task["actions"].append({
+                "id": f"act_{int(time.time())}_click",
                 "action_type": "CLICK",
-                "description": f"Klicke auf {target or 'Element'}",
+                "description": f"Click on {target or 'Element'}",
                 "locator": {"type": "auto", "prompt": target or "Button"},
             })
-        elif any(k in lower for k in ["datei", "file", "pfad", "path"]):
+            added_descriptions.append(f"click on '{target or 'Element'}'")
+
+        # Check for file path
+        if any(k in lower for k in ["datei", "file", "pfad", "path"]) and not any(k in lower for k in ["klick", "click"]):
             last_task["actions"].append({
-                "id": f"act_{int(time.time())}",
+                "id": f"act_{int(time.time())}_path",
                 "action_type": "TYPE_FILE_PATH",
-                "description": "Dateipfad übergeben",
+                "description": "Pass file path",
                 "file_path": "{document_fullpath}",
                 "press_enter": True,
             })
-        elif any(k in lower for k in ["fenster", "window", "fokus", "focus"]):
-            m = re.search(r"['\"]([^'\"]+)['\"]", user_instruction)
-            title = m.group(1) if m else "Remote Desktop*"
+            added_descriptions.append("pass file path ({document_fullpath})")
+
+        # Check for window focus
+        if any(k in lower for k in ["fenster", "window", "fokus", "focus"]):
+            m_win = re.search(r"['\"]([^'\"]+)['\"]", user_instruction)
+            title = m_win.group(1) if m_win else "Remote Desktop*"
             updated["target_window"] = title
             last_task["actions"].insert(0, {
-                "id": f"act_{int(time.time())}",
+                "id": f"act_{int(time.time())}_win",
                 "action_type": "FOCUS_WINDOW",
-                "description": f"Fokussiere Fenster {title}",
+                "description": f"Focus window {title}",
                 "window_title": title,
             })
+            added_descriptions.append(f"focus window '{title}'")
 
-        return updated
+        if added_descriptions:
+            reply_message = "I have added the following actions: " + ", ".join(added_descriptions) + "."
+        else:
+            reply_message = "I have analyzed your instruction and updated the workflow in the editor."
+
+        return updated, reply_message
 

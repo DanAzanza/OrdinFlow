@@ -121,9 +121,6 @@ function renderSkillsSidebar(skills, searchQuery = "") {
 							</span>
 						</div>
 						<div class="skill-item-actions">
-							<button type="button" class="btn-icon-subtle" onclick="event.stopPropagation(); duplicateSkillById('${escapeHtml(skill.id)}')" title="Duplicate skill">
-								📋
-							</button>
 							<button type="button" class="btn-icon-subtle btn-icon-danger" onclick="event.stopPropagation(); deleteSkillById('${escapeHtml(skill.id)}')" title="Delete skill">
 								🗑️
 							</button>
@@ -151,6 +148,50 @@ function showNoSkillSelected() {
 	if (wrapper) wrapper.style.display = "none";
 	renderSkillsSidebar(state.skills || []);
 	renderQueueInspector();
+}
+
+function getSkillFormVal(field) {
+	if (field === "name") {
+		return (
+			document.getElementById("editorSkillName")?.value ||
+			document.getElementById("editorImportSkillName")?.value ||
+			""
+		).trim();
+	}
+	if (field === "type") {
+		return (
+			document.getElementById("editorSkillType")?.value ||
+			document.getElementById("editorImportSkillType")?.value ||
+			"export"
+		);
+	}
+	if (field === "description") {
+		return (
+			document.getElementById("editorSkillDesc")?.value ||
+			document.getElementById("editorImportSkillDesc")?.value ||
+			""
+		).trim();
+	}
+	return "";
+}
+
+function setSkillFormVal(field, val) {
+	if (field === "name") {
+		const el1 = document.getElementById("editorSkillName");
+		const el2 = document.getElementById("editorImportSkillName");
+		if (el1) el1.value = val;
+		if (el2) el2.value = val;
+	} else if (field === "type") {
+		const el1 = document.getElementById("editorSkillType");
+		const el2 = document.getElementById("editorImportSkillType");
+		if (el1) el1.value = val;
+		if (el2) el2.value = val;
+	} else if (field === "description") {
+		const el1 = document.getElementById("editorSkillDesc");
+		const el2 = document.getElementById("editorImportSkillDesc");
+		if (el1) el1.value = val;
+		if (el2) el2.value = val;
+	}
 }
 
 async function selectSkill(skillId) {
@@ -187,9 +228,9 @@ async function selectSkill(skillId) {
 	const headerTitle = document.getElementById("skillHeaderTitle");
 	if (headerTitle) headerTitle.textContent = skillObj.name || skillObj.id;
 
-	document.getElementById("editorSkillName").value = skillObj.name || skillObj.id || "";
-	document.getElementById("editorSkillDesc").value = skillObj.description || "";
-	document.getElementById("editorSkillType").value = skillObj.type || "export";
+	setSkillFormVal("name", skillObj.name || skillObj.id || "");
+	setSkillFormVal("description", skillObj.description || "");
+	setSkillFormVal("type", skillObj.type || "export");
 
 	const allowedExts = skillObj.allowed_extensions
 		? Array.isArray(skillObj.allowed_extensions)
@@ -221,6 +262,7 @@ async function selectSkill(skillId) {
 
 	onSkillTypeChange(skillObj.type || "export");
 	renderEditorSteps();
+	initSkillCopilotChat(skillObj.id);
 	switchSkillView("visual");
 	renderQueueInspector();
 }
@@ -343,14 +385,11 @@ function onSkillTypeChange(type) {
 	if (currentEditingSkill) {
 		currentEditingSkill.type = type;
 	}
-	const importMeta = document.getElementById("importSkillMetaSection");
-	const exportMeta = document.getElementById("exportSkillMetaSection");
+	setSkillFormVal("type", type);
 	const exportSection = document.getElementById("exportSkillSection");
 	const importSection = document.getElementById("importSkillSection");
 
 	if (type === "import") {
-		if (importMeta) importMeta.style.display = "block";
-		if (exportMeta) exportMeta.style.display = "none";
 		if (exportSection) exportSection.style.display = "none";
 		if (importSection) importSection.style.display = "block";
 
@@ -360,9 +399,7 @@ function onSkillTypeChange(type) {
 			renderDocTypesSidebar();
 		}
 	} else {
-		if (importMeta) importMeta.style.display = "none";
-		if (exportMeta) exportMeta.style.display = "block";
-		if (exportSection) exportSection.style.display = "block";
+		if (exportSection) exportSection.style.display = "grid";
 		if (importSection) importSection.style.display = "none";
 	}
 }
@@ -569,9 +606,9 @@ function switchSkillView(mode) {
 }
 
 function getSkillPayloadFromForm() {
-	const name = (document.getElementById("editorSkillName")?.value || "").trim() || "Untitled Skill";
-	const type = document.getElementById("editorSkillType")?.value || "export";
-	const description = (document.getElementById("editorSkillDesc")?.value || "").trim();
+	const name = getSkillFormVal("name") || "Untitled Skill";
+	const type = getSkillFormVal("type");
+	const description = getSkillFormVal("description");
 
 	const payload = {
 		id: name,
@@ -669,30 +706,109 @@ async function applyYamlToVisualAndSave() {
 }
 
 // ═══════════════════════════════════════════════════════════
-// INLINE AI SKILL COPILOT
+// CONVERSATIONAL AI SKILL COPILOT CHAT
 // ═══════════════════════════════════════════════════════════
 
-function setCopilotSuggestion(text) {
-	const input = document.getElementById("skillCopilotPromptInput");
-	if (input) {
-		input.value = text;
-		executeInlineCopilot();
+const skillCopilotChatMap = {};
+
+function getSkillCopilotHistory(skillId) {
+	const id = skillId || selectedSkillId || "temp";
+	if (!skillCopilotChatMap[id]) {
+		skillCopilotChatMap[id] = [
+			{
+				role: "assistant",
+				content: "Hello! I am your AI Copilot for this export skill. Simply describe in natural language how the workflow should look or what changes to make (e.g. add clicks, adjust delays, or change target window titles).",
+				time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+			},
+		];
 	}
+	return skillCopilotChatMap[id];
 }
 
-async function executeInlineCopilot() {
-	const input = document.getElementById("skillCopilotPromptInput");
+function initSkillCopilotChat(skillId) {
+	const feed = document.getElementById("skillCopilotChatFeed");
+	if (!feed) return;
+	const history = getSkillCopilotHistory(skillId);
+	renderSkillChatFeed(history);
+}
+
+function clearSkillCopilotChat() {
+	const id = selectedSkillId || "temp";
+	skillCopilotChatMap[id] = [
+		{
+			role: "assistant",
+			content: "Chat history reset. How can I assist you with this skill?",
+			time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+		},
+	];
+	renderSkillChatFeed(skillCopilotChatMap[id]);
+}
+
+function renderSkillChatFeed(history) {
+	const feed = document.getElementById("skillCopilotChatFeed");
+	if (!feed) return;
+	feed.innerHTML = history
+		.map((msg) => {
+			const isUser = msg.role === "user";
+			return `
+			<div class="skill-chat-msg ${isUser ? "user" : "assistant"}">
+				<div class="skill-chat-msg-icon">${isUser ? "👤" : "✨"}</div>
+				<div class="skill-chat-msg-bubble">
+					<div>${escapeHtml(msg.content)}</div>
+					${
+						msg.time
+							? `<div style="font-size: 0.68rem; color: ${
+									isUser ? "rgba(255,255,255,0.7)" : "var(--text-dim)"
+								}; text-align: right; margin-top: 3px;">${escapeHtml(msg.time)}</div>`
+							: ""
+					}
+				</div>
+			</div>
+		`;
+		})
+		.join("");
+	feed.scrollTop = feed.scrollHeight;
+}
+
+async function sendSkillCopilotMessage() {
+	const input = document.getElementById("skillCopilotChatInput");
 	const promptText = (input?.value || "").trim();
-	if (!promptText) {
-		toast("Please enter an instruction for the AI Copilot.", "info");
-		return;
+	if (!promptText) return;
+
+	const id = selectedSkillId || "temp";
+	const history = getSkillCopilotHistory(id);
+	const nowTime = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+
+	// Append user message
+	history.push({
+		role: "user",
+		content: promptText,
+		time: nowTime,
+	});
+	if (input) input.value = "";
+	renderSkillChatFeed(history);
+
+	// Append typing indicator
+	const feed = document.getElementById("skillCopilotChatFeed");
+	const typingId = "skillChatTypingIndicator";
+	if (feed) {
+		const typingEl = document.createElement("div");
+		typingEl.id = typingId;
+		typingEl.className = "skill-chat-msg assistant";
+		typingEl.innerHTML = `
+			<div class="skill-chat-msg-icon">✨</div>
+			<div class="skill-chat-typing">
+				<div class="skill-chat-dot"></div>
+				<div class="skill-chat-dot"></div>
+				<div class="skill-chat-dot"></div>
+			</div>
+		`;
+		feed.appendChild(typingEl);
+		feed.scrollTop = feed.scrollHeight;
 	}
 
-	const btn = document.getElementById("btnSkillCopilotApply");
-	if (btn) {
-		btn.disabled = true;
-		btn.innerHTML = `<span>⏳</span> Applying...`;
-	}
+	const sendBtn = document.getElementById("btnSkillCopilotSend");
+	if (sendBtn) sendBtn.disabled = true;
 
 	const currentPayload = getSkillPayloadFromForm();
 
@@ -702,19 +818,21 @@ async function executeInlineCopilot() {
 			body: JSON.stringify({
 				skill: currentPayload,
 				instruction: promptText,
+				history: history.slice(0, -1),
 			}),
 		});
+
+		// Remove typing indicator
+		document.getElementById(typingId)?.remove();
 
 		if (res && res.skill) {
 			const updated = res.skill;
 			if (updated.name) {
-				const nameEl = document.getElementById("editorSkillName");
-				if (nameEl) nameEl.value = updated.name;
+				setSkillFormVal("name", updated.name);
 				onSkillNameInput(updated.name);
 			}
 			if (updated.description) {
-				const descEl = document.getElementById("editorSkillDesc");
-				if (descEl) descEl.value = updated.description;
+				setSkillFormVal("description", updated.description);
 			}
 			if (updated.target_window) {
 				const winEl = document.getElementById("editorSkillTargetWindow");
@@ -746,17 +864,37 @@ async function executeInlineCopilot() {
 			}
 
 			renderEditorSteps();
-			if (input) input.value = "";
+
+			// Append assistant reply
+			const replyText = res.reply || "I have updated the skill according to your instruction.";
+			history.push({
+				role: "assistant",
+				content: replyText,
+				time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+			});
+			renderSkillChatFeed(history);
 			toast("✨ Skill updated by AI Copilot!", "success");
+		} else {
+			history.push({
+				role: "assistant",
+				content: "Sorry, I was unable to apply this modification.",
+				time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+			});
+			renderSkillChatFeed(history);
 		}
 	} catch (e) {
-		console.error("Error executing inline copilot:", e);
-		toast("AI Copilot error: " + e.message, "error");
+		document.getElementById(typingId)?.remove();
+		console.error("Skill copilot chat error:", e);
+		history.push({
+			role: "assistant",
+			content: "Failed to apply changes: " + e.message,
+			time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+		});
+		renderSkillChatFeed(history);
+		toast("Error: " + e.message, "error");
 	} finally {
-		if (btn) {
-			btn.disabled = false;
-			btn.innerHTML = `<span>✨</span> Apply with AI`;
-		}
+		if (sendBtn) sendBtn.disabled = false;
+		input?.focus();
 	}
 }
 
