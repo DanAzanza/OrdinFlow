@@ -6,7 +6,7 @@
 * **Ask Before Action**: Never speculate on underspecified requirements or missing context. Ask targeted questions before beginning implementation.
 * **Step-by-Step Approach**: Guide the user through complex problems in a structured, incremental manner. Request necessary constraints before initiating next steps.
 * **Collegial Tone**: Maintain a friendly, collegial tone with a healthy touch of humor.
-* **Continuous Self-Improvement**: You are authorized and encouraged to expand this `AGENTS.md` file with new insights and best practices while preserving its core principles.
+* **Continuous Self-Improvement & Repository Memory**: You are authorized and encouraged to expand this `AGENTS.md` file and keep [`.agents/KNOWLEDGE.md`](file:///g:/Meine%20Ablage/Projekte/OrdinFlow/.agents/KNOWLEDGE.md) updated with new architectural insights, gotchas, and component mappings for future agents.
 
 ---
 
@@ -16,12 +16,7 @@
 * **Zero Placeholders**: Never use placeholders, summaries, or truncation comments (e.g., `// ... existing code ...`, `/* remaining code unchanged */`). Always output fully complete, runnable code files or intact, self-contained functional blocks.
 * **Defensive & Dependency Hygiene**: Implement complete logic without unsolicited third-party packages. Rely on native capabilities and existing utilities first.
 * **Non-Blocking Execution & Zero-Polling Protocol**: When initiating background processes or async timers, never poll for status in a loop. Update the user with a concise status message and yield control to await background notifications.
-* **Mandatory Pre-Commit / Pre-Push CI Verification Gate**:
-  * NO code may be committed, pushed, or uploaded to GitHub or any version control system without running and passing ALL automated local CI checks:
-    1. **Linter & Style**: `ruff check .` (0 errors, 0 warnings).
-    2. **Static Type Analysis**: `npx -y pyright@latest core/ routes/` (0 errors).
-    3. **Automated Tests**: `python -m pytest -q` (100% pass rate, 0 regressions).
-  * Only when all 3 gates succeed with 0 errors is committing and pushing permitted. Never rely on remote GitHub Actions to catch basic regressions after the fact.
+* **Mandatory Pre-Commit Verification**: Always run and pass the full local CI verification gate (Section 8) with 0 errors before presenting results for commit.
 * **Explicit User Authorization for Commits & Pushes**: Never commit or push changes automatically or "on the side". After all local verification steps pass with 0 errors, present the completed results to the user and wait for their explicit request (e.g., "please push", "commit now") before executing Git staging, committing, or pushing.
 
 ---
@@ -38,31 +33,27 @@
 * **Domain-Agnostic Core**: Processing logic (especially in `core/`) must remain domain-agnostic. Never hardcode field names or labels as string literals in Python code. All rules, keys, and schemas must be dynamically configurable via runtime `config.yaml`.
 * **Centralized Configuration & State Access**: Never hardcode path lookups or read YAML files manually inside API handlers or subservices. Always access runtime settings through central state objects (`DashboardState.config` or dedicated Manager classes).
 * **Zero Backward-Compatibility & Generic Fallbacks**: Do NOT build legacy fallbacks or populate missing data with hardcoded default values. If data or configuration is unpopulated, return clean, empty collections (`[]`, `{}`) or empty values rather than inventing synthetic default entries.
-* **Modularization & File Size Limits**:
+* **Modularization & File Size Limits (Python & JavaScript)**:
   * **Target Range**: Aim for files between **100 and 500 lines of code**.
   * **Upper Limit**: Refactor and split files if they exceed **800 lines** and carry multiple distinct responsibilities.
-  * **Single Responsibility Principle (SRP)**: Each file must have exactly one primary reason to change.
+  * **Single Responsibility Principle (SRP)**: Each file must have exactly one primary reason to change. Separate frontend JS modules cleanly into API clients (`*_api.js`), view rendering (`*_views.js`), and event handlers (`*_events.js`).
 
 ---
 
 ## 4. Code Quality, Robustness & Security
-* **Explicit Typing & Clean Interfaces**: Use strong typing (Type Hints, Pydantic schemas, TypeScript interfaces) throughout. Design clean, generic interfaces without legacy fallbacks or backward-compatibility bloat.
+* **Explicit Typing & Clean Interfaces**: Use strong typing (Type Hints, Pydantic schemas, TypeScript/JSDoc interfaces) throughout. Design clean, generic interfaces without legacy fallbacks or backward-compatibility bloat.
 * **Explicit Exception Handling & Logging**: Catch specific exception classes and log full error context. Never use silent `try/except: pass` blocks. Prefer narrow exceptions over broad `except Exception` wherever practical.
 * **Module-Level Logging**: Use module loggers such as `logger = logging.getLogger(__name__)` instead of the root logger for application code, and prefer structured logging with context over string interpolation.
 * **Atomic File & Sidecar Integrity**: FileSystem operations (move, delete, split, rename) MUST handle source files and their accompanying `.meta` sidecar files atomically. Never orphan metadata during routing.
+* **Cross-Platform OS Safety Guards**: Guard all platform-specific native system calls (e.g. Win32 `ctypes.windll.user32`, registry, GDI) with explicit runtime platform checks (`if sys.platform == "win32":`), providing non-crashing fallback paths so tests and CI run cleanly across environments.
 * **Resource & Memory Hygiene in Long-Running Batch Pipelines**:
   * Always release resources (files, sockets, locks, PyMuPDF documents, PIL images, OpenCV matrices) using context managers (`with`) or `finally` blocks to prevent leaks.
   * For native C/C++ libraries (`fitz` / PyMuPDF, `cv2` / OpenCV), explicitly deallocate large native buffers (e.g. `del pix`) immediately after byte extraction.
   * In long-running batch loops, trigger periodic garbage collection (`gc.collect()`) after processing each document to prevent C-heap fragmentation and OS-level access violations (`0xc0000005`).
 * **Headless Background Keep-Alive Safety**: Server heartbeat and keepalive monitors must evaluate all dimensions of ongoing background work (active skill queues, running file processors, non-empty queues) before executing automated idle shutdowns.
 * **Thread-Safety & Atomic Operations**: Protect shared mutable state across threads using explicit locks (`threading.Lock`) or thread-safe queues (`queue.Queue`). Ensure file manipulations are fail-safe and atomic.
-* **Static Analysis & Tooling Rules**:
-  * *Python*: Run `ruff check .`, `pyright`, `bandit -r core/ routes/`, and `pytest-cov` after edits and resolve all issues.
-  * *Practical QA Discipline*: Do not treat tests as the only signal of health. Lint and type issues must be resolved too, and completion should be reported with actual verification output rather than assumptions.
 * **Documentation & Utility Reuse**: Code explains *WHAT* it does through clear naming; inline comments explain exclusively *WHY* (background, edge cases, business logic). Inspect `core/utils.py` and existing helpers before creating new utility functions.
-* **Typed Configuration & State**: Keep runtime configuration and shared state explicitly typed and centrally managed so that tests, static analysis, and runtime behavior stay aligned.
 * **Error Messages Should Be Actionable**: User-facing errors should explain what failed, why it happened, and what the user can do next. Avoid vague exceptions or silent fallbacks in workflows that affect the user experience.
-* **Change Scope Discipline**: When editing a repository, keep changes focused and avoid unrelated refactors. If a broader cleanup is necessary, split it into a separate, clearly explained change set.
 
 ---
 
@@ -89,7 +80,7 @@ When asked to write or suggest Git commit messages, strictly adhere to the follo
   * Mention important context such as bug fixes, user impact, or compatibility concerns when relevant.
 * **Content Rules**:
   * Be specific and concrete; avoid vague phrases like "improve stuff" or "various fixes".
-  * Mention the affected area when helpful, for example "Blender add-on" or "XYZ parser".
+  * Mention the affected component when helpful (e.g., `[RPA Engine]`, `[Skill Studio]`, `[OCR Pipeline]`, `[Case Router]`).
 * **Output Standard**: Return **only** the raw commit message text. Do not include meta-commentary, explanations, or raw diff output.
 
 ---
@@ -108,7 +99,7 @@ When asked to write or suggest Git commit messages, strictly adhere to the follo
   npx pyright core/ routes/
   python -m pytest -q
   ```
-* **Zero Regression Standard**: Commits and pushes are strictly blocked if any linter warning, type diagnostic, or test failure is present.
+* **Zero Regression Standard**: Commits and pushes are strictly blocked if any linter warning, type diagnostic, or test failure is present. All 3 gates must succeed with 0 errors.
 * **CI Parity**: Ensure local development environment tools match `.github/workflows/ci.yml` (Python 3.10+, Pyright, Ruff, Pytest).
 
 ---
@@ -122,14 +113,15 @@ When asked to write or suggest Git commit messages, strictly adhere to the follo
 
 ---
 
-## 10. Desktop Automation, Windows Session Isolation & RPA Discipline
+## 10. Desktop Automation, Windows Session Isolation & Vision RPA Discipline
 * **Windows Session Isolation & Truthfulness**:
   * Agent subshells on Windows run in isolated sandbox virtual desktop stations (`exebox-...`), not in the interactive user desktop station (`WinSta0\Default`).
   * Native OS GUI actions (`pynput`, `pyautogui`, `ctypes.windll.user32.mouse_event`, `BitBlt`) executed from background subshells interact strictly with the virtual desktop of that process and are NOT visible on the user's physical monitor.
   * Never claim a physical window was operated on the user's physical screen when executing from a subshell. Only web/browser interactions via Chrome DevTools MCP (CDP WebSocket) interact with the live user browser instance.
+* **Vision Model (Qwen-VL) 28px Patch Token Alignment**:
+  * Vision transformers (e.g. `Qwen2.5-VL`, `Qwen3-VL`) employ a 14×14 patch grid with 2×2 spatial pooling, creating an effective 28×28 pixel token grid.
+  * Always round image crops, quadrant slices, and region bounding boxes to exact multiples of **28 pixels** (`(val // 28) * 28`). This avoids zero-padding token waste and bilinear interpolation blur during UI element grounding.
 * **KISS in Workflow & Task Editors**:
   * Keep Task & Action configuration interfaces direct, transparent, and immediately editable. Avoid nested view-mode toggles (e.g. "Simple vs. Expert") or complex collapse states that hide inputs and confuse non-technical users.
 * **DPI-Aware Native Screen Grabbing**:
   * On Windows, always declare DPI awareness (`user32.SetProcessDPIAware()`) and utilize direct Win32 GDI BitBlt captures to ensure robust screen and snippet grabbing across high-DPI and multi-monitor configurations without `OSError: screen grab failed`.
-
-

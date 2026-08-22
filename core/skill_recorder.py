@@ -3,6 +3,7 @@ from __future__ import annotations
 import ctypes
 import logging
 import re
+import sys
 import threading
 import time
 from typing import Any
@@ -31,7 +32,7 @@ except Exception:
 
 def get_active_window_title() -> str:
     """Returns the window title of the currently active foreground window on Windows."""
-    if hasattr(ctypes, "windll"):
+    if sys.platform == "win32" and hasattr(ctypes, "windll"):
         try:
             hwnd = ctypes.windll.user32.GetForegroundWindow()  # type: ignore[attr-defined]
             if hwnd:

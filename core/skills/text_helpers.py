@@ -7,7 +7,6 @@ import logging
 import re
 import sys
 import time
-from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -116,14 +115,18 @@ def apply_string_modifier(val: str, modifier: str) -> str:
         s = s.replace("ü", "ue").replace("Ü", "Ue")
         s = s.replace("ß", "ss")
         return re.sub(r"[^a-zA-Z0-9_-]", "_", s)
-    if mod == "filename":
-        return Path(val).name
-    if mod in ("basename", "stem"):
-        return Path(val).stem
-    if mod in ("ext", "extension"):
-        return Path(val).suffix
-    if mod in ("parent", "folder"):
-        return str(Path(val).parent)
+    if mod in ("filename", "basename", "stem", "ext", "extension", "parent", "folder"):
+        from pathlib import PurePath, PureWindowsPath
+
+        p = PureWindowsPath(val) if ("\\" in val or ":" in val) else PurePath(val)
+        if mod == "filename":
+            return p.name
+        if mod in ("basename", "stem"):
+            return p.stem
+        if mod in ("ext", "extension"):
+            return p.suffix
+        if mod in ("parent", "folder"):
+            return str(p.parent)
     if mod.startswith("format:"):
         fmt = modifier.strip()[7:]
         clean_d = val.strip().replace("/", ".").replace("-", ".")

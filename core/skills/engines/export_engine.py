@@ -11,7 +11,6 @@ import sys
 import time
 from collections.abc import Callable, Mapping
 from io import BytesIO
-from pathlib import Path
 from typing import Any, cast
 
 from core.skills.base import BaseSkill
@@ -124,9 +123,11 @@ class ExportEngine(BaseSkill):
         fullpath = str(context.get("document_fullpath", "") or "")
         derived = dict(context)
 
-        # Derive path-related variables
+        # Derive path-related variables (cross-platform compatible)
         if fullpath:
-            p = Path(fullpath)
+            from pathlib import PurePath, PureWindowsPath
+
+            p = PureWindowsPath(fullpath) if ("\\" in fullpath or ":" in fullpath) else PurePath(fullpath)
             derived.setdefault("document_filename", p.name)
             derived.setdefault("filename", p.name)
             derived.setdefault("document_basename", p.stem)
