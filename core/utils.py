@@ -3,6 +3,7 @@ import logging
 import os
 import re
 import shutil
+import sys
 import threading
 import time
 from collections import deque
@@ -299,7 +300,7 @@ def send_to_trash(path: str) -> bool:
     if not os.path.exists(path):
         return False
 
-    if os.name == "nt":
+    if sys.platform == "win32":
         import ctypes
         from ctypes import wintypes
 
