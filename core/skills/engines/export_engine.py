@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import base64
 import ctypes
 import logging
 import os
@@ -10,8 +9,7 @@ import re
 import sys
 import time
 from collections.abc import Callable, Mapping
-from io import BytesIO
-from typing import Any, cast
+from typing import Any
 
 from core.skills.base import BaseSkill
 from core.skills.grounder import SoMGrounder
@@ -32,6 +30,7 @@ from core.skills.window_manager import (
     ensure_window_ready,
     handle_known_dialog_popups as _handle_known_dialog_popups_fn,
     maximize_target_window,
+    save_failure_screenshot as _save_failure_screenshot_fn,
 )
 from core.utils import is_sensitive_credential_text, sanitize_safe_path
 
@@ -96,23 +95,7 @@ class ExportEngine(BaseSkill):
 
     def _save_failure_screenshot(self, step_id: str, desc: str = "", window_title: str | None = None) -> str | None:
         """Captures and saves a diagnostic screenshot when a skill step fails."""
-        try:
-            screen = SoMGrounder.capture_screen(window_title)
-            if screen is None:
-                screen = SoMGrounder.capture_screen(None)
-            if screen is not None:
-                base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-                fail_dir = os.path.join(base_dir, "scratch", "rpa_failures")
-                os.makedirs(fail_dir, exist_ok=True)
-                sanitized_step = re.sub(r"[^\w\-_\.]", "_", step_id)
-                filename = f"failure_{int(time.time())}_{sanitized_step}.png"
-                target_path = os.path.join(fail_dir, filename)
-                screen.save(target_path)
-                logger.info("[ExportEngine] Saved failure screenshot to: %s", target_path)
-                return target_path
-        except Exception as e:
-            logger.debug("[ExportEngine] Could not save failure screenshot: %s", e)
-        return None
+        return _save_failure_screenshot_fn(step_id, desc, window_title)
 
     def _substitute_placeholders(self, text: str, context: Mapping[str, Any]) -> str:
         """Dynamically substitutes placeholders with optional modifiers (e.g. {Nachname|upper})."""
@@ -121,7 +104,25 @@ class ExportEngine(BaseSkill):
 
         # Derived dynamic properties from document_fullpath
         fullpath = str(context.get("document_fullpath", "") or "")
-        derived = dict(context)
+        derived: dict[str, Any] = {}
+
+        # First copy all context entries, normalizing keys by stripping braces
+        for k, v in context.items():
+            derived[k] = v
+            clean_k = str(k).strip("{} ")
+            if clean_k and clean_k not in derived:
+                derived[clean_k] = v
+
+        # Derive Person / Patient subfields (Nachname, Vorname) if not present
+        person_val = str(derived.get("Person") or derived.get("person") or derived.get("Patient") or derived.get("patient") or "").strip()
+        if person_val and "," in person_val:
+            person_parts = person_val.split(",", 1)
+            derived.setdefault("Nachname", person_parts[0].strip())
+            derived.setdefault("Vorname", person_parts[1].strip())
+        elif person_val and " " in person_val:
+            person_parts = person_val.split(" ", 1)
+            derived.setdefault("Vorname", person_parts[0].strip())
+            derived.setdefault("Nachname", person_parts[1].strip())
 
         # Derive path-related variables (cross-platform compatible)
         if fullpath:
@@ -151,6 +152,9 @@ class ExportEngine(BaseSkill):
         derived.setdefault("Zeit", time.strftime("%H-%M-%S", now))
         derived.setdefault("time", time.strftime("%H-%M-%S", now))
 
+        # Case-insensitive lookup map
+        lower_map = {k.lower(): v for k, v in derived.items() if isinstance(k, str)}
+
         def replace_match(match: re.Match) -> str:
             raw_expr = match.group(1).strip()
             if "|" in raw_expr:
@@ -162,6 +166,11 @@ class ExportEngine(BaseSkill):
                 modifier = ""
 
             val = derived.get(key)
+            if val is None and key in derived:
+                val = derived[key]
+            if val is None and key.lower() in lower_map:
+                val = lower_map[key.lower()]
+
             str_val = str(val) if val is not None else ""
             if modifier:
                 return _apply_string_modifier(str_val, modifier)
@@ -171,99 +180,7 @@ class ExportEngine(BaseSkill):
 
     def _locate_target(self, locator: dict[str, Any], window_title: str | None = None) -> tuple[int, int] | None:
         """Determines the (x, y) pixel coordinates for a locator with auto-adaptive OCR & VLM fallback."""
-        loc_type = str(locator.get("type", "auto"))
-        loc_val = str(locator.get("value", "") or locator.get("prompt", "") or locator.get("target", ""))
-        prompt = str(locator.get("prompt", "") or locator.get("value", "") or locator.get("target", ""))
-        search_term = prompt or loc_val
-
-        screen = SoMGrounder.capture_screen(window_title)
-        if not screen:
-            logger.error("[ExportEngine] Screenshot could not be captured.")
-            return None
-
-        # 1. Fast OCR Exact/Contains Match (RapidOCR)
-        if loc_type in ("auto", "smart", "ocr_exact", "ocr_contains") and search_term:
-            from core.extraction_pipeline import _get_rapid_ocr
-
-            engine = _get_rapid_ocr()
-            if engine is not None:
-                try:
-                    img_np = np.array(screen) if np is not None else None
-                    if img_np is not None:
-                        res, _ = engine(img_np)
-                        if res:
-                            # Pass 1: Exact match
-                            for line in res:
-                                box, text, _ = line
-                                t = text.strip()
-                                if not t:
-                                    continue
-                                if search_term.lower() == t.lower():
-                                    xs = [float(p[0]) for p in box]
-                                    ys = [float(p[1]) for p in box]
-                                    cx = int(sum(xs) / len(xs))
-                                    cy = int(sum(ys) / len(ys))
-                                    offset = cast(list[int], locator.get("offset", [0, 0]))
-                                    return cx + offset[0], cy + offset[1]
-
-                            # Pass 2: Contains match
-                            for line in res:
-                                box, text, _ = line
-                                t = text.strip()
-                                if not t:
-                                    continue
-                                if search_term.lower() in t.lower() or t.lower() in search_term.lower():
-                                    xs = [float(p[0]) for p in box]
-                                    ys = [float(p[1]) for p in box]
-                                    cx = int(sum(xs) / len(xs))
-                                    cy = int(sum(ys) / len(ys))
-                                    offset = cast(list[int], locator.get("offset", [0, 0]))
-                                    return cx + offset[0], cy + offset[1]
-                except Exception as e:
-                    logger.warning("[ExportEngine] RapidOCR Locator error: %s", e)
-
-        # 2. Set-of-Mark (SoM) Grounding via VLM with High-Res Quadrant Tiling
-        if (loc_type in ("auto", "smart", "som_vlm")) and self.vision_extractor and search_term:
-            tiles = SoMGrounder.generate_quadrant_tiles(screen)
-            for tile_img, off_x, off_y in tiles:
-                som_img, candidates = SoMGrounder.generate_som_overlay(tile_img)
-                if not candidates:
-                    continue
-
-                buf = BytesIO()
-                som_img.save(buf, format="JPEG", quality=85)
-                b64_som = base64.b64encode(buf.getvalue()).decode("utf-8")
-
-                ground_prompt = (
-                    f"Interactive UI elements are marked with red badges `[1]`, `[2]`, ... in this image.\n"
-                    f"Which element number best matches: '{search_term}'?\n"
-                    f"Reply ONLY with the exact number in square brackets, e.g. `[14]`. If no element matches, reply `NONE`."
-                )
-                payload = {"messages": [{"role": "user", "content": ground_prompt, "images": [b64_som]}]}
-
-                resp = self.vision_extractor.call_vision_api(payload)
-                if resp and "NONE" not in resp:
-                    match = re.search(r"\[(\d+)\]", resp)
-                    if match:
-                        elem_id = int(match.group(1))
-                        if elem_id in candidates:
-                            target = candidates[elem_id]
-                            offset_raw = locator.get("offset")
-                            offset_x, offset_y = 0, 0
-                            if isinstance(offset_raw, (list, tuple)) and len(offset_raw) >= 2:
-                                ox, oy = offset_raw[0], offset_raw[1]
-                                if isinstance(ox, (int, float)):
-                                    offset_x = int(ox)
-                                if isinstance(oy, (int, float)):
-                                    offset_y = int(oy)
-                            raw_cx = target.get("center_x")
-                            raw_cy = target.get("center_y")
-                            local_cx = int(raw_cx) if isinstance(raw_cx, (int, float)) else 0
-                            local_cy = int(raw_cy) if isinstance(raw_cy, (int, float)) else 0
-                            return off_x + local_cx + offset_x, off_y + local_cy + offset_y
-
-        logger.warning("[ExportEngine] Locator could not be resolved: %s", locator)
-        return None
+        return SoMGrounder.locate_target(locator, window_title=window_title, vision_extractor=self.vision_extractor)
 
     def _handle_known_dialog_popups(self, window_title: str | None = None) -> bool:
         """Inspects whether an unexpected overwrite/confirmation modal popup is blocking the flow and resolves it."""
@@ -568,10 +485,58 @@ class ExportEngine(BaseSkill):
                         for vk in reversed(vk_list):
                             ctypes.windll.user32.keybd_event(vk, 0, 2, 0)
 
-            # 8. SLEEP / DELAY
-            elif action_type == "SLEEP":
+            # 8. SLEEP / DELAY / WAIT
+            elif action_type in ("SLEEP", "DELAY", "WAIT"):
                 duration_s = float(step.get("duration_s", step.get("delay_ms", 1000) / 1000.0))
                 time.sleep(duration_s)
+
+            # 9. RUN_SCRIPT / POWERSHELL / EXECUTE_COMMAND (Headless COM / CLI Automation)
+            elif action_type in ("RUN_SCRIPT", "POWERSHELL", "EXECUTE_COMMAND", "SCRIPT"):
+                import subprocess
+
+                raw_cmd = str(step.get("command", "") or step.get("script", "") or step.get("code", ""))
+                cmd_to_run = self._substitute_placeholders(raw_cmd, context)
+                timeout_s = float(step.get("timeout_s", 60.0))
+                shell_type = str(step.get("shell", "powershell")).lower()
+
+                if cmd_to_run:
+                    try:
+                        if shell_type in ("powershell", "ps1", "pwsh") and sys.platform == "win32":
+                            proc = subprocess.run(
+                                [
+                                    "powershell",
+                                    "-NoProfile",
+                                    "-NonInteractive",
+                                    "-ExecutionPolicy",
+                                    "Bypass",
+                                    "-Command",
+                                    cmd_to_run,
+                                ],
+                                capture_output=True,
+                                text=True,
+                                timeout=timeout_s,
+                            )
+                        else:
+                            proc = subprocess.run(
+                                cmd_to_run,
+                                shell=True,
+                                capture_output=True,
+                                text=True,
+                                timeout=timeout_s,
+                            )
+                        if proc.returncode != 0:
+                            logger.error("[ExportEngine] Script failed (code %d): %s", proc.returncode, proc.stderr)
+                            if step.get("on_failure", "stop") == "stop":
+                                return False
+                        else:
+                            logger.info(
+                                "[ExportEngine] Script executed successfully: %s",
+                                proc.stdout[:200] if proc.stdout else "",
+                            )
+                    except Exception as e:
+                        logger.error("[ExportEngine] Script execution error: %s", e)
+                        if step.get("on_failure", "stop") == "stop":
+                            return False
 
             # Optional post-step delay
             delay_ms = int(step.get("delay_ms", 300))
@@ -654,17 +619,29 @@ class ExportEngine(BaseSkill):
 
     def filter_matching_files(self, folder_path: str, allowed_types: list[str] | None = None) -> list[dict[str, Any]]:
         """Filters PDF files in a case folder according to the skill's allowed document types and loads metadata."""
-        return _filter_matching_files_fn(folder_path, allowed_types)
+        from routes.state import DashboardState
+
+        delimiter = DashboardState.config.folder_delimiter if DashboardState.config else "__"
+        return _filter_matching_files_fn(folder_path, allowed_types, delimiter=delimiter)
 
     def find_pending_cases(self, target_base_dir: str) -> list[dict[str, Any]]:
         """Finds all approved case folders with unprocessed files."""
         if not self.enabled:
             return []
         folder_struct = None
-        if self.skill_manager and hasattr(self.skill_manager, "config") and self.skill_manager.config:
+        delimiter = "__"
+        from routes.state import DashboardState
+
+        if DashboardState.config:
+            folder_struct = DashboardState.config.folder_structure
+            delimiter = DashboardState.config.folder_delimiter or "__"
+        elif self.skill_manager and hasattr(self.skill_manager, "config") and self.skill_manager.config:
             folder_struct = getattr(self.skill_manager.config, "folder_structure", None)
+
         allowed_types = self.definition.get("document_types", ["*"])
-        return _find_pending_cases_fn(target_base_dir, self.id, allowed_types, folder_struct)
+        return _find_pending_cases_fn(
+            target_base_dir, self.id, allowed_types, folder_structure=folder_struct, delimiter=delimiter
+        )
 
     def execute_skill_for_folder(
         self,
@@ -672,7 +649,7 @@ class ExportEngine(BaseSkill):
         context: dict[str, Any] | None = None,
         reporter: Callable[[TaskProgress], None] | None = None,
     ) -> bool:
-        """Executes the export steps for an approved folder and marks files as executed."""
+        """Executes the export steps for all unprocessed matching files in an approved folder and marks each as executed."""
         allowed_types = self.definition.get("document_types", ["*"])
         all_matching = self.filter_matching_files(folder_path, allowed_types)
         matching_files = [f for f in all_matching if self.id not in f.get("executed_skills", [])]
@@ -680,23 +657,27 @@ class ExportEngine(BaseSkill):
         if not matching_files:
             return True
 
-        base_ctx = dict(context or {})
-        base_ctx["folder_path"] = folder_path
-        base_ctx["matching_files"] = [f["fullpath"] for f in matching_files]
+        all_ok = True
+        for f in matching_files:
+            file_ctx = dict(context or {})
+            file_ctx["folder_path"] = folder_path
+            file_ctx["matching_files"] = [mf["fullpath"] for mf in matching_files]
 
-        primary_file = matching_files[0]
-        for k, v in primary_file.get("meta", {}).items():
-            if k not in base_ctx:
-                base_ctx[k] = v
+            for k, v in f.get("meta", {}).items():
+                if k not in file_ctx:
+                    file_ctx[k] = v
 
-        base_ctx["document_fullpath"] = primary_file["fullpath"]
-        base_ctx["document_type"] = primary_file["document_type"]
-        base_ctx["filename"] = primary_file["filename"]
+            file_ctx["document_fullpath"] = f["fullpath"]
+            file_ctx["document_type"] = f["document_type"]
+            file_ctx["filename"] = f["filename"]
 
-        if self.execute_steps(base_ctx, reporter=reporter):
-            self.mark_file_executed(primary_file["fullpath"])
-            return True
-        return False
+            if self.execute_steps(file_ctx, reporter=reporter):
+                self.mark_file_executed(f["fullpath"])
+            else:
+                all_ok = False
+                break
+
+        return all_ok
 
     def mark_file_executed(self, filepath: str) -> bool:
         """Updates the .meta sidecar file with this skill ID."""

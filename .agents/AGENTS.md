@@ -92,14 +92,15 @@ When asked to write or suggest Git commit messages, strictly adhere to the follo
 
 ---
 
-## 8. CI, Testing & Pre-Push Quality Gate
-* **Local Pre-Flight Rule**: Never commit, stage, or push code before executing the complete automated test and lint pipeline locally:
+## 8. CI, Testing & Pre-Commit Quality Gate
+* **Development Verification**: Use `python -m pytest -q` during iterative development to verify logic and prevent regressions quickly.
+* **Pre-Commit Quality Gate**: `ruff` and `pyright` are checked strictly when preparing and executing commits (upon user request):
   ```bash
   ruff check .
   npx pyright core/ routes/
   python -m pytest -q
   ```
-* **Zero Regression Standard**: Commits and pushes are strictly blocked if any linter warning, type diagnostic, or test failure is present. All 3 gates must succeed with 0 errors.
+* **Zero Regression Standard**: Commits and pushes are strictly blocked if any linter warning, type diagnostic, or test failure is present. All 3 gates must succeed with 0 errors before committing.
 * **CI Parity**: Ensure local development environment tools match `.github/workflows/ci.yml` (Python 3.10+, Pyright, Ruff, Pytest).
 
 ---

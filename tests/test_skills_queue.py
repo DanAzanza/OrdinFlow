@@ -297,3 +297,54 @@ def test_import_engine_live_pause_and_stop(temp_skills_env, monkeypatch):
     time.sleep(0.3)
     # Remaining files must NOT be processed
     assert len(processed_files) < 5
+
+
+def test_queue_manager_passes_vision_extractor_and_processor(temp_skills_env, monkeypatch):
+    _tmp_dir, skills_dir = temp_skills_env
+    skill_mgr = SkillManager(skills_dir=skills_dir)
+    queue_mgr = SkillQueueManager(skill_manager=skill_mgr)
+
+    s1 = {"id": "export_vis", "name": "Export Vision", "type": "export"}
+    skill_mgr.save_skill(s1)
+
+    captured_kwargs = {}
+
+    class MockEngine(BaseSkill):
+        def execute(self, task: SkillTask, reporter=None) -> TaskResult:
+            return TaskResult(success=True)
+
+    def mock_get_engine(skill_id, vision_extractor=None, processor=None):
+        captured_kwargs["vision_extractor"] = vision_extractor
+        captured_kwargs["processor"] = processor
+        return MockEngine({"id": skill_id, "name": skill_id})
+
+    monkeypatch.setattr(skill_mgr, "get_skill_engine", mock_get_engine)
+
+    from routes.state import DashboardState
+    dummy_extractor = object()
+
+    class DummyProcObj:
+        llm_extractor = dummy_extractor
+
+        def resume(self):
+            pass
+
+        def pause(self):
+            pass
+
+    orig_proc = DashboardState.processor
+    try:
+        DashboardState.processor = DummyProcObj()  # type: ignore[assignment]
+        queue_mgr.add_to_queue("export_vis")
+        queue_mgr.start_queue()
+
+        for _ in range(20):
+            if not queue_mgr.is_running:
+                break
+            time.sleep(0.05)
+
+        assert captured_kwargs["vision_extractor"] is dummy_extractor
+    finally:
+        DashboardState.processor = orig_proc
+
+

@@ -751,6 +751,147 @@ def test_som_grounder_quadrant_tiling():
         assert off_x >= 0 and off_y >= 0
 
 
+def test_export_engine_multi_file_folder_execution(temp_skills_dir):
+    from core.skills.engines.export_engine import ExportEngine
+
+    folder = tempfile.mkdtemp()
+    try:
+        # Create 2 scan files in the case folder
+        f1 = os.path.join(folder, "Fußscan__Left.pdf")
+        f2 = os.path.join(folder, "Fußscan__Right.pdf")
+        open(f1, "w").close()
+        open(f2, "w").close()
+
+        with open(f1 + ".meta", "w", encoding="utf-8") as meta_f:
+            json.dump({"Document": "Fußscan", "Side": "Left"}, meta_f)
+        with open(f2 + ".meta", "w", encoding="utf-8") as meta_f:
+            json.dump({"Document": "Fußscan", "Side": "Right"}, meta_f)
+
+        executed_files = []
+
+        class MockExportEngine(ExportEngine):
+            def execute_steps(self, context, reporter=None, depth=0):
+                executed_files.append(context.get("document_fullpath"))
+                return True
+
+        skill_def = {
+            "id": "fu_scan_export",
+            "name": "Fußscan Export",
+            "type": "export",
+            "document_types": ["Fußscan"],
+            "tasks": [
+                {
+                    "id": "t1",
+                    "title": "Task 1",
+                    "actions": [{"action_type": "FOCUS_WINDOW", "window_title": "CorelDRAW*"}]
+                }
+            ]
+        }
+        engine = MockExportEngine(skill_def)
+
+        success = engine.execute_skill_for_folder(folder)
+        assert success is True
+        assert len(executed_files) == 2
+        assert f1 in executed_files
+        assert f2 in executed_files
+
+        # Verify both .meta files are marked
+        with open(f1 + ".meta", "r", encoding="utf-8") as mf1:
+            m1 = json.load(mf1)
+        with open(f2 + ".meta", "r", encoding="utf-8") as mf2:
+            m2 = json.load(mf2)
+        assert "fu_scan_export" in m1.get("executed_skills", [])
+        assert "fu_scan_export" in m2.get("executed_skills", [])
+    finally:
+        shutil.rmtree(folder, ignore_errors=True)
+
+
+def test_case_router_clean_metadata_parsing():
+    from core.skills.case_router import find_pending_cases
+
+    temp_dir = tempfile.mkdtemp()
+    try:
+        # Create approved case folder with __ delimiter and standard folder structure
+        folder_name = "2026-08-22__Einlagen__Mustermann__Max__----"
+        case_path = os.path.join(temp_dir, folder_name)
+        os.makedirs(case_path, exist_ok=True)
+        open(os.path.join(case_path, ".approved"), "w").close()
+
+        scan_pdf = os.path.join(case_path, "Fußscan__2026-08-22.pdf")
+        open(scan_pdf, "w").close()
+        with open(scan_pdf + ".meta", "w", encoding="utf-8") as mf:
+            json.dump({"Document": "Fußscan"}, mf)
+
+        folder_struct = ["{Datum}", "{Produkt}", "{Nachname}", "{Vorname}", "{Titel}"]
+        cases = find_pending_cases(
+            temp_dir,
+            skill_id="fu_scan_export",
+            allowed_types=["Fußscan"],
+            folder_structure=folder_struct,
+            delimiter="__",
+        )
+
+        assert len(cases) == 1
+        c = cases[0]
+        meta = c["parsed_metadata"]
+        assert meta["Datum"] == "2026-08-22"
+        assert meta["Produkt"] == "Einlagen"
+        assert meta["Nachname"] == "Mustermann"
+        assert meta["Vorname"] == "Max"
+        assert meta["Titel"] == ""  # '----' stripped to empty
+    finally:
+        shutil.rmtree(temp_dir, ignore_errors=True)
+
+
+def test_export_engine_delay_action_execution():
+    from core.skills.engines.export_engine import ExportEngine
+
+    skill_def = {
+        "name": "Delay Test Skill",
+        "tasks": [
+            {
+                "id": "t1",
+                "title": "Delay Task",
+                "actions": [
+                    {"id": "act_delay", "action_type": "DELAY", "delay_ms": 50},
+                    {"id": "act_sleep", "action_type": "SLEEP", "duration_s": 0.05},
+                    {"id": "act_wait", "action_type": "WAIT", "delay_ms": 50},
+                ]
+            }
+        ]
+    }
+    engine = ExportEngine(skill_def)
+    success = engine.execute_actions(context={})
+    assert success is True
+
+
+def test_export_engine_script_execution():
+    from core.skills.engines.export_engine import ExportEngine
+
+    skill_def = {
+        "name": "Script Test Skill",
+        "tasks": [
+            {
+                "id": "t1",
+                "title": "Script Task",
+                "actions": [
+                    {
+                        "id": "act_ps",
+                        "action_type": "RUN_SCRIPT",
+                        "shell": "powershell",
+                        "command": "Write-Output 'Exporting {document_basename}'",
+                    }
+                ]
+            }
+        ]
+    }
+    engine = ExportEngine(skill_def)
+    success = engine.execute_actions(context={"document_fullpath": "C:/Cases/Test__Doc.pdf"})
+    assert success is True
+
+
+
+
 
 
 

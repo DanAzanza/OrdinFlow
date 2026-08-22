@@ -1,9 +1,11 @@
-"""Set-of-Mark (SoM) Preprocessor for Visual Language Model (VLM) Grounding."""
-
+import base64
 import ctypes
+from io import BytesIO
 import logging
+import re
 import sys
 import time
+from typing import Any, cast
 
 from PIL import Image, ImageDraw, ImageFont, ImageGrab
 
@@ -19,6 +21,107 @@ except ImportError:
 
 class SoMGrounder:
     """Generates Set-of-Mark overlays for screen captures to enable precise VLM clicking."""
+
+    @staticmethod
+    def locate_target(
+        locator: dict[str, Any],
+        window_title: str | None = None,
+        vision_extractor: Any = None,
+    ) -> tuple[int, int] | None:
+        """Determines the (x, y) pixel coordinates for a locator with auto-adaptive OCR & VLM fallback."""
+        loc_type = str(locator.get("type", "auto"))
+        loc_val = str(locator.get("value", "") or locator.get("prompt", "") or locator.get("target", ""))
+        prompt = str(locator.get("prompt", "") or locator.get("value", "") or locator.get("target", ""))
+        search_term = prompt or loc_val
+
+        screen = SoMGrounder.capture_screen(window_title)
+        if not screen:
+            logger.error("[SoMGrounder] Screenshot could not be captured.")
+            return None
+
+        # 1. Fast OCR Exact/Contains Match (RapidOCR)
+        if loc_type in ("auto", "smart", "ocr_exact", "ocr_contains") and search_term:
+            from core.extraction_pipeline import _get_rapid_ocr
+
+            engine = _get_rapid_ocr()
+            if engine is not None:
+                try:
+                    img_np = np.array(screen) if np is not None else None
+                    if img_np is not None:
+                        res, _ = engine(img_np)
+                        if res:
+                            # Pass 1: Exact match
+                            for line in res:
+                                box, text, _ = line
+                                t = text.strip()
+                                if not t:
+                                    continue
+                                if search_term.lower() == t.lower():
+                                    xs = [float(p[0]) for p in box]
+                                    ys = [float(p[1]) for p in box]
+                                    cx = int(sum(xs) / len(xs))
+                                    cy = int(sum(ys) / len(ys))
+                                    offset = cast(list[int], locator.get("offset", [0, 0]))
+                                    return cx + offset[0], cy + offset[1]
+
+                            # Pass 2: Contains match
+                            for line in res:
+                                box, text, _ = line
+                                t = text.strip()
+                                if not t:
+                                    continue
+                                if search_term.lower() in t.lower() or t.lower() in search_term.lower():
+                                    xs = [float(p[0]) for p in box]
+                                    ys = [float(p[1]) for p in box]
+                                    cx = int(sum(xs) / len(xs))
+                                    cy = int(sum(ys) / len(ys))
+                                    offset = cast(list[int], locator.get("offset", [0, 0]))
+                                    return cx + offset[0], cy + offset[1]
+                except Exception as e:
+                    logger.warning("[SoMGrounder] RapidOCR Locator error: %s", e)
+
+        # 2. Set-of-Mark (SoM) Grounding via VLM with High-Res Quadrant Tiling
+        if (loc_type in ("auto", "smart", "som_vlm")) and vision_extractor and search_term:
+            tiles = SoMGrounder.generate_quadrant_tiles(screen)
+            for tile_img, off_x, off_y in tiles:
+                som_img, candidates = SoMGrounder.generate_som_overlay(tile_img)
+                if not candidates:
+                    continue
+
+                buf = BytesIO()
+                som_img.save(buf, format="JPEG", quality=85)
+                b64_som = base64.b64encode(buf.getvalue()).decode("utf-8")
+
+                ground_prompt = (
+                    f"Interactive UI elements are marked with red badges `[1]`, `[2]`, ... in this image.\n"
+                    f"Which element number best matches: '{search_term}'?\n"
+                    f"Reply ONLY with the exact number in square brackets, e.g. `[14]`. If no element matches, reply `NONE`."
+                )
+                payload = {"messages": [{"role": "user", "content": ground_prompt, "images": [b64_som]}]}
+
+                resp = vision_extractor.call_vision_api(payload)
+                if resp and "NONE" not in resp:
+                    match = re.search(r"\[(\d+)\]", resp)
+                    if match:
+                        elem_id = int(match.group(1))
+                        if elem_id in candidates:
+                            target = candidates[elem_id]
+                            offset_raw = locator.get("offset")
+                            offset_x, offset_y = 0, 0
+                            if isinstance(offset_raw, (list, tuple)) and len(offset_raw) >= 2:
+                                ox, oy = offset_raw[0], offset_raw[1]
+                                if isinstance(ox, (int, float)):
+                                    offset_x = int(ox)
+                                if isinstance(oy, (int, float)):
+                                    offset_y = int(oy)
+                            raw_cx = target.get("center_x")
+                            raw_cy = target.get("center_y")
+                            local_cx = int(raw_cx) if isinstance(raw_cx, (int, float)) else 0
+                            local_cy = int(raw_cy) if isinstance(raw_cy, (int, float)) else 0
+                            return off_x + local_cx + offset_x, off_y + local_cy + offset_y
+
+        logger.warning("[SoMGrounder] Locator could not be resolved: %s", locator)
+        return None
 
     @staticmethod
     def capture_screen(window_title: str | None = None) -> Image.Image | None:

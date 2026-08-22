@@ -11,12 +11,36 @@ from typing import Any
 
 from core.skills.grounder import SoMGrounder
 
+import os
+import re
+
 logger = logging.getLogger(__name__)
 
 try:
     import numpy as np
 except ImportError:
     np = None  # type: ignore[assignment]
+
+
+def save_failure_screenshot(step_id: str, desc: str = "", window_title: str | None = None) -> str | None:
+    """Captures and saves a diagnostic screenshot when a skill step fails."""
+    try:
+        screen = SoMGrounder.capture_screen(window_title)
+        if screen is None:
+            screen = SoMGrounder.capture_screen(None)
+        if screen is not None:
+            base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+            fail_dir = os.path.join(base_dir, "scratch", "rpa_failures")
+            os.makedirs(fail_dir, exist_ok=True)
+            sanitized_step = re.sub(r"[^\w\-_\.]", "_", step_id)
+            filename = f"failure_{int(time.time())}_{sanitized_step}.png"
+            target_path = os.path.join(fail_dir, filename)
+            screen.save(target_path)
+            logger.info("[WindowManager] Saved failure screenshot to: %s", target_path)
+            return target_path
+    except Exception as e:
+        logger.debug("[WindowManager] Could not save failure screenshot: %s", e)
+    return None
 
 
 def maximize_target_window(win_pattern: str) -> None:

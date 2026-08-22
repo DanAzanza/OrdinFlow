@@ -242,7 +242,7 @@ class SkillQueueManager:
 
         from routes.state import DashboardState
 
-        if DashboardState.processor:
+        if DashboardState.processor and hasattr(DashboardState.processor, "resume"):
             DashboardState.processor.resume()
 
         self._worker_thread = threading.Thread(
@@ -265,7 +265,7 @@ class SkillQueueManager:
 
         from routes.state import DashboardState
 
-        if DashboardState.processor:
+        if DashboardState.processor and hasattr(DashboardState.processor, "pause"):
             DashboardState.processor.pause()
 
         logger.info("[SkillQueueManager] Queue paused.")
@@ -282,7 +282,7 @@ class SkillQueueManager:
 
         from routes.state import DashboardState
 
-        if DashboardState.processor:
+        if DashboardState.processor and hasattr(DashboardState.processor, "resume"):
             DashboardState.processor.resume()
 
         with self.lock:
@@ -314,7 +314,7 @@ class SkillQueueManager:
 
         from routes.state import DashboardState
 
-        if DashboardState.processor:
+        if DashboardState.processor and hasattr(DashboardState.processor, "resume"):
             DashboardState.processor.resume()
 
         logger.info("[SkillQueueManager] Queue stopped.")
@@ -374,7 +374,15 @@ class SkillQueueManager:
                 result_data: dict[str, Any] = {}
 
                 try:
-                    engine = self.skill_manager.get_skill_engine(current_task.skill_id)
+                    from routes.state import DashboardState
+
+                    extractor = DashboardState.processor.llm_extractor if DashboardState.processor else None
+                    processor = DashboardState.processor
+                    engine = self.skill_manager.get_skill_engine(
+                        current_task.skill_id,
+                        vision_extractor=extractor,
+                        processor=processor,
+                    )
                     if not engine:
                         raise RuntimeError(f"Skill engine for '{current_task.skill_id}' not found.")
 

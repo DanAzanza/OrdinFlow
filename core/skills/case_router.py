@@ -11,7 +11,11 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 
-def filter_matching_files(folder_path: str, allowed_types: list[str] | None = None) -> list[dict[str, Any]]:
+def filter_matching_files(
+    folder_path: str,
+    allowed_types: list[str] | None = None,
+    delimiter: str = "__",
+) -> list[dict[str, Any]]:
     """Filters PDF files in a case folder according to allowed document types and loads sidecar metadata."""
     matching_files: list[dict[str, Any]] = []
     if not os.path.exists(folder_path) or not os.path.isdir(folder_path):
@@ -44,12 +48,24 @@ def filter_matching_files(folder_path: str, allowed_types: list[str] | None = No
                 except (json.JSONDecodeError, OSError):
                     pass
 
-            if doc_type == "UNKNOWN" and "__" in fname:
-                parts = fname.split("__")
-                if len(parts) >= 2:
-                    doc_type = parts[0]
+            if doc_type == "UNKNOWN":
+                if delimiter and delimiter in fname:
+                    parts = fname.split(delimiter)
+                    if len(parts) >= 1 and parts[0]:
+                        doc_type = parts[0]
+                elif "__" in fname:
+                    parts = fname.split("__")
+                    if len(parts) >= 1 and parts[0]:
+                        doc_type = parts[0]
 
-            if allowed_types_clean is None or doc_type.lower() in allowed_types_clean:
+            is_match = False
+            if allowed_types_clean is None:
+                is_match = True
+            else:
+                doc_subtypes = [t.strip().lower() for t in doc_type.split("+") if t.strip()]
+                is_match = any(st in allowed_types_clean for st in doc_subtypes)
+
+            if is_match:
                 executed_skills = meta_data.get("executed_skills", [])
                 if not isinstance(executed_skills, list):
                     executed_skills = []
@@ -71,6 +87,7 @@ def find_pending_cases(
     skill_id: str,
     allowed_types: list[str] | None = None,
     folder_structure: list[str] | None = None,
+    delimiter: str = "__",
 ) -> list[dict[str, Any]]:
     """Finds all approved case folders with unprocessed files matching the skill's document types."""
     if not os.path.exists(target_base_dir):
@@ -86,20 +103,34 @@ def find_pending_cases(
         if not os.path.exists(os.path.join(folder_path, ".approved")):
             continue
 
-        matching = filter_matching_files(folder_path, types_to_match)
+        matching = filter_matching_files(folder_path, types_to_match, delimiter=delimiter)
         unprocessed_files = [f for f in matching if skill_id not in f.get("executed_skills", [])]
 
         if unprocessed_files:
-            parts = folder_name.split("__")
+            parts = folder_name.split(delimiter) if delimiter in folder_name else folder_name.split("__")
             parsed_meta: dict[str, str] = {}
 
             if folder_structure and isinstance(folder_structure, list):
                 for idx, key in enumerate(folder_structure):
-                    if idx < len(parts):
-                        parsed_meta[key] = parts[idx].strip()
+                    clean_key = str(key).strip("{} ")
+                    raw_val = parts[idx].strip() if idx < len(parts) else ""
+                    val = "" if raw_val == "----" else raw_val
+                    if clean_key:
+                        parsed_meta[clean_key] = val
+                        parsed_meta[f"{{{clean_key}}}"] = val
             else:
                 for idx, part in enumerate(parts):
-                    parsed_meta[f"part_{idx}"] = part.strip()
+                    clean_part = "" if part.strip() == "----" else part.strip()
+                    parsed_meta[f"part_{idx}"] = clean_part
+
+            # Automatically derive Vorname / Nachname if Person or Patient is present in comma notation
+            person_val = parsed_meta.get("Person") or parsed_meta.get("person") or parsed_meta.get("Patient") or parsed_meta.get("patient") or ""
+            if person_val and "," in person_val:
+                person_parts = person_val.split(",", 1)
+                parsed_meta.setdefault("Nachname", person_parts[0].strip())
+                parsed_meta.setdefault("Vorname", person_parts[1].strip())
+                parsed_meta.setdefault("{Nachname}", person_parts[0].strip())
+                parsed_meta.setdefault("{Vorname}", person_parts[1].strip())
 
             pending_cases.append(
                 {
