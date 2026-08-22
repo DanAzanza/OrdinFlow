@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import base64
 import ctypes
-import json
 import logging
 import os
 import re
@@ -19,6 +18,22 @@ from core.skills.base import BaseSkill
 from core.skills.grounder import SoMGrounder
 from core.skills.models import SkillTask, TaskProgress, TaskResult
 from core.skills.shield import input_shield
+from core.skills.case_router import (
+    filter_matching_files as _filter_matching_files_fn,
+    find_pending_cases as _find_pending_cases_fn,
+    mark_file_skill_executed as _mark_file_skill_executed_fn,
+)
+from core.skills.text_helpers import (
+    apply_string_modifier as _apply_string_modifier,
+    paste_text_via_clipboard as _paste_text_via_clipboard,
+    type_unicode_text as _type_unicode_text,
+)
+from core.skills.window_manager import (
+    check_hung_app_and_recover,
+    ensure_window_ready,
+    handle_known_dialog_popups as _handle_known_dialog_popups_fn,
+    maximize_target_window,
+)
 from core.utils import is_sensitive_credential_text, sanitize_safe_path
 
 logger = logging.getLogger(__name__)
@@ -27,147 +42,6 @@ try:
     import numpy as np
 except ImportError:
     np = None  # type: ignore[assignment]
-
-
-def _type_unicode_text(text: str, press_enter: bool = False) -> None:
-    """Types unicode characters reliably on Windows using KEYEVENTF_UNICODE."""
-    if sys.platform != "win32":
-        return
-
-    keybd_event = ctypes.windll.user32.keybd_event  # type: ignore[union-attr]
-    KEYEVENTF_KEYUP = 0x0002
-    KEYEVENTF_UNICODE = 0x0004
-
-    for char in text:
-        code = ord(char)
-        keybd_event(0, code, KEYEVENTF_UNICODE, 0)
-        keybd_event(0, code, KEYEVENTF_UNICODE | KEYEVENTF_KEYUP, 0)
-        time.sleep(0.008)
-
-    if press_enter:
-        time.sleep(0.05)
-        keybd_event(0x0D, 0, 0, 0)
-        keybd_event(0x0D, 0, KEYEVENTF_KEYUP, 0)
-
-
-def _paste_text_via_clipboard(text: str, press_enter: bool = False) -> bool:
-    """Instantly pastes text via Windows Clipboard (Ctrl+V), avoiding layout/character typing lags."""
-    if sys.platform != "win32":
-        _type_unicode_text(text, press_enter=press_enter)
-        return True
-
-    try:
-        user32 = ctypes.windll.user32
-        kernel32 = ctypes.windll.kernel32
-
-        CF_UNICODETEXT = 13
-        GMEM_MOVEABLE = 0x0002
-
-        encoded = text.encode("utf-16le") + b"\x00\x00"
-
-        h_mem = kernel32.GlobalAlloc(GMEM_MOVEABLE, len(encoded))
-        if not h_mem:
-            _type_unicode_text(text, press_enter=press_enter)
-            return False
-
-        ptr = kernel32.GlobalLock(h_mem)
-        if not ptr:
-            kernel32.GlobalFree(h_mem)
-            _type_unicode_text(text, press_enter=press_enter)
-            return False
-
-        ctypes.memmove(ptr, encoded, len(encoded))
-        kernel32.GlobalUnlock(h_mem)
-
-        if not user32.OpenClipboard(0):
-            kernel32.GlobalFree(h_mem)
-            _type_unicode_text(text, press_enter=press_enter)
-            return False
-
-        user32.EmptyClipboard()
-        user32.SetClipboardData(CF_UNICODETEXT, h_mem)
-        user32.CloseClipboard()
-
-        # Send Ctrl+V
-        KEYEVENTF_KEYUP = 0x0002
-        VK_CONTROL = 0x11
-        VK_V = 0x56
-
-        user32.keybd_event(VK_CONTROL, 0, 0, 0)
-        user32.keybd_event(VK_V, 0, 0, 0)
-        time.sleep(0.03)
-        user32.keybd_event(VK_V, 0, KEYEVENTF_KEYUP, 0)
-        user32.keybd_event(VK_CONTROL, 0, KEYEVENTF_KEYUP, 0)
-
-        if press_enter:
-            time.sleep(0.05)
-            user32.keybd_event(0x0D, 0, 0, 0)
-            user32.keybd_event(0x0D, 0, KEYEVENTF_KEYUP, 0)
-
-        return True
-    except Exception as e:
-        logger.debug("[ExportEngine] Clipboard paste failed, falling back to keystrokes: %s", e)
-        _type_unicode_text(text, press_enter=press_enter)
-        return False
-
-
-
-def _apply_string_modifier(val: str, modifier: str) -> str:
-    """Applies string formatting modifiers to placeholder values."""
-    mod = modifier.strip().lower()
-    if not val:
-        return ""
-
-    if mod == "upper":
-        return val.upper()
-    if mod == "lower":
-        return val.lower()
-    if mod == "capitalize":
-        return val.capitalize()
-    if mod == "title":
-        return val.title()
-    if mod in ("nodots", "digits_only"):
-        return re.sub(r"\D", "", val)
-    if mod in ("slug", "clean_filename"):
-        s = val.replace("ä", "ae").replace("Ä", "Ae")
-        s = s.replace("ö", "oe").replace("Ö", "Oe")
-        s = s.replace("ü", "ue").replace("Ü", "Ue")
-        s = s.replace("ß", "ss")
-        return re.sub(r"[^a-zA-Z0-9_-]", "_", s)
-    if mod == "filename":
-        return Path(val).name
-    if mod in ("basename", "stem"):
-        return Path(val).stem
-    if mod in ("ext", "extension"):
-        return Path(val).suffix
-    if mod in ("parent", "folder"):
-        return str(Path(val).parent)
-    if mod.startswith("format:"):
-        fmt = modifier.strip()[7:]
-        clean_d = val.strip().replace("/", ".").replace("-", ".")
-        parts = clean_d.split(".")
-        try:
-            if len(parts) == 3:
-                if len(parts[0]) == 4:  # YYYY.MM.DD
-                    y, m, d = parts[0], parts[1].zfill(2), parts[2].zfill(2)
-                else:  # DD.MM.YYYY
-                    d, m, y = parts[0].zfill(2), parts[1].zfill(2), parts[2]
-                if fmt == "YYYYMMDD":
-                    return f"{y}{m}{d}"
-                if fmt == "DDMMYYYY":
-                    return f"{d}{m}{y}"
-                if fmt == "DD.MM.YYYY":
-                    return f"{d}.{m}.{y}"
-                if fmt == "DD-MM-YYYY":
-                    return f"{d}-{m}-{y}"
-                if fmt == "YYYY-MM-DD":
-                    return f"{y}-{m}-{d}"
-                if fmt == "DD.MM.YY":
-                    return f"{d}.{m}.{y[-2:]}"
-        except Exception:
-            pass
-
-    return val
 
 
 class ExportEngine(BaseSkill):
@@ -392,69 +266,11 @@ class ExportEngine(BaseSkill):
 
     def _handle_known_dialog_popups(self, window_title: str | None = None) -> bool:
         """Inspects whether an unexpected overwrite/confirmation modal popup is blocking the flow and resolves it."""
-        try:
-            from core.extraction_pipeline import _get_rapid_ocr
-
-            engine = _get_rapid_ocr()
-            if not engine:
-                return False
-            screen = SoMGrounder.capture_screen(window_title)
-            if not screen:
-                return False
-            img_np = np.array(screen) if np is not None else None
-            if img_np is None:
-                return False
-            res, _ = engine(img_np)
-            if not res:
-                return False
-
-            popup_detected = False
-            confirm_btn_coords = None
-            for line in res:
-                box, text, _ = line
-                t_lower = text.lower().strip()
-                if any(k in t_lower for k in ["überschreiben", "bereits vorhanden", "already exists", "ersetzen", "replace"]):
-                    popup_detected = True
-                if t_lower in ["ja", "yes", "überschreiben", "replace", "ok", "fortfahren"]:
-                    xs = [float(p[0]) for p in box]
-                    ys = [float(p[1]) for p in box]
-                    confirm_btn_coords = (int(sum(xs) / len(xs)), int(sum(ys) / len(ys)))
-
-            if popup_detected and confirm_btn_coords and sys.platform == "win32":
-                logger.info("[ExportEngine] Auto-Recovery: Detected confirmation/overwrite modal popup, clicking confirm at %s", confirm_btn_coords)
-                with input_shield():
-                    ctypes.windll.user32.SetCursorPos(confirm_btn_coords[0], confirm_btn_coords[1])
-                    ctypes.windll.user32.mouse_event(0x0002, 0, 0, 0, 0)
-                    ctypes.windll.user32.mouse_event(0x0004, 0, 0, 0, 0)
-                time.sleep(0.3)
-                return True
-        except Exception as e:
-            logger.debug("[ExportEngine] Dialog auto-recovery check error: %s", e)
-        return False
+        return _handle_known_dialog_popups_fn(window_title)
 
     def _maximize_window(self, win_pattern: str) -> None:
         """Maximizes the target window via Win32 ShowWindow(SW_MAXIMIZE = 3)."""
-        if sys.platform != "win32" or not win_pattern:
-            return
-        try:
-            found_hwnd: list[int] = []
-
-            def enum_proc(h: int, _lparam: int) -> bool:
-                length = ctypes.windll.user32.GetWindowTextLengthW(h)
-                if length > 0:
-                    buff = ctypes.create_unicode_buffer(length + 1)
-                    ctypes.windll.user32.GetWindowTextW(h, buff, length + 1)
-                    if win_pattern.lower().replace("*", "") in buff.value.lower():
-                        found_hwnd.append(h)
-                return True
-
-            cb = ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.c_void_p, ctypes.c_void_p)(enum_proc)
-            ctypes.windll.user32.EnumWindows(cb, 0)
-            if found_hwnd:
-                ctypes.windll.user32.ShowWindow(found_hwnd[0], 3)  # SW_MAXIMIZE
-                time.sleep(0.2)
-        except Exception as e:
-            logger.debug("[ExportEngine] Maximize window error: %s", e)
+        maximize_target_window(win_pattern)
 
     def _ensure_window_ready(
         self,
@@ -465,76 +281,23 @@ class ExportEngine(BaseSkill):
         maximize: bool = False,
     ) -> bool:
         """Checks if target window is available; if not, triggers launch skill or executable and maximizes."""
-        screen = SoMGrounder.capture_screen(win_pattern) if win_pattern else None
-        if screen is not None:
-            if maximize and sys.platform == "win32":
-                self._maximize_window(win_pattern)
-            return True
-
-        # Window not found -> try launch skill or executable
-        launch_skill = launch_skill_id or self.launch_skill_id
-        executable = exe_path or self.executable_path
-
-        if launch_skill:
-            logger.info("[ExportEngine] Window '%s' not found. Triggering launch skill: '%s'", win_pattern, launch_skill)
-            if not self.execute_skill(str(launch_skill), dict(context)):
-                logger.warning("[ExportEngine] Launch skill '%s' failed.", launch_skill)
-                return False
-        elif executable:
-            logger.info("[ExportEngine] Window '%s' not found. Launching executable: '%s'", win_pattern, executable)
-            try:
-                import subprocess
-
-                subprocess.Popen(str(executable), shell=True)
-            except Exception as e:
-                logger.error("[ExportEngine] Failed to launch executable '%s': %s", executable, e)
-                return False
-
-        # Wait up to 10s for the window to appear
-        for _ in range(20):
-            time.sleep(0.5)
-            screen = SoMGrounder.capture_screen(win_pattern)
-            if screen is not None:
-                if maximize and sys.platform == "win32":
-                    self._maximize_window(win_pattern)
-                return True
-
-        return False
+        return ensure_window_ready(
+            win_pattern=win_pattern,
+            context=context,
+            launch_skill_id=launch_skill_id or self.launch_skill_id,
+            exe_path=exe_path or self.executable_path,
+            maximize=maximize,
+            execute_skill_fn=self.execute_skill,
+        )
 
     def _check_hung_app_and_recover(self, win_pattern: str, context: Mapping[str, Any]) -> bool:
         """Checks if target window is hung/unresponsive and restarts it if configured."""
-        if sys.platform != "win32" or not win_pattern or not self.recover_hung_process:
-            return False
-        try:
-            found_hwnd: list[int] = []
-
-            def enum_proc(h: int, _lparam: int) -> bool:
-                length = ctypes.windll.user32.GetWindowTextLengthW(h)
-                if length > 0:
-                    buff = ctypes.create_unicode_buffer(length + 1)
-                    ctypes.windll.user32.GetWindowTextW(h, buff, length + 1)
-                    if win_pattern.lower().replace("*", "") in buff.value.lower():
-                        found_hwnd.append(h)
-                return True
-
-            cb = ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.c_void_p, ctypes.c_void_p)(enum_proc)
-            ctypes.windll.user32.EnumWindows(cb, 0)
-            if found_hwnd:
-                hwnd = found_hwnd[0]
-                is_hung = bool(ctypes.windll.user32.IsHungAppWindow(hwnd))
-                if is_hung:
-                    logger.warning("[ExportEngine] Detected hung/unresponsive window '%s' (HWND %s). Terminating process...", win_pattern, hwnd)
-                    pid = ctypes.c_ulong()
-                    ctypes.windll.user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
-                    if pid.value:
-                        import subprocess
-
-                        subprocess.run(["taskkill", "/F", "/PID", str(pid.value)], check=False, capture_output=True)
-                        time.sleep(1.0)
-                        return self._ensure_window_ready(win_pattern, context, maximize=True)
-        except Exception as e:
-            logger.debug("[ExportEngine] Hung app check error: %s", e)
-        return False
+        return check_hung_app_and_recover(
+            win_pattern=win_pattern,
+            context=context,
+            recover_enabled=self.recover_hung_process,
+            ensure_ready_fn=self._ensure_window_ready,
+        )
 
     def _wait_for_queue(
         self,
@@ -890,103 +653,17 @@ class ExportEngine(BaseSkill):
 
     def filter_matching_files(self, folder_path: str, allowed_types: list[str] | None = None) -> list[dict[str, Any]]:
         """Filters PDF files in a case folder according to the skill's allowed document types and loads metadata."""
-        matching_files: list[dict[str, Any]] = []
-        if not os.path.exists(folder_path) or not os.path.isdir(folder_path):
-            return matching_files
-
-        if not allowed_types or "*" in allowed_types or "ALL" in [t.upper() for t in allowed_types]:
-            allowed_types_clean = None
-        else:
-            allowed_types_clean = [t.strip().lower() for t in allowed_types if t.strip()]
-
-        for fname in sorted(os.listdir(folder_path)):
-            if fname.lower().endswith(".pdf"):
-                full_path = os.path.join(folder_path, fname)
-                meta_path = full_path + ".meta"
-                doc_type = "UNKNOWN"
-                meta_data: dict[str, Any] = {}
-
-                if os.path.exists(meta_path):
-                    try:
-                        with open(meta_path, encoding="utf-8") as f:
-                            loaded = json.load(f)
-                            if isinstance(loaded, dict):
-                                meta_data = loaded
-                                doc_type = (
-                                    loaded.get("Document")
-                                    or loaded.get("Dokument")
-                                    or loaded.get("document_type")
-                                    or "UNKNOWN"
-                                )
-                    except (json.JSONDecodeError, OSError):
-                        pass
-
-                if doc_type == "UNKNOWN" and "__" in fname:
-                    parts = fname.split("__")
-                    if len(parts) >= 2:
-                        doc_type = parts[0]
-
-                if allowed_types_clean is None or doc_type.lower() in allowed_types_clean:
-                    executed_skills = meta_data.get("executed_skills", [])
-                    if not isinstance(executed_skills, list):
-                        executed_skills = []
-                    matching_files.append(
-                        {
-                            "filename": fname,
-                            "fullpath": full_path,
-                            "document_type": doc_type,
-                            "meta": meta_data,
-                            "executed_skills": executed_skills,
-                        }
-                    )
-
-        return matching_files
+        return _filter_matching_files_fn(folder_path, allowed_types)
 
     def find_pending_cases(self, target_base_dir: str) -> list[dict[str, Any]]:
         """Finds all approved case folders with unprocessed files."""
-        if not os.path.exists(target_base_dir) or not self.enabled:
+        if not self.enabled:
             return []
-
+        folder_struct = None
+        if self.skill_manager and hasattr(self.skill_manager, "config") and self.skill_manager.config:
+            folder_struct = getattr(self.skill_manager.config, "folder_structure", None)
         allowed_types = self.definition.get("document_types", ["*"])
-        pending_cases: list[dict[str, Any]] = []
-
-        for folder_name in sorted(os.listdir(target_base_dir)):
-            folder_path = os.path.join(target_base_dir, folder_name)
-            if not os.path.isdir(folder_path):
-                continue
-            if not os.path.exists(os.path.join(folder_path, ".approved")):
-                continue
-
-            matching = self.filter_matching_files(folder_path, allowed_types)
-            unprocessed_files = [f for f in matching if self.id not in f.get("executed_skills", [])]
-
-            if unprocessed_files:
-                # Dynamically parse folder name metadata
-                parts = folder_name.split("__")
-                parsed_meta: dict[str, str] = {}
-                folder_struct = []
-                if self.skill_manager and hasattr(self.skill_manager, "config") and self.skill_manager.config:
-                    folder_struct = getattr(self.skill_manager.config, "folder_structure", [])
-
-                if folder_struct and isinstance(folder_struct, list):
-                    for idx, key in enumerate(folder_struct):
-                        if idx < len(parts):
-                            parsed_meta[key] = parts[idx].strip()
-                else:
-                    for idx, part in enumerate(parts):
-                        parsed_meta[f"part_{idx}"] = part.strip()
-
-                pending_cases.append(
-                    {
-                        "folder_name": folder_name,
-                        "folder_path": folder_path,
-                        "matching_files": unprocessed_files,
-                        "unprocessed_count": len(unprocessed_files),
-                        "parsed_metadata": parsed_meta,
-                    }
-                )
-
-        return pending_cases
+        return _find_pending_cases_fn(target_base_dir, self.id, allowed_types, folder_struct)
 
     def execute_skill_for_folder(
         self,
@@ -1022,36 +699,11 @@ class ExportEngine(BaseSkill):
 
     def mark_file_executed(self, filepath: str) -> bool:
         """Updates the .meta sidecar file with this skill ID."""
-        meta_path = filepath + ".meta"
-        data: dict[str, Any] = {}
-        if os.path.exists(meta_path):
-            try:
-                with open(meta_path, encoding="utf-8") as f:
-                    data = json.load(f) or {}
-            except (json.JSONDecodeError, OSError):
-                data = {}
+        return _mark_file_skill_executed_fn(filepath, self.id)
 
-        executed = data.get("executed_skills", [])
-        if not isinstance(executed, list):
-            executed = []
-        if self.id not in executed:
-            executed.append(self.id)
-        data["executed_skills"] = executed
-
-        history = data.get("skill_execution_history", {})
-        if not isinstance(history, dict):
-            history = {}
-        history[self.id] = time.time()
-        data["skill_execution_history"] = history
-
-        try:
-            with open(meta_path, "w", encoding="utf-8") as f:
-                json.dump(data, f, ensure_ascii=False, indent=2)
-            logger.info("[ExportEngine] Marked '%s' as executed by '%s'", filepath, self.id)
-            return True
-        except OSError as e:
-            logger.error("[ExportEngine] Failed writing marker to %s: %s", meta_path, e)
-            return False
+    def mark_file_skill_executed(self, filepath: str, skill_id: str) -> bool:
+        """Marks a file with any specified skill ID."""
+        return _mark_file_skill_executed_fn(filepath, skill_id)
 
     def execute_skill(self, skill_id: str, context: dict[str, Any] | None = None, depth: int = 0) -> bool:
         """Executes a skill by ID using the appropriate engine."""
@@ -1107,35 +759,3 @@ class ExportEngine(BaseSkill):
             if isinstance(engine, ExportEngine):
                 return engine.find_pending_cases(target_base_dir)
         return []
-
-    def mark_file_skill_executed(self, filepath: str, skill_id: str) -> bool:
-        """Marks a file with any specified skill ID."""
-        meta_path = filepath + ".meta"
-        data: dict[str, Any] = {}
-        if os.path.exists(meta_path):
-            try:
-                with open(meta_path, encoding="utf-8") as f:
-                    data = json.load(f) or {}
-            except (json.JSONDecodeError, OSError):
-                data = {}
-
-        executed = data.get("executed_skills", [])
-        if not isinstance(executed, list):
-            executed = []
-        if skill_id not in executed:
-            executed.append(skill_id)
-        data["executed_skills"] = executed
-
-        history = data.get("skill_execution_history", {})
-        if not isinstance(history, dict):
-            history = {}
-        history[skill_id] = time.time()
-        data["skill_execution_history"] = history
-
-        try:
-            with open(meta_path, "w", encoding="utf-8") as f:
-                json.dump(data, f, ensure_ascii=False, indent=2)
-            return True
-        except OSError as e:
-            logger.debug("[ExportEngine] Could not write metadata sidecar %s: %s", meta_path, e)
-            return False
