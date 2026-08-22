@@ -12,6 +12,7 @@ import sys
 import time
 from collections.abc import Callable, Mapping
 from io import BytesIO
+from pathlib import Path
 from typing import Any, cast
 
 from core.skills.base import BaseSkill
@@ -47,6 +48,126 @@ def _type_unicode_text(text: str, press_enter: bool = False) -> None:
         time.sleep(0.05)
         keybd_event(0x0D, 0, 0, 0)
         keybd_event(0x0D, 0, KEYEVENTF_KEYUP, 0)
+
+
+def _paste_text_via_clipboard(text: str, press_enter: bool = False) -> bool:
+    """Instantly pastes text via Windows Clipboard (Ctrl+V), avoiding layout/character typing lags."""
+    if sys.platform != "win32":
+        _type_unicode_text(text, press_enter=press_enter)
+        return True
+
+    try:
+        user32 = ctypes.windll.user32
+        kernel32 = ctypes.windll.kernel32
+
+        CF_UNICODETEXT = 13
+        GMEM_MOVEABLE = 0x0002
+
+        encoded = text.encode("utf-16le") + b"\x00\x00"
+
+        h_mem = kernel32.GlobalAlloc(GMEM_MOVEABLE, len(encoded))
+        if not h_mem:
+            _type_unicode_text(text, press_enter=press_enter)
+            return False
+
+        ptr = kernel32.GlobalLock(h_mem)
+        if not ptr:
+            kernel32.GlobalFree(h_mem)
+            _type_unicode_text(text, press_enter=press_enter)
+            return False
+
+        ctypes.memmove(ptr, encoded, len(encoded))
+        kernel32.GlobalUnlock(h_mem)
+
+        if not user32.OpenClipboard(0):
+            kernel32.GlobalFree(h_mem)
+            _type_unicode_text(text, press_enter=press_enter)
+            return False
+
+        user32.EmptyClipboard()
+        user32.SetClipboardData(CF_UNICODETEXT, h_mem)
+        user32.CloseClipboard()
+
+        # Send Ctrl+V
+        KEYEVENTF_KEYUP = 0x0002
+        VK_CONTROL = 0x11
+        VK_V = 0x56
+
+        user32.keybd_event(VK_CONTROL, 0, 0, 0)
+        user32.keybd_event(VK_V, 0, 0, 0)
+        time.sleep(0.03)
+        user32.keybd_event(VK_V, 0, KEYEVENTF_KEYUP, 0)
+        user32.keybd_event(VK_CONTROL, 0, KEYEVENTF_KEYUP, 0)
+
+        if press_enter:
+            time.sleep(0.05)
+            user32.keybd_event(0x0D, 0, 0, 0)
+            user32.keybd_event(0x0D, 0, KEYEVENTF_KEYUP, 0)
+
+        return True
+    except Exception as e:
+        logger.debug("[ExportEngine] Clipboard paste failed, falling back to keystrokes: %s", e)
+        _type_unicode_text(text, press_enter=press_enter)
+        return False
+
+
+
+def _apply_string_modifier(val: str, modifier: str) -> str:
+    """Applies string formatting modifiers to placeholder values."""
+    mod = modifier.strip().lower()
+    if not val:
+        return ""
+
+    if mod == "upper":
+        return val.upper()
+    if mod == "lower":
+        return val.lower()
+    if mod == "capitalize":
+        return val.capitalize()
+    if mod == "title":
+        return val.title()
+    if mod in ("nodots", "digits_only"):
+        return re.sub(r"\D", "", val)
+    if mod in ("slug", "clean_filename"):
+        s = val.replace("ä", "ae").replace("Ä", "Ae")
+        s = s.replace("ö", "oe").replace("Ö", "Oe")
+        s = s.replace("ü", "ue").replace("Ü", "Ue")
+        s = s.replace("ß", "ss")
+        return re.sub(r"[^a-zA-Z0-9_-]", "_", s)
+    if mod == "filename":
+        return Path(val).name
+    if mod in ("basename", "stem"):
+        return Path(val).stem
+    if mod in ("ext", "extension"):
+        return Path(val).suffix
+    if mod in ("parent", "folder"):
+        return str(Path(val).parent)
+    if mod.startswith("format:"):
+        fmt = modifier.strip()[7:]
+        clean_d = val.strip().replace("/", ".").replace("-", ".")
+        parts = clean_d.split(".")
+        try:
+            if len(parts) == 3:
+                if len(parts[0]) == 4:  # YYYY.MM.DD
+                    y, m, d = parts[0], parts[1].zfill(2), parts[2].zfill(2)
+                else:  # DD.MM.YYYY
+                    d, m, y = parts[0].zfill(2), parts[1].zfill(2), parts[2]
+                if fmt == "YYYYMMDD":
+                    return f"{y}{m}{d}"
+                if fmt == "DDMMYYYY":
+                    return f"{d}{m}{y}"
+                if fmt == "DD.MM.YYYY":
+                    return f"{d}.{m}.{y}"
+                if fmt == "DD-MM-YYYY":
+                    return f"{d}-{m}-{y}"
+                if fmt == "YYYY-MM-DD":
+                    return f"{y}-{m}-{d}"
+                if fmt == "DD.MM.YY":
+                    return f"{d}.{m}.{y[-2:]}"
+        except Exception:
+            pass
+
+    return val
 
 
 class ExportEngine(BaseSkill):
@@ -95,6 +216,10 @@ class ExportEngine(BaseSkill):
                     self.target_window = s.get("window_title")
                     break
         self.rdp_prefix = definition.get("rdp_path_prefix", "")
+        self.launch_skill_id = definition.get("launch_skill_id", "")
+        self.executable_path = definition.get("executable_path", "")
+        self.maximize_window = bool(definition.get("maximize_window", False))
+        self.recover_hung_process = bool(definition.get("recover_hung_process", False))
 
     def _save_failure_screenshot(self, step_id: str, desc: str = "", window_title: str | None = None) -> str | None:
         """Captures and saves a diagnostic screenshot when a skill step fails."""
@@ -117,14 +242,55 @@ class ExportEngine(BaseSkill):
         return None
 
     def _substitute_placeholders(self, text: str, context: Mapping[str, Any]) -> str:
-        """Dynamically substitutes placeholders such as {FieldName} from context without synthetic fallbacks."""
+        """Dynamically substitutes placeholders with optional modifiers (e.g. {Nachname|upper})."""
         if not isinstance(text, str) or "{" not in text:
             return text
 
+        # Derived dynamic properties from document_fullpath
+        fullpath = str(context.get("document_fullpath", "") or "")
+        derived = dict(context)
+
+        # Derive path-related variables
+        if fullpath:
+            p = Path(fullpath)
+            derived.setdefault("document_filename", p.name)
+            derived.setdefault("filename", p.name)
+            derived.setdefault("document_basename", p.stem)
+            derived.setdefault("basename", p.stem)
+            derived.setdefault("document_extension", p.suffix)
+            derived.setdefault("extension", p.suffix)
+            derived.setdefault("document_parent", str(p.parent))
+            derived.setdefault("case_folder", str(p.parent))
+            derived.setdefault("target_folder", str(p.parent))
+
+        # Derive dynamic datetime variables if not provided
+        now = time.localtime()
+        derived.setdefault("Datum", time.strftime("%Y-%m-%d", now))
+        derived.setdefault("date", time.strftime("%Y-%m-%d", now))
+        derived.setdefault("Jahr", time.strftime("%Y", now))
+        derived.setdefault("year", time.strftime("%Y", now))
+        derived.setdefault("Monat", time.strftime("%m", now))
+        derived.setdefault("month", time.strftime("%m", now))
+        derived.setdefault("Tag", time.strftime("%d", now))
+        derived.setdefault("day", time.strftime("%d", now))
+        derived.setdefault("Zeit", time.strftime("%H-%M-%S", now))
+        derived.setdefault("time", time.strftime("%H-%M-%S", now))
+
         def replace_match(match: re.Match) -> str:
-            key = match.group(1).strip()
-            val = context.get(key)
-            return str(val) if val is not None else ""
+            raw_expr = match.group(1).strip()
+            if "|" in raw_expr:
+                parts = raw_expr.split("|", 1)
+                key = parts[0].strip()
+                modifier = parts[1].strip()
+            else:
+                key = raw_expr
+                modifier = ""
+
+            val = derived.get(key)
+            str_val = str(val) if val is not None else ""
+            if modifier:
+                return _apply_string_modifier(str_val, modifier)
+            return str_val
 
         return re.sub(r"\{([^{}]+)\}", replace_match, text)
 
@@ -181,43 +347,194 @@ class ExportEngine(BaseSkill):
                 except Exception as e:
                     logger.warning("[ExportEngine] RapidOCR Locator error: %s", e)
 
-        # 2. Set-of-Mark (SoM) Grounding via VLM
+        # 2. Set-of-Mark (SoM) Grounding via VLM with High-Res Quadrant Tiling
         if (loc_type in ("auto", "smart", "som_vlm")) and self.vision_extractor and search_term:
-            som_img, candidates = SoMGrounder.generate_som_overlay(screen)
-            buf = BytesIO()
-            som_img.save(buf, format="JPEG", quality=85)
-            b64_som = base64.b64encode(buf.getvalue()).decode("utf-8")
+            tiles = SoMGrounder.generate_quadrant_tiles(screen)
+            for tile_img, off_x, off_y in tiles:
+                som_img, candidates = SoMGrounder.generate_som_overlay(tile_img)
+                if not candidates:
+                    continue
 
-            ground_prompt = (
-                f"Interactive UI elements are marked with red badges `[1]`, `[2]`, ... in this image.\n"
-                f"Which element number best matches: '{search_term}'?\n"
-                f"Reply ONLY with the exact number in square brackets, e.g. `[14]`."
-            )
-            payload = {"messages": [{"role": "user", "content": ground_prompt, "images": [b64_som]}]}
+                buf = BytesIO()
+                som_img.save(buf, format="JPEG", quality=85)
+                b64_som = base64.b64encode(buf.getvalue()).decode("utf-8")
 
-            resp = self.vision_extractor.call_vision_api(payload)
-            if resp:
-                match = re.search(r"\[(\d+)\]", resp)
-                if match:
-                    elem_id = int(match.group(1))
-                    if elem_id in candidates:
-                        target = candidates[elem_id]
-                        offset_raw = locator.get("offset")
-                        offset_x, offset_y = 0, 0
-                        if isinstance(offset_raw, (list, tuple)) and len(offset_raw) >= 2:
-                            ox, oy = offset_raw[0], offset_raw[1]
-                            if isinstance(ox, (int, float)):
-                                offset_x = int(ox)
-                            if isinstance(oy, (int, float)):
-                                offset_y = int(oy)
-                        raw_cx = target.get("center_x")
-                        raw_cy = target.get("center_y")
-                        cx = int(raw_cx) if isinstance(raw_cx, (int, float)) else 0
-                        cy = int(raw_cy) if isinstance(raw_cy, (int, float)) else 0
-                        return cx + offset_x, cy + offset_y
+                ground_prompt = (
+                    f"Interactive UI elements are marked with red badges `[1]`, `[2]`, ... in this image.\n"
+                    f"Which element number best matches: '{search_term}'?\n"
+                    f"Reply ONLY with the exact number in square brackets, e.g. `[14]`. If no element matches, reply `NONE`."
+                )
+                payload = {"messages": [{"role": "user", "content": ground_prompt, "images": [b64_som]}]}
+
+                resp = self.vision_extractor.call_vision_api(payload)
+                if resp and "NONE" not in resp:
+                    match = re.search(r"\[(\d+)\]", resp)
+                    if match:
+                        elem_id = int(match.group(1))
+                        if elem_id in candidates:
+                            target = candidates[elem_id]
+                            offset_raw = locator.get("offset")
+                            offset_x, offset_y = 0, 0
+                            if isinstance(offset_raw, (list, tuple)) and len(offset_raw) >= 2:
+                                ox, oy = offset_raw[0], offset_raw[1]
+                                if isinstance(ox, (int, float)):
+                                    offset_x = int(ox)
+                                if isinstance(oy, (int, float)):
+                                    offset_y = int(oy)
+                            raw_cx = target.get("center_x")
+                            raw_cy = target.get("center_y")
+                            local_cx = int(raw_cx) if isinstance(raw_cx, (int, float)) else 0
+                            local_cy = int(raw_cy) if isinstance(raw_cy, (int, float)) else 0
+                            return off_x + local_cx + offset_x, off_y + local_cy + offset_y
 
         logger.warning("[ExportEngine] Locator could not be resolved: %s", locator)
         return None
+
+    def _handle_known_dialog_popups(self, window_title: str | None = None) -> bool:
+        """Inspects whether an unexpected overwrite/confirmation modal popup is blocking the flow and resolves it."""
+        try:
+            from core.extraction_pipeline import _get_rapid_ocr
+
+            engine = _get_rapid_ocr()
+            if not engine:
+                return False
+            screen = SoMGrounder.capture_screen(window_title)
+            if not screen:
+                return False
+            img_np = np.array(screen) if np is not None else None
+            if img_np is None:
+                return False
+            res, _ = engine(img_np)
+            if not res:
+                return False
+
+            popup_detected = False
+            confirm_btn_coords = None
+            for line in res:
+                box, text, _ = line
+                t_lower = text.lower().strip()
+                if any(k in t_lower for k in ["überschreiben", "bereits vorhanden", "already exists", "ersetzen", "replace"]):
+                    popup_detected = True
+                if t_lower in ["ja", "yes", "überschreiben", "replace", "ok", "fortfahren"]:
+                    xs = [float(p[0]) for p in box]
+                    ys = [float(p[1]) for p in box]
+                    confirm_btn_coords = (int(sum(xs) / len(xs)), int(sum(ys) / len(ys)))
+
+            if popup_detected and confirm_btn_coords and sys.platform == "win32":
+                logger.info("[ExportEngine] Auto-Recovery: Detected confirmation/overwrite modal popup, clicking confirm at %s", confirm_btn_coords)
+                with input_shield():
+                    ctypes.windll.user32.SetCursorPos(confirm_btn_coords[0], confirm_btn_coords[1])
+                    ctypes.windll.user32.mouse_event(0x0002, 0, 0, 0, 0)
+                    ctypes.windll.user32.mouse_event(0x0004, 0, 0, 0, 0)
+                time.sleep(0.3)
+                return True
+        except Exception as e:
+            logger.debug("[ExportEngine] Dialog auto-recovery check error: %s", e)
+        return False
+
+    def _maximize_window(self, win_pattern: str) -> None:
+        """Maximizes the target window via Win32 ShowWindow(SW_MAXIMIZE = 3)."""
+        if sys.platform != "win32" or not win_pattern:
+            return
+        try:
+            found_hwnd: list[int] = []
+
+            def enum_proc(h: int, _lparam: int) -> bool:
+                length = ctypes.windll.user32.GetWindowTextLengthW(h)
+                if length > 0:
+                    buff = ctypes.create_unicode_buffer(length + 1)
+                    ctypes.windll.user32.GetWindowTextW(h, buff, length + 1)
+                    if win_pattern.lower().replace("*", "") in buff.value.lower():
+                        found_hwnd.append(h)
+                return True
+
+            cb = ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.c_void_p, ctypes.c_void_p)(enum_proc)
+            ctypes.windll.user32.EnumWindows(cb, 0)
+            if found_hwnd:
+                ctypes.windll.user32.ShowWindow(found_hwnd[0], 3)  # SW_MAXIMIZE
+                time.sleep(0.2)
+        except Exception as e:
+            logger.debug("[ExportEngine] Maximize window error: %s", e)
+
+    def _ensure_window_ready(
+        self,
+        win_pattern: str,
+        context: Mapping[str, Any],
+        launch_skill_id: str = "",
+        exe_path: str = "",
+        maximize: bool = False,
+    ) -> bool:
+        """Checks if target window is available; if not, triggers launch skill or executable and maximizes."""
+        screen = SoMGrounder.capture_screen(win_pattern) if win_pattern else None
+        if screen is not None:
+            if maximize and sys.platform == "win32":
+                self._maximize_window(win_pattern)
+            return True
+
+        # Window not found -> try launch skill or executable
+        launch_skill = launch_skill_id or self.launch_skill_id
+        executable = exe_path or self.executable_path
+
+        if launch_skill:
+            logger.info("[ExportEngine] Window '%s' not found. Triggering launch skill: '%s'", win_pattern, launch_skill)
+            if not self.execute_skill(str(launch_skill), dict(context)):
+                logger.warning("[ExportEngine] Launch skill '%s' failed.", launch_skill)
+                return False
+        elif executable:
+            logger.info("[ExportEngine] Window '%s' not found. Launching executable: '%s'", win_pattern, executable)
+            try:
+                import subprocess
+
+                subprocess.Popen(str(executable), shell=True)
+            except Exception as e:
+                logger.error("[ExportEngine] Failed to launch executable '%s': %s", executable, e)
+                return False
+
+        # Wait up to 10s for the window to appear
+        for _ in range(20):
+            time.sleep(0.5)
+            screen = SoMGrounder.capture_screen(win_pattern)
+            if screen is not None:
+                if maximize and sys.platform == "win32":
+                    self._maximize_window(win_pattern)
+                return True
+
+        return False
+
+    def _check_hung_app_and_recover(self, win_pattern: str, context: Mapping[str, Any]) -> bool:
+        """Checks if target window is hung/unresponsive and restarts it if configured."""
+        if sys.platform != "win32" or not win_pattern or not self.recover_hung_process:
+            return False
+        try:
+            found_hwnd: list[int] = []
+
+            def enum_proc(h: int, _lparam: int) -> bool:
+                length = ctypes.windll.user32.GetWindowTextLengthW(h)
+                if length > 0:
+                    buff = ctypes.create_unicode_buffer(length + 1)
+                    ctypes.windll.user32.GetWindowTextW(h, buff, length + 1)
+                    if win_pattern.lower().replace("*", "") in buff.value.lower():
+                        found_hwnd.append(h)
+                return True
+
+            cb = ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.c_void_p, ctypes.c_void_p)(enum_proc)
+            ctypes.windll.user32.EnumWindows(cb, 0)
+            if found_hwnd:
+                hwnd = found_hwnd[0]
+                is_hung = bool(ctypes.windll.user32.IsHungAppWindow(hwnd))
+                if is_hung:
+                    logger.warning("[ExportEngine] Detected hung/unresponsive window '%s' (HWND %s). Terminating process...", win_pattern, hwnd)
+                    pid = ctypes.c_ulong()
+                    ctypes.windll.user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+                    if pid.value:
+                        import subprocess
+
+                        subprocess.run(["taskkill", "/F", "/PID", str(pid.value)], check=False, capture_output=True)
+                        time.sleep(1.0)
+                        return self._ensure_window_ready(win_pattern, context, maximize=True)
+        except Exception as e:
+            logger.debug("[ExportEngine] Hung app check error: %s", e)
+        return False
 
     def _wait_for_queue(
         self,
@@ -290,18 +607,20 @@ class ExportEngine(BaseSkill):
             # 1. FOCUS_WINDOW
             if action_type == "FOCUS_WINDOW":
                 win_pattern = self._substitute_placeholders(step.get("window_title", self.target_window or ""), context)
-                max_retries = int(step.get("max_retries", 5))
-                retry_delay_s = float(step.get("retry_delay_s", 1.0))
-                screen = None
-                for attempt in range(1, max_retries + 1):
-                    screen = SoMGrounder.capture_screen(win_pattern)
-                    if screen is not None:
-                        break
-                    if attempt < max_retries:
-                        time.sleep(retry_delay_s)
-                if screen is None and win_pattern:
+                launch_skill = str(step.get("launch_skill_id") or self.launch_skill_id or "")
+                exe_path = str(step.get("executable_path") or self.executable_path or "")
+                maximize = bool(step.get("maximize_window", self.maximize_window))
+
+                ready = self._ensure_window_ready(
+                    win_pattern=win_pattern,
+                    context=context,
+                    launch_skill_id=launch_skill,
+                    exe_path=exe_path,
+                    maximize=maximize,
+                )
+                if not ready and win_pattern:
                     logger.warning(
-                        "[ExportEngine] Window '%s' could not be found or focused in step '%s'.",
+                        "[ExportEngine] Window '%s' could not be found or launched in step '%s'.",
                         win_pattern,
                         step_id,
                     )
@@ -310,13 +629,15 @@ class ExportEngine(BaseSkill):
             elif action_type in ("CLICK", "DOUBLE_CLICK", "RIGHT_CLICK"):
                 locator = step.get("locator", {})
                 win = self._substitute_placeholders(step.get("window_title", self.target_window or ""), context)
-                max_retries = int(step.get("max_retries", 1))
-                retry_delay_s = float(step.get("retry_delay_s", 1.0))
+                max_retries = max(int(step.get("max_retries", 3)), 1)
+                retry_delay_s = float(step.get("retry_delay_s", 0.35))
                 coords = None
                 for attempt in range(1, max_retries + 1):
                     coords = self._locate_target(locator, win)
                     if coords is not None:
                         break
+                    # Attempt auto-dialog resolution if modal is blocking
+                    self._handle_known_dialog_popups(win)
                     if attempt < max_retries:
                         time.sleep(retry_delay_s)
 
@@ -352,7 +673,7 @@ class ExportEngine(BaseSkill):
                 with input_shield():
                     _type_unicode_text(text_to_type, press_enter=press_enter)
 
-            # 4. TYPE_FILE_PATH
+            # 4. TYPE_FILE_PATH (Instant Clipboard Paste + Security Gate)
             elif action_type == "TYPE_FILE_PATH":
                 raw_path = str(step.get("file_path", context.get("document_fullpath", "")))
                 sub_path = self._substitute_placeholders(raw_path, context)
@@ -368,9 +689,32 @@ class ExportEngine(BaseSkill):
 
                 press_enter = bool(step.get("press_enter", True))
                 with input_shield():
-                    _type_unicode_text(final_path, press_enter=press_enter)
+                    _paste_text_via_clipboard(final_path, press_enter=press_enter)
 
-            # 5. VERIFY_SCREEN (Conditional Branching)
+            # 5. WAIT_FOR_ELEMENT (Dynamic Waiting / Smart Polling)
+            elif action_type == "WAIT_FOR_ELEMENT":
+                locator = step.get("locator", {})
+                win = self._substitute_placeholders(step.get("window_title", self.target_window or ""), context)
+                timeout_s = float(step.get("timeout_s", step.get("duration_s", 5.0)))
+                poll_interval_s = float(step.get("poll_interval_s", 0.25))
+                start_t = time.time()
+                found = False
+                while (time.time() - start_t) <= timeout_s:
+                    coords = self._locate_target(locator, win)
+                    if coords is not None:
+                        found = True
+                        break
+                    self._handle_known_dialog_popups(win)
+                    time.sleep(poll_interval_s)
+
+                if not found:
+                    logger.warning("[ExportEngine] WAIT_FOR_ELEMENT timed out after %.1fs for %s", timeout_s, locator)
+                    on_fail = step.get("on_failure", "stop")
+                    if on_fail == "stop":
+                        self._save_failure_screenshot(step_id, f"Wait Timeout: {locator}", win)
+                        return False
+
+            # 6. VERIFY_SCREEN (Conditional Branching)
             elif action_type == "VERIFY_SCREEN":
                 locator = step.get("locator", {})
                 win = self._substitute_placeholders(step.get("window_title", self.target_window or ""), context)

@@ -1,8 +1,10 @@
 import base64
+import ctypes
 import json
 import logging
 import os
 import re
+import sys
 import time
 from io import BytesIO
 from typing import Any
@@ -13,6 +15,7 @@ from flask import Blueprint, jsonify, request
 from core.skills.engines.export_engine import ExportEngine
 from core.skills.grounder import SoMGrounder
 from core.skills.manager import SkillManager
+from core.skills.models import TaskProgress
 from core.skills.queue import SkillQueueManager, get_skill_queue_manager
 from core.skills.synthesizer import SkillSynthesizer
 from routes.api.documents_api import (
@@ -458,6 +461,122 @@ def status_skill_recorder():
 
     recorder = SkillRecorder.get_instance()
     return jsonify(recorder.get_status())
+
+
+@skills_api_bp.route("/api/skills/pick_element", methods=["POST"])
+def pick_element_live():
+    """Captures live screen context at the active cursor position to pick element text and coordinates."""
+    data = request.json or {}
+    window_title = data.get("window_title")
+
+    delay_s = float(data.get("delay_seconds", 0.5))
+    if delay_s > 0:
+        time.sleep(delay_s)
+
+    cur_x, cur_y = 0, 0
+    if sys.platform == "win32":
+        try:
+            pt = ctypes.wintypes.POINT()  # type: ignore[attr-defined]
+            ctypes.windll.user32.GetCursorPos(ctypes.byref(pt))  # type: ignore[union-attr]
+            cur_x, cur_y = pt.x, pt.y
+        except Exception:
+            pass
+
+    screen = SoMGrounder.capture_screen(window_title)
+    if not screen:
+        return jsonify({"error": "Screen could not be captured"}), 500
+
+    ocr_text = ""
+    try:
+        from core.extraction_pipeline import _get_rapid_ocr
+        import numpy as np
+
+        engine = _get_rapid_ocr()
+        if engine:
+            img_np = np.array(screen)
+            res, _ = engine(img_np)
+            if res:
+                best_dist = float("inf")
+                best_text = ""
+                for line in res:
+                    box, text, _ = line
+                    t = text.strip()
+                    if not t:
+                        continue
+                    xs = [float(p[0]) for p in box]
+                    ys = [float(p[1]) for p in box]
+                    bx = sum(xs) / len(xs)
+                    by = sum(ys) / len(ys)
+                    dist = ((bx - cur_x) ** 2 + (by - cur_y) ** 2) ** 0.5
+                    if dist < best_dist and dist < 250:
+                        best_dist = dist
+                        best_text = t
+
+                ocr_text = best_text
+    except Exception as e:
+        logger.debug("[pick_element_live] RapidOCR snippet error: %s", e)
+
+    return jsonify({
+        "status": "ok",
+        "cursor": [cur_x, cur_y],
+        "ocr_text": ocr_text,
+        "locator": {
+            "type": "ocr_contains" if ocr_text else "smart",
+            "prompt": ocr_text or f"Element at ({cur_x}, {cur_y})",
+            "offset": [0, 0],
+        },
+    })
+
+
+@skills_api_bp.route("/api/skills/test_run", methods=["POST"])
+def test_run_skill():
+    """Executes a test run of the provided skill with mock/provided context."""
+    data = request.json or {}
+    skill_def = data.get("skill")
+    if not isinstance(skill_def, dict):
+        return jsonify({"error": "Valid skill definition is required"}), 400
+
+    test_context = data.get("context") or {}
+    if not isinstance(test_context, dict):
+        test_context = {}
+
+    test_context.setdefault("document_fullpath", "C:\\OrdinFlowTest\\Cases\\Test_Patient_2026\\Fußscan.pdf")
+    test_context.setdefault("Nachname", "Mustermann")
+    test_context.setdefault("Vorname", "Max")
+    test_context.setdefault("Datum", time.strftime("%Y-%m-%d"))
+    test_context.setdefault("Fallnummer", "F-2026-001")
+    test_context.setdefault("category", "Fußscan")
+
+    mgr = _get_skill_manager()
+    vext = DashboardState.processor.llm_extractor if DashboardState.processor else None
+    engine = ExportEngine(skill_def, skill_manager=mgr, vision_extractor=vext)
+
+    progress_log: list[dict[str, Any]] = []
+
+    def test_reporter(progress: TaskProgress):
+        progress_log.append(progress.to_dict())
+
+    start_t = time.time()
+    try:
+        success = engine.execute_actions(context=test_context, reporter=test_reporter)
+        duration_s = round(time.time() - start_t, 2)
+        return jsonify({
+            "status": "ok" if success else "failed",
+            "success": success,
+            "duration_seconds": duration_s,
+            "total_actions": len(engine.actions),
+            "progress_log": progress_log,
+        })
+    except Exception as e:
+        logger.error("[test_run_skill] Test run exception: %s", e, exc_info=True)
+        duration_s = round(time.time() - start_t, 2)
+        return jsonify({
+            "status": "error",
+            "success": False,
+            "error": str(e),
+            "duration_seconds": duration_s,
+            "progress_log": progress_log,
+        }), 500
 
 
 # ── Skill Queue Endpoints ──

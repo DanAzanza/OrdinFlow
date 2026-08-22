@@ -461,3 +461,57 @@ def test_api_system_browse(client, monkeypatch):
         data_cancel = res_cancel.get_json()
         assert data_cancel["status"] == "cancelled"
         assert data_cancel["path"] is None
+
+
+def test_api_skills_test_run(client):
+    skill_def = {
+        "name": "API Test Skill",
+        "tasks": [
+            {
+                "id": "t1",
+                "title": "Test Task",
+                "actions": [
+                    {
+                        "id": "act_1",
+                        "action_type": "SLEEP",
+                        "duration_s": 0.05,
+                        "description": "Short pause",
+                    }
+                ],
+            }
+        ],
+    }
+
+    # Valid test run
+    res = client.post("/api/skills/test_run", json={"skill": skill_def})
+    assert res.status_code == 200
+    data = res.get_json()
+    assert data["status"] == "ok"
+    assert data["success"] is True
+    assert data["total_actions"] == 1
+    assert "duration_seconds" in data
+
+    # Invalid input
+    res_bad = client.post("/api/skills/test_run", json={})
+    assert res_bad.status_code == 400
+
+
+def test_api_skills_pick_element(client, monkeypatch):
+    from PIL import Image
+    from core.skills.grounder import SoMGrounder
+
+    # Mock screen capture
+    def mock_capture(win):
+        return Image.new("RGB", (100, 100), color="white")
+
+    monkeypatch.setattr(SoMGrounder, "capture_screen", mock_capture)
+
+    res = client.post("/api/skills/pick_element", json={"delay_seconds": 0.0})
+    assert res.status_code == 200
+    data = res.get_json()
+    assert data["status"] == "ok"
+    assert "cursor" in data
+    assert "locator" in data
+    assert "prompt" in data["locator"]
+
+

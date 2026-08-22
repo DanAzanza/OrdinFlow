@@ -18,6 +18,8 @@ function getActionBadgeStyle(actionType) {
 			return { label: "📄 File Path", badgeClass: "action-pill-path", icon: "📄" };
 		case "VERIFY_SCREEN":
 			return { label: "👁️ Verify Screen", badgeClass: "action-pill-verify", icon: "👁️" };
+		case "WAIT_FOR_ELEMENT":
+			return { label: "⏳ Wait For Element", badgeClass: "action-pill-wait", icon: "⏳" };
 		case "CALL_SKILL":
 			return { label: "⚡ Call Sub-Skill", badgeClass: "action-pill-skill", icon: "⚡" };
 		default:
@@ -179,6 +181,87 @@ function toggleActionReveal(taskIdx, actIdx) {
 	}
 }
 
+function getAvailableSkillVariables(filterDocTypes = null) {
+	const vars = new Set([
+		"{document_fullpath}",
+		"{document_filename}",
+		"{document_basename}",
+		"{document_extension}",
+		"{case_folder}",
+		"{Datum}",
+	]);
+
+	const appState = typeof state !== "undefined" ? state : ((typeof window !== "undefined" && window.state) || {});
+
+	// Active document types filter (from argument or currentSkillDocTypes)
+	const activeFilter = filterDocTypes || (typeof currentSkillDocTypes !== "undefined" && Array.isArray(currentSkillDocTypes) && currentSkillDocTypes.length > 0 ? currentSkillDocTypes : null);
+
+	// 1. Extract dynamic fields from Import Skills (matching active document types if filtered)
+	const skills = appState.skills || [];
+	for (const skill of skills) {
+		if (skill.type === "import" && skill.document_types && typeof skill.document_types === "object") {
+			for (const [dtName, dtConfig] of Object.entries(skill.document_types)) {
+				if (activeFilter && !activeFilter.includes(dtName) && !activeFilter.includes("*")) {
+					continue;
+				}
+				if (dtConfig && dtConfig.extraction_fields && typeof dtConfig.extraction_fields === "object") {
+					for (const fieldName of Object.keys(dtConfig.extraction_fields)) {
+						if (fieldName) vars.add(`{${fieldName}}`);
+					}
+				}
+			}
+		}
+	}
+
+	// 2. Extract dynamic fields from config.document_types (matching active document types if filtered)
+	if (appState.config && appState.config.document_types && typeof appState.config.document_types === "object") {
+		for (const [dtName, dtConfig] of Object.entries(appState.config.document_types)) {
+			if (activeFilter && !activeFilter.includes(dtName) && !activeFilter.includes("*")) {
+				continue;
+			}
+			if (dtConfig && dtConfig.extraction_fields && typeof dtConfig.extraction_fields === "object") {
+				for (const fieldName of Object.keys(dtConfig.extraction_fields)) {
+					if (fieldName) vars.add(`{${fieldName}}`);
+				}
+			}
+		}
+	}
+
+	// 3. Extract dynamic fields from config.folder_structure (always included)
+	if (appState.config && Array.isArray(appState.config.folder_structure)) {
+		for (const segment of appState.config.folder_structure) {
+			if (typeof segment === "string") {
+				const matches = segment.match(/\{([^{}]+)\}/g);
+				if (matches) {
+					matches.forEach((m) => vars.add(m));
+				}
+			}
+		}
+	}
+
+	// Dynamic context & time variables
+	vars.add("{category}");
+	vars.add("{Jahr}");
+	vars.add("{Zeit}");
+
+	return Array.from(vars);
+}
+
+function insertVariableToAction(taskIdx, actIdx, varName) {
+	if (taskIdx >= 0 && taskIdx < currentEditingTasks.length) {
+		const actions = currentEditingTasks[taskIdx].actions || [];
+		if (actIdx >= 0 && actIdx < actions.length) {
+			const act = actions[actIdx];
+			if (act.action_type === "TYPE_FILE_PATH") {
+				act.file_path = (act.file_path || "") + varName;
+			} else if (act.action_type === "TYPE_TEXT") {
+				act.text = (act.text || "") + varName;
+			}
+			renderEditorSteps();
+		}
+	}
+}
+
 function renderEditorSteps() {
 	const container = document.getElementById("editorStepsList");
 	if (!container) return;
@@ -240,8 +323,14 @@ function renderEditorSteps() {
 												paramText = "••••••••••••";
 											}
 										}
+										else if (act.action_type === "WAIT_FOR_ELEMENT") {
+											paramText = (act.locator ? (act.locator.prompt || act.locator.value || act.locator.target || "Element") : "Element") + ` (${act.timeout_s || 5}s timeout)`;
+										}
 										else if (act.action_type === "CALL_SKILL") paramText = `Skill: ${act.skill_id || ""}`;
 										else if (act.locator) paramText = act.locator.prompt || act.locator.value || act.locator.target || "";
+
+										const showVariableChips = act.action_type === "TYPE_TEXT" || act.action_type === "TYPE_FILE_PATH";
+										const availableVars = showVariableChips ? getAvailableSkillVariables() : [];
 
 										return `
 										<div class="action-row-item" id="actionItem_${act.id || actIdx}">
@@ -253,9 +342,15 @@ function renderEditorSteps() {
 												<div class="step-action-desc-col">
 													<span class="action-item-desc">${escapeHtml(act.description || act.action_type || "Action")}</span>
 													${paramText ? `<span class="action-item-param" title="${escapeHtml(act.text || paramText)}">${escapeHtml(paramText)}</span>` : ""}
+													${showVariableChips && availableVars.length > 0 ? `
+														<div class="variable-chips-row">
+															${availableVars.map(v => `<span class="var-insert-chip" onclick="insertVariableToAction(${taskIdx}, ${actIdx}, '${escapeHtml(v)}')" title="Insert variable ${escapeHtml(v)}">+ ${escapeHtml(v)}</span>`).join("")}
+														</div>
+													` : ""}
 												</div>
 											</div>
 											<div class="action-item-right">
+												${(act.action_type === "CLICK" || act.action_type === "DOUBLE_CLICK" || act.action_type === "RIGHT_CLICK" || act.action_type === "WAIT_FOR_ELEMENT" || act.action_type === "VERIFY_SCREEN") ? `<button type="button" class="btn btn-icon btn-sm btn-pick-element" onclick="pickElementForAction(${taskIdx}, ${actIdx})" title="🎯 Pick element on screen live">🎯 Pick</button>` : ""}
 												${act.action_type === "TYPE_TEXT" && isSensitive ? `<button type="button" class="btn btn-icon btn-sm" onclick="toggleActionReveal(${taskIdx}, ${actIdx})" title="${act._revealed ? 'Hide sensitive text' : 'Reveal sensitive text'}">${act._revealed ? '🙈' : '👁️'}</button>` : ""}
 												${act.action_type === "TYPE_TEXT" ? `<button type="button" class="btn btn-icon btn-sm" onclick="toggleActionSecret(${taskIdx}, ${actIdx})" title="${act.is_secret ? 'Remove secret flag' : 'Mark as secret/credential'}">${act.is_secret ? '🔒' : '🔓'}</button>` : ""}
 												<button type="button" class="btn btn-icon btn-sm" onclick="moveActionUp(${taskIdx}, ${actIdx})" ${isFirstAct ? "disabled" : ""} title="Move up">⬆️</button>

@@ -593,3 +593,164 @@ def test_sensitive_credential_detection_and_masking():
     assert len(engine.actions) == 1
     assert engine.actions[0]["is_secret"] is True
 
+
+def test_export_engine_clipboard_paste():
+    from core.skills.engines.export_engine import _paste_text_via_clipboard
+    # Test clipboard paste helper
+    res = _paste_text_via_clipboard("C:\\Test\\Output.pdf", press_enter=False)
+    assert isinstance(res, bool)
+
+
+def test_export_engine_wait_for_element_and_popups():
+    from core.skills.engines.export_engine import ExportEngine
+    skill_def = {
+        "name": "Wait Element Skill",
+        "tasks": [
+            {
+                "id": "task_1",
+                "title": "Wait Task",
+                "actions": [
+                    {
+                        "id": "act_wait",
+                        "action_type": "WAIT_FOR_ELEMENT",
+                        "locator": {"type": "ocr_contains", "prompt": "NonExistentElement"},
+                        "timeout_s": 0.1,
+                        "poll_interval_s": 0.05,
+                        "on_failure": "continue",
+                    }
+                ],
+            }
+        ],
+    }
+    engine = ExportEngine(skill_def)
+    assert len(engine.actions) == 1
+    assert engine.actions[0]["action_type"] == "WAIT_FOR_ELEMENT"
+    # Execution should continue because on_failure is "continue"
+    success = engine.execute_actions(context={})
+    assert success is True
+
+
+def test_export_engine_dynamic_placeholders():
+    from core.skills.engines.export_engine import ExportEngine
+
+    engine = ExportEngine({})
+    ctx = {
+        "document_fullpath": "C:\\OrdinFlowTest\\Cases\\Mustermann_Max\\Scan_2026.pdf",
+        "Nachname": "Mustermann",
+        "Vorname": "Max",
+        "Produkt": "Einlagen",
+    }
+
+    # Test file & path substitutions
+    t1 = engine._substitute_placeholders("File is: {document_filename}", ctx)
+    assert t1 == "File is: Scan_2026.pdf"
+
+    t2 = engine._substitute_placeholders("Base: {document_basename} Ext: {document_extension}", ctx)
+    assert t2 == "Base: Scan_2026 Ext: .pdf"
+
+    t3 = engine._substitute_placeholders("Folder: {case_folder}", ctx)
+    assert "Mustermann_Max" in t3
+
+    # Test clinical / import skill field substitutions
+    t4 = engine._substitute_placeholders("{Nachname}_{Vorname}_{Produkt}", ctx)
+    assert t4 == "Mustermann_Max_Einlagen"
+
+    # Test dynamic year/date substitution when not explicitly in context
+    t5 = engine._substitute_placeholders("Year: {Jahr}", ctx)
+    assert len(t5.replace("Year: ", "")) == 4
+
+
+def test_export_engine_placeholder_modifiers():
+    from core.skills.engines.export_engine import ExportEngine
+
+    engine = ExportEngine({})
+    ctx = {
+        "document_fullpath": "C:\\OrdinFlowTest\\Cases\\Mustermann_Max\\Scan_2026.pdf",
+        "Nachname": "Müller-Lüdenscheidt",
+        "Vorname": "Max",
+        "Geburtsdatum": "07.04.1980",
+        "Datum": "2026-08-22",
+    }
+
+    # Case transformation modifiers
+    assert engine._substitute_placeholders("{Nachname|upper}", ctx) == "MÜLLER-LÜDENSCHEIDT"
+    assert engine._substitute_placeholders("{Vorname|lower}", ctx) == "max"
+
+    # Number / Digits only modifier
+    assert engine._substitute_placeholders("{Geburtsdatum|nodots}", ctx) == "07041980"
+    assert engine._substitute_placeholders("{Geburtsdatum|digits_only}", ctx) == "07041980"
+
+    # Filesystem Slug modifier
+    assert engine._substitute_placeholders("{Nachname|slug}", ctx) == "Mueller-Luedenscheidt"
+
+    # Path modifiers
+    assert engine._substitute_placeholders("{document_fullpath|filename}", ctx) == "Scan_2026.pdf"
+    assert engine._substitute_placeholders("{document_fullpath|stem}", ctx) == "Scan_2026"
+    assert engine._substitute_placeholders("{document_fullpath|ext}", ctx) == ".pdf"
+
+    # Date formatting modifiers
+    assert engine._substitute_placeholders("{Datum|format:YYYYMMDD}", ctx) == "20260822"
+    assert engine._substitute_placeholders("{Datum|format:DD.MM.YYYY}", ctx) == "22.08.2026"
+    assert engine._substitute_placeholders("{Geburtsdatum|format:YYYY-MM-DD}", ctx) == "1980-04-07"
+
+
+def test_export_engine_app_launch_and_login_skill(monkeypatch):
+    from core.skills.engines.export_engine import ExportEngine
+
+    launch_called = []
+
+    class MockSkillManager:
+        def get_skill(self, skill_id):
+            launch_called.append(skill_id)
+            return {"id": skill_id, "name": skill_id, "enabled": True, "actions": []}
+
+    engine = ExportEngine(
+        {"id": "main_export", "name": "Main Export", "type": "export", "launch_skill_id": "rdp_login"},
+        skill_manager=MockSkillManager(),
+    )
+
+    # Mock screen capture to return None first (window not found) then a mock image
+    attempt_count = 0
+
+    def mock_capture(win):
+        nonlocal attempt_count
+        attempt_count += 1
+        if attempt_count <= 1:
+            return None
+        from PIL import Image
+        return Image.new("RGB", (100, 100), color="white")
+
+    from core.skills.grounder import SoMGrounder
+    monkeypatch.setattr(SoMGrounder, "capture_screen", mock_capture)
+
+    # Window ready check should invoke launch skill 'rdp_login'
+    ready = engine._ensure_window_ready("TargetApp*", context={"patient": "Max"})
+    assert ready is True
+    assert "rdp_login" in launch_called
+
+
+def test_som_grounder_quadrant_tiling():
+    from PIL import Image
+    from core.skills.grounder import SoMGrounder
+
+    # 1. Test 1080p standard image -> returns 1 full tile
+    img_1080p = Image.new("RGB", (1920, 1080), color="blue")
+    tiles_1080 = SoMGrounder.generate_quadrant_tiles(img_1080p)
+    assert len(tiles_1080) == 1
+    assert tiles_1080[0][1] == 0 and tiles_1080[0][2] == 0
+
+    # 2. Test 4K image (3840x2160) -> returns 5 tiles (TL, TR, C, BL, BR)
+    img_4k = Image.new("RGB", (3840, 2160), color="red")
+    tiles_4k = SoMGrounder.generate_quadrant_tiles(img_4k)
+    assert len(tiles_4k) == 5
+
+    # Verify each tile width and height is aligned to multiple of 28 for Qwen visual tokens
+    for tile_img, off_x, off_y in tiles_4k:
+        assert tile_img.width % 28 == 0 or tile_img.width == 3840
+        assert tile_img.height % 28 == 0 or tile_img.height == 2160
+        assert off_x >= 0 and off_y >= 0
+
+
+
+
+
