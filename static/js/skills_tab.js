@@ -248,6 +248,31 @@ async function selectSkill(skillId) {
 	document.getElementById("editorSkillTargetWindow").value = skillObj.target_window || "Remote Desktop*";
 	document.getElementById("editorSkillRdpPrefix").value = skillObj.rdp_path_prefix || "\\\\tsclient\\C";
 
+	const launchSelect = document.getElementById("editorSkillLaunchSkill");
+	if (launchSelect) {
+		launchSelect.innerHTML = '<option value="">-- None (Direct Execution) --</option>';
+		const exportSkills = (state.skills || []).filter((s) => s.type === "export" && s.id !== skillObj.id);
+		for (const s of exportSkills) {
+			const opt = document.createElement("option");
+			opt.value = s.id || s.name;
+			opt.textContent = `🚀 ${s.name || s.id}`;
+			if ((skillObj.launch_skill_id || "") === opt.value) {
+				opt.selected = true;
+			}
+			launchSelect.appendChild(opt);
+		}
+		launchSelect.value = skillObj.launch_skill_id || "";
+	}
+
+	const exeInput = document.getElementById("editorSkillExecutablePath");
+	if (exeInput) exeInput.value = skillObj.executable_path || "";
+
+	const maxWinCheckbox = document.getElementById("editorSkillMaximizeWindow");
+	if (maxWinCheckbox) maxWinCheckbox.checked = skillObj.maximize_window !== undefined ? skillObj.maximize_window : false;
+
+	const recHungCheckbox = document.getElementById("editorSkillRecoverHung");
+	if (recHungCheckbox) recHungCheckbox.checked = skillObj.recover_hung_process !== undefined ? skillObj.recover_hung_process : false;
+
 	if (Array.isArray(skillObj.document_types)) {
 		currentSkillDocTypes = skillObj.document_types.filter((t) => t && t !== "*");
 	} else if (typeof skillObj.document_types === "string" && skillObj.document_types.trim()) {
@@ -317,6 +342,10 @@ function renderSkillDocTypesTags() {
 			chip.innerHTML = `<span>${escapeHtml(emoji)}</span> <span>${escapeHtml(dt)}</span> <button type="button" class="skill-doctype-chip-remove" onclick="removeDocTypeFromSkill('${escapeHtml(dt)}')" title="Remove ${escapeHtml(dt)}">✕</button>`;
 			container.appendChild(chip);
 		}
+	}
+
+	if (typeof renderEditorSteps === "function") {
+		renderEditorSteps();
 	}
 }
 
@@ -644,6 +673,10 @@ function getSkillPayloadFromForm() {
 		const firstFocusWin = (flatSteps.find((s) => s.action_type === "FOCUS_WINDOW")?.window_title || "").trim();
 		payload.target_window = explicitTargetWin || firstFocusWin || "Remote Desktop*";
 		payload.rdp_path_prefix = (document.getElementById("editorSkillRdpPrefix")?.value || "").trim() || "\\\\tsclient\\C";
+		payload.launch_skill_id = (document.getElementById("editorSkillLaunchSkill")?.value || "").trim();
+		payload.executable_path = (document.getElementById("editorSkillExecutablePath")?.value || "").trim();
+		payload.maximize_window = document.getElementById("editorSkillMaximizeWindow") ? document.getElementById("editorSkillMaximizeWindow").checked : false;
+		payload.recover_hung_process = document.getElementById("editorSkillRecoverHung") ? document.getElementById("editorSkillRecoverHung").checked : false;
 		payload.document_types = Array.isArray(currentSkillDocTypes)
 			? currentSkillDocTypes.filter((t) => t && t !== "*")
 			: [];
@@ -652,6 +685,40 @@ function getSkillPayloadFromForm() {
 	}
 
 	return payload;
+}
+
+async function pickElementForAction(taskIdx, actIdx) {
+	const action = currentEditingTasks?.[taskIdx]?.actions?.[actIdx];
+	if (!action) return;
+
+	showToast("🎯 Position cursor over the target element on screen (capturing in 1s)...", "info");
+
+	try {
+		const winTitle = (document.getElementById("editorSkillTargetWindow")?.value || "").trim();
+		const res = await api("/api/skills/pick_element", {
+			method: "POST",
+			body: JSON.stringify({
+				window_title: winTitle,
+				delay_seconds: 1.0,
+			}),
+		});
+
+		if (res && res.status === "ok") {
+			if (!action.locator || typeof action.locator !== "object") {
+				action.locator = {};
+			}
+			action.locator.prompt = res.locator.prompt;
+			action.locator.type = res.locator.type;
+			action.locator.offset = res.locator.offset || [0, 0];
+			renderEditorSteps();
+			showToast(`🎯 Picked element: "${res.locator.prompt}"`, "success");
+		} else {
+			showToast("Could not pick element: " + (res?.error || "Unknown error"), "error");
+		}
+	} catch (e) {
+		console.error("Pick element error:", e);
+		showToast("Pick element failed: " + e.message, "error");
+	}
 }
 
 async function syncYamlFromVisual() {
@@ -703,6 +770,8 @@ async function applyYamlToVisualAndSave() {
 	} catch (e) {
 		toast("Error applying YAML: " + e.message, "error");
 	}
+}
+
 // Conversational AI Skill Copilot Chat routines are modularized in skills_copilot.js
 
 function duplicateCurrentSkill() {
@@ -716,6 +785,46 @@ function deleteCurrentSkill() {
 	const activeName = currentEditingSkill?.name || selectedSkillId;
 	if (activeName) {
 		deleteSkillById(activeName);
+	}
+}
+
+async function testRunCurrentSkill() {
+	const payload = getSkillPayloadFromForm();
+	const btn = document.getElementById("btnTestRunSkillTop");
+	if (btn) {
+		btn.disabled = true;
+		btn.innerHTML = `<span>⏳</span> Running...`;
+	}
+
+	toast("▶️ Starting test execution of skill with test data...", "info");
+
+	try {
+		const res = await api("/api/skills/test_run", {
+			method: "POST",
+			body: JSON.stringify({
+				skill: payload,
+				context: {
+					document_fullpath: "C:\\OrdinFlowTest\\Cases\\Test_Patient_2026\\Fußscan.pdf",
+					Nachname: "Mustermann",
+					Vorname: "Max",
+					Datum: new Date().toISOString().split("T")[0],
+					Fallnummer: "F-2026-TEST",
+				},
+			}),
+		});
+
+		if (res && res.success) {
+			toast(`✅ Test run completed successfully in ${res.duration_seconds}s (${res.total_actions} actions)!`, "success");
+		} else {
+			toast(`⚠️ Test run finished with issues (${res.error || "Check target application window"})`, "error");
+		}
+	} catch (e) {
+		toast("Test run error: " + e.message, "error");
+	} finally {
+		if (btn) {
+			btn.disabled = false;
+			btn.innerHTML = `<span>▶️</span> Test Run`;
+		}
 	}
 }
 

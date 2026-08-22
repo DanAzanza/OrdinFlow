@@ -188,3 +188,55 @@ class SoMGrounder:
             )
 
         return som_img, candidates_map
+
+    @staticmethod
+    def generate_quadrant_tiles(
+        img: Image.Image,
+        patch_multiple: int = 28,
+    ) -> list[tuple[Image.Image, int, int]]:
+        """Splits large images (e.g. 4K/Ultrawide) into overlapping 28px-aligned quadrants + center crop.
+
+        Dimensions are aligned to multiples of 28px for optimal Qwen-VL patch tokenization without padding.
+        Returns: list of (cropped_image, offset_x, offset_y).
+        """
+        w, h = img.width, img.height
+        if w <= 1920 and h <= 1080:
+            return [(img, 0, 0)]
+
+        # Target quadrant width and height with 10% overlap
+        half_w = int(w * 0.55)
+        half_h = int(h * 0.55)
+
+        # Align tile sizes to multiples of 28 for zero-padding Qwen visual patch tokenization
+        tile_w = max(28, (half_w // patch_multiple) * patch_multiple)
+        tile_h = max(28, (half_h // patch_multiple) * patch_multiple)
+
+        tiles: list[tuple[Image.Image, int, int]] = []
+
+        # 1. Top-Left (Main Menus, Toolbars, File / Edit)
+        crop_tl = img.crop((0, 0, min(w, tile_w), min(h, tile_h)))
+        tiles.append((crop_tl, 0, 0))
+
+        # 2. Top-Right (Window Controls, Right Toolbars, Layer Panels)
+        x_tr = max(0, w - tile_w)
+        crop_tr = img.crop((x_tr, 0, w, min(h, tile_h)))
+        tiles.append((crop_tr, x_tr, 0))
+
+        # 3. Center (Modal Dialogs, Popups, Confirmations)
+        x_c = max(0, (w - tile_w) // 2)
+        y_c = max(0, (h - tile_h) // 2)
+        crop_c = img.crop((x_c, y_c, min(w, x_c + tile_w), min(h, y_c + tile_h)))
+        tiles.append((crop_c, x_c, y_c))
+
+        # 4. Bottom-Left (Status bars, Bottom panels)
+        y_bl = max(0, h - tile_h)
+        crop_bl = img.crop((0, y_bl, min(w, tile_w), h))
+        tiles.append((crop_bl, 0, y_bl))
+
+        # 5. Bottom-Right (Save/Cancel/OK buttons in dialogs, zoom sliders)
+        x_br = max(0, w - tile_w)
+        y_br = max(0, h - tile_h)
+        crop_br = img.crop((x_br, y_br, w, h))
+        tiles.append((crop_br, x_br, y_br))
+
+        return tiles

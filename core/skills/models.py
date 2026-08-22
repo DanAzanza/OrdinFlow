@@ -30,6 +30,12 @@ class SkillActionDict(TypedDict, total=False):
     on_failure_action: str
     on_failure_skill: str
     is_secret: bool
+    timeout_s: float
+    poll_interval_s: float
+    launch_skill_id: str
+    executable_path: str
+    maximize_window: bool
+    recover_hung_process: bool
 
 
 class SkillTaskBlockDict(TypedDict, total=False):

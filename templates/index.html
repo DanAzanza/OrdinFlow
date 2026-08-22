@@ -226,6 +226,9 @@
                                     <button type="button" class="btn btn-sm btn-danger" onclick="deleteCurrentSkill()" title="Delete this skill">
                                         <span>🗑️</span>
                                     </button>
+                                    <button type="button" class="btn btn-sm btn-outline-success" onclick="testRunCurrentSkill()" id="btnTestRunSkillTop" title="Run a test execution of this skill with test context" style="font-weight: 600;">
+                                        <span>▶️</span> Test Run
+                                    </button>
                                     <button type="button" class="btn btn-sm btn-primary" onclick="saveSkillFromEditor()" id="btnSaveSkillTop" style="font-weight: 700;">
                                         <span>💾</span> Save Skill
                                     </button>
@@ -306,7 +309,7 @@
                                                 </div>
                                                 <details class="advanced-skill-details" style="margin-top: 10px;">
                                                     <summary class="advanced-skill-summary" style="font-size: 0.76rem; color: var(--text-dim); cursor: pointer; user-select: none;">
-                                                        ⚙️ Advanced RDP / Window Fallback Settings (Optional)
+                                                        ⚙️ Advanced Launch, RDP & Window Settings (Optional)
                                                     </summary>
                                                     <div class="grid-2col" style="margin-top: 8px;">
                                                         <div class="form-group" style="margin: 0;">
@@ -317,6 +320,26 @@
                                                             <label class="doc-editor-label">RDP Path Prefix Mapping</label>
                                                             <input type="text" id="editorSkillRdpPrefix" class="doc-editor-input" placeholder="\\tsclient\C" />
                                                         </div>
+                                                    </div>
+                                                    <div class="grid-2col" style="margin-top: 8px;">
+                                                        <div class="form-group" style="margin: 0;">
+                                                            <label class="doc-editor-label">🚀 Launch / Login Skill (If window closed)</label>
+                                                            <select id="editorSkillLaunchSkill" class="doc-editor-input">
+                                                                <option value="">-- None (Direct Execution) --</option>
+                                                            </select>
+                                                        </div>
+                                                        <div class="form-group" style="margin: 0;">
+                                                            <label class="doc-editor-label">📁 Executable Path (Fallback Launch)</label>
+                                                            <input type="text" id="editorSkillExecutablePath" class="doc-editor-input" placeholder="e.g. C:\Program Files\Corel\CorelDRAW.exe" />
+                                                        </div>
+                                                    </div>
+                                                    <div style="display: flex; gap: 20px; margin-top: 8px; font-size: 0.78rem;">
+                                                        <label style="display: flex; align-items: center; gap: 6px; cursor: pointer;">
+                                                            <input type="checkbox" id="editorSkillMaximizeWindow" /> 🪟 Ensure Window Maximized
+                                                        </label>
+                                                        <label style="display: flex; align-items: center; gap: 6px; cursor: pointer;">
+                                                            <input type="checkbox" id="editorSkillRecoverHung" /> 🛡️ Auto-Restart if Application Freezes
+                                                        </label>
                                                     </div>
                                                 </details>
                                             </div>
