@@ -100,7 +100,9 @@ When asked to write or suggest Git commit messages, strictly adhere to the follo
   npx pyright core/ routes/
   python -m pytest -q
   ```
-* **Subagent Code Review Gate**: Invoke the `pre_commit_auditor` subagent to conduct an adversarial audit on `git diff` / modified files (checking architecture, sidecars, resource hygiene, and AGENTS.md rules).
+* **Subagent Code & Goal Audit Gate**: Invoke the `pre_commit_auditor` subagent to conduct an adversarial audit on `git diff` against:
+  1. **Plan-to-Code Fidelity**: Does the code genuinely solve the root problem and deliver all commitments from `implementation_plan.md`, or were corners cut and edge cases dropped?
+  2. **Code & Architecture Standards**: Adherence to AGENTS.md rules (no placeholders, resource hygiene, sidecar atomicity, Win32 guards, SRP limits, zero secret leaks).
 * **Zero Regression Standard**: Commits and pushes are strictly blocked if any linter warning, type diagnostic, test failure, or auditor blocker is present. All gates must succeed with 0 errors before presenting changes to the user for commit approval.
 * **CI Parity**: Ensure local development environment tools match `.github/workflows/ci.yml` (Python 3.10+, Pyright, Ruff, Pytest).
 

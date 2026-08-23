@@ -84,7 +84,4 @@ venv\Scripts\python.exe -m pytest -q
 ## 5. Specialized Multi-Agent Quality Subagents
 
 * **`plan_critic` ("Grill Me" Sparring Panel)**: Multi-perspective sparring partner before implementation (up to 3 subagents/iterations). Actively attacks assumptions, prevents hallucinations by verifying real codebase APIs, generates competing architectural alternatives, and enforces KISS/YAGNI. If consensus is reached, the plan is synthesized; if fundamental trade-offs remain, they are escalated transparently to the user.
-* **`pre_commit_auditor`**: Adversarial code auditor before commit approval. Scrutinizes `git diff` against `AGENTS.md` (no placeholders, memory/buffer cleanup, Win32 guards, SRP limits, zero synthetic secret leaks).
-
-
-
+* **`pre_commit_auditor` ("Grill Me" Code & Goal Auditor)**: Adversarial auditor before commit approval. Scrutinizes `git diff` against both **Plan Fidelity** (does the code genuinely fulfill `implementation_plan.md` and solve the user's root issue, without cut corners?) and **AGENTS.md standards** (no placeholders, memory/buffer cleanup, Win32 guards, SRP limits, zero synthetic secret leaks).
