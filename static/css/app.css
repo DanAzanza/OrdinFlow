@@ -2366,7 +2366,8 @@ color: #fff;
 }
 
 .modal-overlay.show,
-.modal-overlay.active {
+.modal-overlay.active,
+.modal-overlay.open {
     display: flex;
 }
 

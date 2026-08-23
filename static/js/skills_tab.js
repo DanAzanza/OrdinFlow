@@ -796,4 +796,3 @@ async function deleteSkillById(skillId) {
 		toast("Error deleting skill: " + e.message, "error");
 	}
 }
-

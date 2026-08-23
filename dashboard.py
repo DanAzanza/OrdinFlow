@@ -45,10 +45,9 @@ def heartbeat_monitor() -> None:
 
         # If background jobs exist (e.g. split/OCR jobs in job_queue), keep heartbeat alive
         try:
-            from core.jobs import get_job_queue
+            from core.jobs import job_queue
 
-            jq = get_job_queue()
-            if any(j.status in ("running", "pending") for j in jq.get_all_jobs()):
+            if any(j.get("status") in ("RUNNING", "PENDING") for j in job_queue.list_jobs()):
                 DashboardState.last_heartbeat = time.time()
                 continue
         except Exception:

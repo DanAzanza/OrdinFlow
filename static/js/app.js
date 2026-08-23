@@ -514,11 +514,15 @@ document.addEventListener("keydown", (e) => {
 		closeConfirm();
 		closeAssign();
 		if (typeof closeLegal === "function") closeLegal();
+		if (typeof closeFolderEdit === "function") closeFolderEdit();
 		if (typeof closeFolderEditModal === "function") closeFolderEditModal();
+		if (typeof closeFileEdit === "function") closeFileEdit();
 		if (typeof closeFileEditModal === "function") closeFileEditModal();
 		if (typeof closeSelectSkillModal === "function") closeSelectSkillModal();
+		if (typeof closeSystemPathPicker === "function") closeSystemPathPicker();
 		if (typeof closeSystemPathPickerModal === "function") closeSystemPathPickerModal();
 		if (typeof closeCreateSkillModal === "function") closeCreateSkillModal();
+		if (typeof closeAiSynthesisModal === "function") closeAiSynthesisModal();
 		if (typeof closeAiSkillModal === "function") closeAiSkillModal();
 		if (typeof closeAppInspector === "function") closeAppInspector();
 	}

@@ -205,7 +205,7 @@ def format_date_robust(date_str: str) -> str:
         return "----"
 
 
-def format_result(res: dict, include_missing: bool = True, mask_pii: bool = False) -> str:
+def format_result(res: dict, include_missing: bool = True, mask_pii: bool = True) -> str:
     """Formats the result dictionary for clean log output with all extracted fields."""
     if not res:
         return "No data"

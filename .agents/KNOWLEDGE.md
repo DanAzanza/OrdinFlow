@@ -19,14 +19,17 @@ graph TD
 ```
 
 ### Core Directory Layout
-* [`core/skills/engines/export_engine.py`](file:///g:/Meine%20Ablage/Projekte/OrdinFlow/core/skills/engines/export_engine.py): Main RPA execution loop, action dispatcher, and step coordinate calculator.
-* [`core/skills/grounder.py`](file:///g:/Meine%20Ablage/Projekte/OrdinFlow/core/skills/grounder.py): Set-of-Mark (SoM) visual badge grounding, 28px-aligned 4K quadrant tiling, and DPI-aware screen capture.
-* [`core/skills/text_helpers.py`](file:///g:/Meine%20Ablage/Projekte/OrdinFlow/core/skills/text_helpers.py): Win32 Unicode keystrokes, instant clipboard paste, and `{Var|modifier}` string formatters.
+* [`core/extraction_pipeline.py`](file:///g:/Meine%20Ablage/Projekte/OrdinFlow/core/extraction_pipeline.py): Multi-tier consensus voting engine, spatial RapidOCR fusion, GBNF grammar constraints, and typographical casing representative election.
+* [`core/skills/engines/export_engine.py`](file:///g:/Meine%20Ablage/Projekte/OrdinFlow/core/skills/engines/export_engine.py): Main RPA execution loop, action dispatcher, recursive `CALL_SKILL` invocation, and simulation `dry_run` mode.
+* [`core/skills/grounder.py`](file:///g:/Meine%20Ablage/Projekte/OrdinFlow/core/skills/grounder.py): Set-of-Mark (SoM) visual badge grounding, 28px-aligned 4K quadrant tiling, multi-monitor virtual desktop capture, and Per-Monitor V2 DPI awareness cascade.
+* [`core/skills/text_helpers.py`](file:///g:/Meine%20Ablage/Projekte/OrdinFlow/core/skills/text_helpers.py): Win32 Unicode keystrokes, safe 64-bit clipboard paste with prior-content restoration, 80ms yield timing, and `{Var|modifier}` string formatters.
 * [`core/skills/window_manager.py`](file:///g:/Meine%20Ablage/Projekte/OrdinFlow/core/skills/window_manager.py): Window activation, maximize, app launch skills, `IsHungAppWindow` freeze recovery, and modal popup handling.
 * [`core/skills/case_router.py`](file:///g:/Meine%20Ablage/Projekte/OrdinFlow/core/skills/case_router.py): Case folder batch routing, document type filtering, and atomic `.meta` sidecar execution tracking.
 * [`core/skills/queue.py`](file:///g:/Meine%20Ablage/Projekte/OrdinFlow/core/skills/queue.py): Thread-safe background execution queue (pause, resume, cancel, retry).
-* [`routes/api/skills_api.py`](file:///g:/Meine%20Ablage/Projekte/OrdinFlow/routes/api/skills_api.py): REST endpoints for Skill Studio CRUD, live element picking, queue control, and YAML roundtripping.
-* [`static/js/`](file:///g:/Meine%20Ablage/Projekte/OrdinFlow/static/js/): Modular frontend controllers (`skills_tab.js`, `skills_steps.js`, `skills_queue.js`, `skills_doctypes.js`, `skills_copilot.js`, `inbox.js`, `cases.js`).
+* [`core/llm_backends.py`](file:///g:/Meine%20Ablage/Projekte/OrdinFlow/core/llm_backends.py): Local `llama-cpp-python` VRAM backend with double-checked reentrant locking.
+* [`routes/api/cases_api.py`](file:///g:/Meine%20Ablage/Projekte/OrdinFlow/routes/api/cases_api.py): Case review REST endpoints with path containment guards and exponential backoff retry directory renames.
+* [`routes/api/system_api.py`](file:///g:/Meine%20Ablage/Projekte/OrdinFlow/routes/api/system_api.py): Base64 `-EncodedCommand` PowerShell path pickers and system diagnostics.
+* [`static/js/`](file:///g:/Meine%20Ablage/Projekte/OrdinFlow/static/js/): Modular frontend controllers (`skills_tab.js`, `skills_steps.js`, `skills_queue.js`, `skills_doctypes.js`, `skills_copilot.js`, `inbox.js`, `cases.js`, `app.js`).
 
 ---
 
@@ -37,23 +40,54 @@ graph TD
 * **Rule**: All screen crops, quadrant slices, and region bounding boxes MUST be rounded down to exact multiples of **28 pixels** (`(val // 28) * 28`).
 * **Benefit**: Zero token padding waste in the vision encoder, zero bilinear interpolation blurring, and maximum spatial accuracy for UI element grounding.
 
-### 🪟 2. Windows Session Isolation & Subshell Sandbox Station
-* **Reality**: Agent background subshells on Windows execute inside isolated desktop station sandboxes (`exebox-...`), not on the interactive physical desktop (`WinSta0\Default`).
-* **Rule**: Native Win32 UI actions (`keybd_event`, `mouse_event`, `BitBlt`) executed in background subshells interact strictly with that virtual desktop. Never falsely claim a physical monitor clicked something unless verified via Chrome DevTools MCP (which connects to the live browser via CDP WebSocket).
+### 🖥️ 2. Multi-Monitor Virtual Desktop & Coordinate Translation
+* **Reality**: On multi-monitor Windows setups, displays positioned to the left or above the primary monitor have negative coordinate spaces (e.g. $x_v = -1920$).
+* **Rule**: Screen bounds MUST be queried using virtual desktop metrics:
+  - `SM_XVIRTUALSCREEN = 76`
+  - `SM_YVIRTUALSCREEN = 77`
+  - `SM_CXVIRTUALSCREEN = 78`
+  - `SM_CYVIRTUALSCREEN = 79`
+* **Translation Offset**: The screen capture preserves `img._screen_origin = (x_v, y_v)`. `SoMGrounder.locate_target` MUST add `origin_x` and `origin_y` to target element coordinates before dispatching physical OS mouse clicks.
 
-### 🏷️ 3. Atomic Sidecar Integrity (`.meta` files)
-* **Design**: Every document PDF in a case folder has an accompanying JSON sidecar file (`<filename>.pdf.meta`).
-* **Fields**:
-  - `executed_skills: list[str]`: List of skill IDs that have already processed this file.
-  - `skill_execution_history: dict[str, float]`: Epoch timestamps of executions.
-* **Rule**: Never delete, move, or rename a PDF without synchronously updating/moving its `.meta` sidecar. Unprocessed files for a skill are strictly determined by `skill.id not in meta.executed_skills`.
+### 📐 3. Modern Windows DPI Awareness Cascade
+* **Rule**: Declare Per-Monitor V2 DPI awareness with progressive fallback before computing screen coordinates or capturing GDI BitBlt bitmaps:
+  ```python
+  # 1. Per-Monitor V2 (DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 = -4)
+  user32.SetProcessDpiAwarenessContext(ctypes.c_void_p(-4))
+  # 2. Per-Monitor V1 fallback
+  shcore.SetProcessDpiAwareness(2)
+  # 3. System DPI Aware fallback
+  user32.SetProcessDPIAware()
+  ```
+* **Benefit**: Eliminates blur and coordinate drift when applications run across mixed-DPI displays (e.g. 150% 4K laptop + 100% 1080p external monitor).
 
-### 🛡️ 4. Input Shield & Sensitive Credential Masking
-* **Rule**: Plaintext passwords or sensitive credentials in Skill actions (`TYPE_TEXT` marked with `is_secret: true` or containing sensitive keys) are masked with `••••••••` in logs, frontend badges, and UI cards.
-* In tests and scratch scripts, NEVER commit real passwords, API keys, or patient records.
+### 🏷️ 4. Set-of-Mark (SoM) Top-Edge Badge Placement
+* **Gotcha**: When UI elements reside at the top edge of a window or screen ($y_1 < 16$), drawing badges above the bounding box (`y1 - 14`) truncates the badge off-screen.
+* **Rule**: When $y_1 < 16$, dynamically render the badge inside the top-left corner of the bounding box (`badge_top = y1`, `badge_bottom = min(y2, y1 + 14)`).
 
-### 📐 5. High-DPI GDI Screen Grabbing
-* **Rule**: Always call `user32.SetProcessDPIAware()` before computing screen coordinates or performing BitBlt captures. Otherwise, Windows DPI virtualization scales 4K/150% scaling displays into blurry virtual 1080p buffers.
+### 📋 5. Win64 Ctypes Pointer Safety & Clipboard Protocol
+* **Pointer Truncation**: In 64-bit Python on Windows, `ctypes` defaults `restype` to 32-bit `c_int`. All memory handles and pointers (`GlobalAlloc`, `GlobalLock`, `GetClipboardData`, `SetClipboardData`) MUST declare `restype = ctypes.c_void_p` and explicit `argtypes` to avoid pointer truncation (`0xc0000005` access violations).
+* **Clipboard Preservation & Yield Timing**:
+  1. Back up existing clipboard unicode text before pasting.
+  2. Use an `OpenClipboard` retry loop (5 attempts, 10ms delay) to bypass transient locks from sync utilities.
+  3. Send `Ctrl+V` and enforce an **80ms yield delay** (`time.sleep(0.08)`), allowing the target application's message pump to consume `WM_PASTE` before restoring the user's prior clipboard data.
+
+### ⚖️ 6. Multi-Tier Consensus Mathematics & Typographical Election
+* **Symbolic Tier Weights**: `ExtractionPipeline._evaluate_field_consensus` passes symbolic tier keys (`"tier1"`, `"text"`, `"tier2"`, `"tier3"`). This decouples consensus weighting ($1.0, 1.0, 1.25, 1.5$) from integer pixel dimensions configured in `config.yaml`.
+* **Casing Heuristic**: When cluster vote counts and lengths tie, `_casing_score` penalizes screaming ALL-CAPS (`-10`) and rewards mixed Title Case (`+10`), ensuring clean canonical names (e.g., electing `"Mustermann"` over `"MUSTERMANN"`).
+* **Substring Normalization**: Aggressive substring and token subset matching (`_are_similar_or_substring`) must remain intact for medical compound names (e.g. `'Wannink'` $\subset$ `'Bramkamp-Wannink'`).
+
+### 🔒 7. Reentrant Locks (`RLock`) & Double-Checked Model Caching
+* **Reentrant Safety**: `_CONFIG_LOCK` in `core/config.py` and `_LLM_LOCK` in `core/llm_backends.py` use `threading.RLock()`, preventing self-deadlock during nested calls.
+* **Cold-Start VRAM Protection**: `_ensure_loaded()` uses double-checked locking inside `with _LLM_LOCK:` to guarantee that concurrent HTTP requests during startup instantiate exactly one LLM instance in VRAM.
+
+### 🛡️ 8. 100% Offline Air-Gap & PowerShell Injection Defense (CWE-78)
+* **Air-Gap Standard**: No external CDNs, fonts (`fonts.googleapis.com`), or cloud telemetry. The frontend uses a native system UI font stack (`-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`).
+* **PowerShell EncodedCommand**: When invoking PowerShell subprocesses (e.g. folder pickers), escape single quotes, strip newlines, encode in UTF-16LE Base64, and pass via `powershell -NoProfile -NonInteractive -EncodedCommand <base64>`.
+
+### 📂 9. Windows Explorer Transient Lock Resilience
+* **Transient Locks**: Windows Explorer thumbnailers, indexers, or antivirus scanners temporarily hold read locks on newly processed directories.
+* **Rule**: Wrap directory renames/moves in a retry helper (`_safe_rename_dir`) with exponential backoff ($0.15s \to 0.30s \to 0.60s \to 1.20s \to 2.40s$) to handle transient `PermissionError` [WinError 5 / 32].
 
 ---
 
@@ -63,7 +97,8 @@ graph TD
 |---|---|
 | Large files (> 800 LOC) | Modularize into SRP submodules (Enforced by [`test_architecture_guard.py`](file:///g:/Meine%20Ablage/Projekte/OrdinFlow/tests/test_architecture_guard.py)) |
 | Hardcoded German symbols in Python | Strict English symbols, functions, and docstrings |
-| Inventing fallback default data | Return clean empty collections `[]`, `{}` |
+| Raw dimension integers in consensus | Symbolic tier keys (`"tier1"`, `"tier2"`, `"tier3"`) |
+| Unchecked ctypes pointer returns | Declare `restype = ctypes.c_void_p` for 64-bit pointers |
 | Dynamic `element.style` in JS | CSS classes and design tokens in [`static/css/app.css`](file:///g:/Meine%20Ablage/Projekte/OrdinFlow/static/css/app.css) |
 | Polling background loops in tools | Non-blocking execution & reactive wakeup |
 
@@ -73,10 +108,13 @@ graph TD
 
 Always run and pass all gates with 0 errors before presenting results to the user:
 ```bash
-venv\Scripts\ruff.exe check .
-npx -y pyright@latest core/ routes/
-venv\Scripts\python.exe -m pytest -q
+python scripts/verify_ci.py
 ```
+This executes:
+1. `python -m ruff check .`
+2. `npx pyright core/ routes/`
+3. `python -m pytest -q` (141 tests)
+
 **Subagent Audit Gate**: Launch `pre_commit_auditor` subagent to audit git diff, architectural compliance, and edge cases prior to asking for user commit approval.
 
 ---
