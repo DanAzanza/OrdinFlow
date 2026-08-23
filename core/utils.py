@@ -175,16 +175,19 @@ def format_date_robust(date_str: str) -> str:
     if re.match(r"^\d{4}-\d{2}-\d{2}$", date_str):
         final_date = date_str
     else:
-        # Check DD.MM.YYYY or DD.MM.YY or DD-MM-YY (also with comma instead of dot due to OCR errors)
-        match_ger = re.search(r"(\d{1,2})[\.\-\,]\s*(\d{1,2})[\.\-\,]\s*(\d{2,4})", date_str)
+        # Check DD.MM.YYYY, DD/MM/YYYY, DD-MM-YY, DD,MM,YYYY
+        match_ger = re.search(r"(\d{1,2})[\.\-\,\/]\s*(\d{1,2})[\.\-\,\/]\s*(\d{2,4})", date_str)
         if match_ger:
             d, m, y = match_ger.groups()
             if len(y) == 2:
-                y = "20" + y
+                yy = int(y)
+                current_yy = datetime.datetime.now().year % 100
+                century = "20" if yy <= (current_yy + 10) else "19"
+                y = century + y
             final_date = f"{int(y):04d}-{int(m):02d}-{int(d):02d}"
         else:
-            # Check YYYY.MM.DD
-            match_iso = re.search(r"(\d{4})[\.\-](\d{1,2})[\.\-](\d{1,2})", date_str)
+            # Check YYYY.MM.DD or YYYY/MM/DD
+            match_iso = re.search(r"(\d{4})[\.\-\/](\d{1,2})[\.\-\/](\d{1,2})", date_str)
             if match_iso:
                 y, m, d = match_iso.groups()
                 final_date = f"{int(y):04d}-{int(m):02d}-{int(d):02d}"
@@ -202,17 +205,22 @@ def format_date_robust(date_str: str) -> str:
         return "----"
 
 
-def format_result(res: dict, include_missing: bool = True) -> str:
+def format_result(res: dict, include_missing: bool = True, mask_pii: bool = False) -> str:
     """Formats the result dictionary for clean log output with all extracted fields."""
     if not res:
         return "No data"
     ignore_keys = {"pages", "page_results", "b64_img", "raw_text", "images"}
+    pii_fields = {"patient", "name", "vorname", "nachname", "geburtsdatum", "dob", "diagnose", "iban", "svnr", "address"}
     parts = []
     for k, val in res.items():
         if k in ignore_keys or isinstance(val, (dict, list)):
             continue
         if include_missing or (val and not is_missing_value(val)):
-            parts.append(f"{k}='{val}'")
+            display_val = val
+            if mask_pii and k.lower() in pii_fields and val and not is_missing_value(val):
+                s_val = str(val).strip()
+                display_val = s_val[0] + "***" if len(s_val) > 1 else "***"
+            parts.append(f"{k}='{display_val}'")
     return ", ".join(parts) if parts else "No extracted fields"
 
 

@@ -10,6 +10,14 @@ let isNewSkillCreation = false;
 
 const FORBIDDEN_NAME_CHARS_REGEX = /[\\/:*?"<>|]/;
 
+function slugifySkillName(name) {
+	return (name || "")
+		.toLowerCase()
+		.trim()
+		.replace(/[^a-z0-9_]+/g, "_")
+		.replace(/^_+|_+$/g, "") || "skill";
+}
+
 function onSkillNameInput(val) {
 	const headerTitle = document.getElementById("skillHeaderTitle");
 	if (headerTitle) {
@@ -583,7 +591,7 @@ async function pickElementForAction(taskIdx, actIdx) {
 	const action = currentEditingTasks?.[taskIdx]?.actions?.[actIdx];
 	if (!action) return;
 
-	showToast("🎯 Position cursor over the target element on screen (capturing in 1s)...", "info");
+	toast("🎯 Position cursor over the target element on screen (capturing in 1s)...", "info");
 
 	try {
 		const winTitle = (document.getElementById("editorSkillTargetWindow")?.value || "").trim();
@@ -603,13 +611,13 @@ async function pickElementForAction(taskIdx, actIdx) {
 			action.locator.type = res.locator.type;
 			action.locator.offset = res.locator.offset || [0, 0];
 			renderEditorSteps();
-			showToast(`🎯 Picked element: "${res.locator.prompt}"`, "success");
+			toast(`🎯 Picked element: "${res.locator.prompt}"`, "success");
 		} else {
-			showToast("Could not pick element: " + (res?.error || "Unknown error"), "error");
+			toast("Could not pick element: " + (res?.error || "Unknown error"), "error");
 		}
 	} catch (e) {
 		console.error("Pick element error:", e);
-		showToast("Pick element failed: " + e.message, "error");
+		toast("Pick element failed: " + e.message, "error");
 	}
 }
 

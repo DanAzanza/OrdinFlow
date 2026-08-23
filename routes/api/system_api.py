@@ -466,29 +466,36 @@ def _pick_path_dialog(picker_type: str = "folder", initial_dir: str = "", title:
     # PowerShell fallback on Windows if tkinter didn't produce a path
     if not selected_path and os.name == "nt":
         try:
+            import base64
             import subprocess
 
             init_dir = initial_dir if (initial_dir and os.path.exists(initial_dir)) else os.getcwd()
             fallback_title = "Datei auswählen" if picker_type == "file" else "Ordner auswählen"
             diag_title = title if title else fallback_title
+
+            clean_dir = os.path.abspath(init_dir).replace("'", "''")
+            clean_title = diag_title.replace("'", "''").replace("\r", "").replace("\n", " ")
+
             if picker_type == "file":
-                ps_cmd = (
-                    f"Add-Type -AssemblyName System.Windows.Forms; "
-                    f"$f = New-Object System.Windows.Forms.OpenFileDialog; "
-                    f"$f.InitialDirectory = '{init_dir}'; "
-                    f"$f.Title = '{diag_title}'; "
-                    f"if ($f.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {{ $f.FileName }}"
+                ps_script = (
+                    "Add-Type -AssemblyName System.Windows.Forms; "
+                    "$f = New-Object System.Windows.Forms.OpenFileDialog; "
+                    f"$f.InitialDirectory = '{clean_dir}'; "
+                    f"$f.Title = '{clean_title}'; "
+                    "if ($f.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) { [Console]::Out.Write($f.FileName) }"
                 )
             else:
-                ps_cmd = (
-                    f"Add-Type -AssemblyName System.Windows.Forms; "
-                    f"$f = New-Object System.Windows.Forms.FolderBrowserDialog; "
-                    f"$f.SelectedPath = '{init_dir}'; "
-                    f"$f.Description = '{diag_title}'; "
-                    f"if ($f.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {{ $f.SelectedPath }}"
+                ps_script = (
+                    "Add-Type -AssemblyName System.Windows.Forms; "
+                    "$f = New-Object System.Windows.Forms.FolderBrowserDialog; "
+                    f"$f.SelectedPath = '{clean_dir}'; "
+                    f"$f.Description = '{clean_title}'; "
+                    "if ($f.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) { [Console]::Out.Write($f.SelectedPath) }"
                 )
+
+            encoded_cmd = base64.b64encode(ps_script.encode("utf-16le")).decode("ascii")
             res = subprocess.run(
-                ["powershell", "-NoProfile", "-NonInteractive", "-Command", ps_cmd],
+                ["powershell", "-NoProfile", "-NonInteractive", "-EncodedCommand", encoded_cmd],
                 capture_output=True,
                 text=True,
                 timeout=30,

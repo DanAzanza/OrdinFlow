@@ -12,7 +12,7 @@ import yaml
 
 logger = logging.getLogger(__name__)
 
-_CONFIG_LOCK = threading.Lock()
+_CONFIG_LOCK = threading.RLock()
 
 
 @dataclass
@@ -76,27 +76,28 @@ class AppConfig:
 
     def load_from_yaml(self, filepath: str = "settings/config.yaml") -> None:
         """Loads system configuration from YAML and syncs document types from SkillManager."""
-        full_path = self._resolve_path(filepath)
+        with _CONFIG_LOCK:
+            full_path = self._resolve_path(filepath)
 
-        # 1. Load main configuration (system settings)
-        if os.path.exists(full_path):
-            with open(full_path, encoding="utf-8") as f:
-                data = yaml.safe_load(f) or {}
-            for k, v in data.items():
-                if k != "document_types" and hasattr(self, k):
-                    setattr(self, k, v)
-        else:
-            os.makedirs(os.path.dirname(full_path), exist_ok=True)
-            self.save_to_yaml(full_path)
+            # 1. Load main configuration (system settings)
+            if os.path.exists(full_path):
+                with open(full_path, encoding="utf-8") as f:
+                    data = yaml.safe_load(f) or {}
+                for k, v in data.items():
+                    if k != "document_types" and hasattr(self, k):
+                        setattr(self, k, v)
+            else:
+                os.makedirs(os.path.dirname(full_path), exist_ok=True)
+                self.save_to_yaml(full_path)
 
-        # 2. Sync document types from default import skill if available
-        from core.skills.manager import SkillManager
+            # 2. Sync document types from default import skill if available
+            from core.skills.manager import SkillManager
 
-        skills_dir = self._resolve_path(os.path.join("settings", "skills"))
-        mgr = SkillManager(skills_dir=skills_dir)
-        default_skill = mgr.get_default_import_skill()
-        if default_skill and isinstance(default_skill.get("document_types"), dict):
-            self.document_types = dict(default_skill["document_types"])
+            skills_dir = self._resolve_path(os.path.join("settings", "skills"))
+            mgr = SkillManager(skills_dir=skills_dir)
+            default_skill = mgr.get_default_import_skill()
+            if default_skill and isinstance(default_skill.get("document_types"), dict):
+                self.document_types = dict(default_skill["document_types"])
 
     def save_to_yaml(self, filepath: str = "settings/config.yaml") -> None:
         """Saves system configuration (excluding document_types) to YAML and syncs document_types to default import skill."""

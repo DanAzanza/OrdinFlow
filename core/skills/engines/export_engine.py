@@ -246,6 +246,7 @@ class ExportEngine(BaseSkill):
         context: dict[str, Any],
         reporter: Callable[[TaskProgress], None] | None = None,
         depth: int = 0,
+        dry_run: bool = False,
     ) -> bool:
         """Executes the defined actions sequentially with input shield protection."""
         if depth > 5:
@@ -257,7 +258,8 @@ class ExportEngine(BaseSkill):
             return False
 
         actions = self.actions or self.steps
-        logger.info("[*] Executing RPA skill '%s' (%d actions)...", self.name, len(actions))
+        prefix = "[DRY RUN] " if dry_run else ""
+        logger.info("[*] %sExecuting RPA skill '%s' (%d actions)...", prefix, self.name, len(actions))
         act_idx = 0
         step_map = {str(s.get("id")): idx for idx, s in enumerate(actions) if s.get("id")}
         total_actions = len(actions)
@@ -278,12 +280,28 @@ class ExportEngine(BaseSkill):
                     TaskProgress(
                         current=act_idx + 1,
                         total=total_actions,
-                        message=f"Action {act_idx + 1}/{total_actions}: {desc}",
+                        message=f"{prefix}Action {act_idx + 1}/{total_actions}: {desc}",
                         percent=pct,
                     )
                 )
 
-            logger.info("  [Action %d/%d] %s: %s", act_idx + 1, total_actions, step_id, desc)
+            logger.info("  [Action %d/%d] %s%s: %s", act_idx + 1, total_actions, prefix, step_id, desc)
+
+            if dry_run and action_type in (
+                "MOUSE_CLICK",
+                "DOUBLE_CLICK",
+                "RIGHT_CLICK",
+                "TYPE_TEXT",
+                "PASTE_CLIPBOARD",
+                "HOTKEY",
+                "PRESS_ENTER",
+                "PRESS_TAB",
+                "PRESS_KEY",
+                "RUN_SCRIPT",
+            ):
+                logger.info("  [DRY RUN] Simulated input action: %s", action_type)
+                act_idx += 1
+                continue
 
             # 1. FOCUS_WINDOW
             if action_type == "FOCUS_WINDOW":
@@ -436,7 +454,7 @@ class ExportEngine(BaseSkill):
             elif action_type == "CALL_SKILL":
                 sub_id = str(step.get("skill_id", ""))
                 if sub_id:
-                    if not self.execute_skill(sub_id, context, depth=depth + 1):
+                    if not self.execute_skill(sub_id, context, depth=depth + 1, dry_run=dry_run):
                         return False
 
             # 7. HOTKEY
@@ -696,7 +714,13 @@ class ExportEngine(BaseSkill):
         """Marks a file with any specified skill ID."""
         return _mark_file_skill_executed_fn(filepath, skill_id)
 
-    def execute_skill(self, skill_id: str, context: dict[str, Any] | None = None, depth: int = 0) -> bool:
+    def execute_skill(
+        self,
+        skill_id: str,
+        context: dict[str, Any] | None = None,
+        depth: int = 0,
+        dry_run: bool = False,
+    ) -> bool:
         """Executes a skill by ID using the appropriate engine."""
         if depth > 5:
             return False
@@ -732,7 +756,7 @@ class ExportEngine(BaseSkill):
             self.actions = actions
             self.target_window = skill_def.get("target_window")
             self.rdp_prefix = skill_def.get("rdp_path_prefix", "")
-            return self.execute_actions(context or {}, depth=depth)
+            return self.execute_actions(context or {}, depth=depth, dry_run=dry_run)
         finally:
             self.steps = orig_steps
             self.actions = orig_actions

@@ -4,12 +4,6 @@
         <meta charset="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         <title>OrdinFlow</title>
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-        <link
-            href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;700;900&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
-            rel="stylesheet"
-        />
         <link rel="stylesheet" href="/static/css/app.css" />
     </head>
     <body>
@@ -622,42 +616,19 @@
         </div>
 
         <!-- ═══════ FOLDER EDIT MODAL ═══════ -->
-        <div class="modal-overlay" id="folderEditModal">
+        <div class="modal-overlay" id="editFolderModal">
             <div class="modal modal-sm">
                 <div class="modal-header">
-                    <h2>✏️ Edit folder</h2>
-                    <button class="btn btn-icon" onclick="closeFolderEdit()">
-                        ✕
-                    </button>
+                    <h2>✏️ Edit Case Folder</h2>
+                    <button type="button" class="btn btn-icon" onclick="closeFolderEdit()">✕</button>
                 </div>
                 <div class="modal-body">
-                    <div class="form-group">
-                        <label>Last Name *</label>
-                        <input id="folderEditNachname" type="text" />
-                    </div>
-                    <div class="form-group">
-                        <label>First Name</label>
-                        <input id="folderEditVorname" type="text" />
-                    </div>
-                    <div class="form-group">
-                        <label>Date *</label>
-                        <input id="folderEditDatum" type="date" />
-                    </div>
-                    <div class="form-group">
-                        <label>Product *</label>
-                        <input
-                            id="folderEditProdukt"
-                            type="text"
-                        />
-                    </div>
+                    <input type="hidden" id="editFolderOldName" />
+                    <div id="editFolderFields"></div>
                 </div>
                 <div class="modal-footer">
-                    <button class="btn" onclick="closeFolderEdit()">
-                        Cancel
-                    </button>
-                    <button class="btn btn-accent" onclick="submitFolderEdit()">
-                        Save
-                    </button>
+                    <button type="button" class="btn" onclick="closeFolderEdit()">Cancel</button>
+                    <button type="button" class="btn btn-accent" onclick="submitFolderEdit()">Save</button>
                 </div>
             </div>
         </div>
@@ -667,11 +638,9 @@
             <div class="modal" style="max-width: 800px">
                 <div class="modal-header">
                     <h2 id="legalModalTitle">Legal & Compliance</h2>
-                    <button class="btn btn-icon" onclick="closeLegal()">
-                        ✕
-                    </button>
+                    <button type="button" class="btn btn-icon" onclick="closeLegal()">✕</button>
                 </div>
-                <div class="modal-body modal-body-scroll-legal">
+                <div class="modal-body modal-body-scroll-legal" id="legalModalBody">
                     <pre id="legalContent" class="legal-content-text"></pre>
                 </div>
             </div>

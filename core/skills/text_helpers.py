@@ -7,6 +7,7 @@ import logging
 import re
 import sys
 import time
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +33,65 @@ def type_unicode_text(text: str, press_enter: bool = False) -> None:
         keybd_event(0x0D, 0, KEYEVENTF_KEYUP, 0)
 
 
+def _open_clipboard_with_retry(user32: Any, retries: int = 5, delay: float = 0.01) -> bool:
+    """Attempts to open clipboard with retry backoff to handle transient locks."""
+    for _ in range(retries):
+        if user32.OpenClipboard(0):
+            return True
+        time.sleep(delay)
+    return False
+
+
+def _get_clipboard_unicode(user32: Any, kernel32: Any) -> str | None:
+    """Safely extracts unicode text from clipboard if present."""
+    CF_UNICODETEXT = 13
+    if not user32.IsClipboardFormatAvailable(CF_UNICODETEXT):
+        return None
+    user32.GetClipboardData.restype = ctypes.c_void_p
+    kernel32.GlobalLock.restype = ctypes.c_void_p
+    kernel32.GlobalLock.argtypes = [ctypes.c_void_p]
+    kernel32.GlobalUnlock.argtypes = [ctypes.c_void_p]
+
+    h_data = user32.GetClipboardData(CF_UNICODETEXT)
+    if not h_data:
+        return None
+    ptr = kernel32.GlobalLock(h_data)
+    if not ptr:
+        return None
+    try:
+        return str(ctypes.wstring_at(ptr))
+    finally:
+        kernel32.GlobalUnlock(h_data)
+
+
+def _set_clipboard_unicode(user32: Any, kernel32: Any, text: str) -> bool:
+    """Sets unicode text to clipboard memory buffer."""
+    CF_UNICODETEXT = 13
+    GMEM_MOVEABLE = 0x0002
+    encoded = text.encode("utf-16le") + b"\x00\x00"
+
+    kernel32.GlobalAlloc.restype = ctypes.c_void_p
+    kernel32.GlobalAlloc.argtypes = [ctypes.c_uint, ctypes.c_size_t]
+    kernel32.GlobalLock.restype = ctypes.c_void_p
+    kernel32.GlobalLock.argtypes = [ctypes.c_void_p]
+    kernel32.GlobalUnlock.argtypes = [ctypes.c_void_p]
+    user32.SetClipboardData.restype = ctypes.c_void_p
+    user32.SetClipboardData.argtypes = [ctypes.c_uint, ctypes.c_void_p]
+
+    h_mem = kernel32.GlobalAlloc(GMEM_MOVEABLE, len(encoded))
+    if not h_mem:
+        return False
+    ptr = kernel32.GlobalLock(h_mem)
+    if not ptr:
+        kernel32.GlobalFree(h_mem)
+        return False
+    ctypes.memmove(ptr, encoded, len(encoded))
+    kernel32.GlobalUnlock(h_mem)
+    user32.EmptyClipboard()
+    user32.SetClipboardData(CF_UNICODETEXT, h_mem)
+    return True
+
+
 def paste_text_via_clipboard(text: str, press_enter: bool = False) -> bool:
     """Instantly pastes text via Windows Clipboard (Ctrl+V), avoiding layout/character typing lags."""
     if sys.platform != "win32":
@@ -42,35 +102,27 @@ def paste_text_via_clipboard(text: str, press_enter: bool = False) -> bool:
         user32 = ctypes.windll.user32
         kernel32 = ctypes.windll.kernel32
 
-        CF_UNICODETEXT = 13
-        GMEM_MOVEABLE = 0x0002
+        # 1. Read existing clipboard text to restore afterwards
+        prev_text: str | None = None
+        if _open_clipboard_with_retry(user32):
+            try:
+                prev_text = _get_clipboard_unicode(user32, kernel32)
+            finally:
+                user32.CloseClipboard()
 
-        encoded = text.encode("utf-16le") + b"\x00\x00"
-
-        h_mem = kernel32.GlobalAlloc(GMEM_MOVEABLE, len(encoded))
-        if not h_mem:
+        # 2. Set new text to clipboard
+        if not _open_clipboard_with_retry(user32):
             type_unicode_text(text, press_enter=press_enter)
             return False
 
-        ptr = kernel32.GlobalLock(h_mem)
-        if not ptr:
-            kernel32.GlobalFree(h_mem)
-            type_unicode_text(text, press_enter=press_enter)
-            return False
+        try:
+            if not _set_clipboard_unicode(user32, kernel32, text):
+                type_unicode_text(text, press_enter=press_enter)
+                return False
+        finally:
+            user32.CloseClipboard()
 
-        ctypes.memmove(ptr, encoded, len(encoded))
-        kernel32.GlobalUnlock(h_mem)
-
-        if not user32.OpenClipboard(0):
-            kernel32.GlobalFree(h_mem)
-            type_unicode_text(text, press_enter=press_enter)
-            return False
-
-        user32.EmptyClipboard()
-        user32.SetClipboardData(CF_UNICODETEXT, h_mem)
-        user32.CloseClipboard()
-
-        # Send Ctrl+V
+        # 3. Send Ctrl+V
         KEYEVENTF_KEYUP = 0x0002
         VK_CONTROL = 0x11
         VK_V = 0x56
@@ -85,6 +137,16 @@ def paste_text_via_clipboard(text: str, press_enter: bool = False) -> bool:
             time.sleep(0.05)
             user32.keybd_event(0x0D, 0, 0, 0)
             user32.keybd_event(0x0D, 0, KEYEVENTF_KEYUP, 0)
+
+        # 4. Mandatory yield delay (80ms) so target app processes WM_PASTE before clipboard restoration
+        time.sleep(0.08)
+
+        # 5. Restore previous clipboard text if available
+        if prev_text is not None and _open_clipboard_with_retry(user32):
+            try:
+                _set_clipboard_unicode(user32, kernel32, prev_text)
+            finally:
+                user32.CloseClipboard()
 
         return True
     except Exception as e:

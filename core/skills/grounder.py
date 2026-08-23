@@ -19,6 +19,31 @@ except ImportError:
     np = None  # type: ignore[assignment]
 
 
+def _init_dpi_awareness() -> None:
+    """Sets Per-Monitor V2 DPI awareness with progressive fallbacks."""
+    if sys.platform != "win32":
+        return
+    u32 = getattr(ctypes.windll, "user32", None)
+    shcore = getattr(ctypes.windll, "shcore", None)
+    try:
+        if u32 and hasattr(u32, "SetProcessDpiAwarenessContext"):
+            u32.SetProcessDpiAwarenessContext(ctypes.c_void_p(-4))
+            return
+    except Exception:
+        pass
+    try:
+        if shcore and hasattr(shcore, "SetProcessDpiAwareness"):
+            shcore.SetProcessDpiAwareness(2)
+            return
+    except Exception:
+        pass
+    try:
+        if u32 and hasattr(u32, "SetProcessDPIAware"):
+            u32.SetProcessDPIAware()
+    except Exception:
+        pass
+
+
 class SoMGrounder:
     """Generates Set-of-Mark overlays for screen captures to enable precise VLM clicking."""
 
@@ -38,6 +63,8 @@ class SoMGrounder:
         if not screen:
             logger.error("[SoMGrounder] Screenshot could not be captured.")
             return None
+
+        origin_x, origin_y = getattr(screen, "_screen_origin", (0, 0))
 
         # 1. Fast OCR Exact/Contains Match (RapidOCR)
         if loc_type in ("auto", "smart", "ocr_exact", "ocr_contains") and search_term:
@@ -62,7 +89,7 @@ class SoMGrounder:
                                     cx = int(sum(xs) / len(xs))
                                     cy = int(sum(ys) / len(ys))
                                     offset = cast(list[int], locator.get("offset", [0, 0]))
-                                    return cx + offset[0], cy + offset[1]
+                                    return origin_x + cx + offset[0], origin_y + cy + offset[1]
 
                             # Pass 2: Contains match (only for non-exact locator types)
                             if loc_type != "ocr_exact":
@@ -77,7 +104,7 @@ class SoMGrounder:
                                         cx = int(sum(xs) / len(xs))
                                         cy = int(sum(ys) / len(ys))
                                         offset = cast(list[int], locator.get("offset", [0, 0]))
-                                        return cx + offset[0], cy + offset[1]
+                                        return origin_x + cx + offset[0], origin_y + cy + offset[1]
                 except Exception as e:
                     logger.warning("[SoMGrounder] RapidOCR Locator error: %s", e)
 
@@ -119,7 +146,7 @@ class SoMGrounder:
                             raw_cy = target.get("center_y")
                             local_cx = int(raw_cx) if isinstance(raw_cx, (int, float)) else 0
                             local_cy = int(raw_cy) if isinstance(raw_cy, (int, float)) else 0
-                            return off_x + local_cx + offset_x, off_y + local_cy + offset_y
+                            return origin_x + off_x + local_cx + offset_x, origin_y + off_y + local_cy + offset_y
 
         logger.warning("[SoMGrounder] Locator could not be resolved: %s", locator)
         return None
@@ -161,18 +188,27 @@ class SoMGrounder:
             gdi32 = getattr(ctypes.windll, "gdi32", None)
             try:
                 if user32 and gdi32:
-                    user32.SetProcessDPIAware()
-                    w_s = user32.GetSystemMetrics(0)
-                    h_s = user32.GetSystemMetrics(1)
+                    _init_dpi_awareness()
+                    x_v = user32.GetSystemMetrics(76)
+                    y_v = user32.GetSystemMetrics(77)
+                    w_s = user32.GetSystemMetrics(78)
+                    h_s = user32.GetSystemMetrics(79)
+                    if w_s <= 0 or h_s <= 0:
+                        x_v, y_v = 0, 0
+                        w_s = user32.GetSystemMetrics(0)
+                        h_s = user32.GetSystemMetrics(1)
+
                     hdc = user32.GetDC(0)
                     if hdc:
                         memdc = gdi32.CreateCompatibleDC(hdc)
                         hbmp = gdi32.CreateCompatibleBitmap(hdc, w_s, h_s)
                         gdi32.SelectObject(memdc, hbmp)
-                        gdi32.BitBlt(memdc, 0, 0, w_s, h_s, hdc, 0, 0, 0x00CC0020)
+                        gdi32.BitBlt(memdc, 0, 0, w_s, h_s, hdc, x_v, y_v, 0x00CC0020)
                         buf = (ctypes.c_char * (w_s * h_s * 4))()
                         gdi32.GetBitmapBits(hbmp, len(buf), buf)
-                        return Image.frombuffer("RGBA", (w_s, h_s), buf, "raw", "BGRA", 0, 1)
+                        img = Image.frombuffer("RGBA", (w_s, h_s), buf, "raw", "BGRA", 0, 1)
+                        img._screen_origin = (x_v, y_v)  # type: ignore[attr-defined]
+                        return img
             except Exception as e:
                 logger.debug("[SoMGrounder] Win32 BitBlt capture failed, trying ImageGrab: %s", e)
             finally:
@@ -291,9 +327,16 @@ class SoMGrounder:
             badge_text = f"[{idx}]"
             badge_w = len(badge_text) * 7 + 4
             badge_h = 14
-            draw.rectangle([x1, max(0, y1 - badge_h), x1 + badge_w, y1], fill=(255, 0, 0, 220))
+            if y1 < badge_h + 2:
+                badge_top = y1
+                badge_bottom = min(y2, y1 + badge_h)
+            else:
+                badge_top = y1 - badge_h
+                badge_bottom = y1
+
+            draw.rectangle([x1, badge_top, x1 + badge_w, badge_bottom], fill=(255, 0, 0, 220))
             draw.text(
-                (x1 + 2, max(0, y1 - badge_h) + 1),
+                (x1 + 2, badge_top + 1),
                 badge_text,
                 fill=(255, 255, 255, 255),
                 font=font,

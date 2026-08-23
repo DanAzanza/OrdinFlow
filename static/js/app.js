@@ -180,29 +180,54 @@ async function deleteFile(type, folder, filename) {
 	}
 }
 
+function openConfirm(message, filename, onConfirm) {
+	state.pendingConfirm = {
+		type: "custom",
+		callback: onConfirm,
+		filename: filename || "",
+	};
+	const msgEl = document.getElementById("confirmMessage");
+	if (msgEl) msgEl.textContent = message || "Möchten Sie diese Aktion wirklich ausführen?";
+	const fnEl = document.getElementById("confirmFilename");
+	if (fnEl) fnEl.textContent = filename || "";
+	const modal = document.getElementById("confirmModal");
+	if (modal) modal.classList.add("show");
+}
+
 function deleteFolder(folder) {
 	state.pendingConfirm = {
 		type: "folder",
 		folder: folder,
 		filename: folder,
 	};
-	document.getElementById("confirmMessage").textContent =
-		"Möchten Sie diesen Vorgangs-Ordner und alle enthaltenen Dokumente wirklich in den Papierkorb verschieben?";
-	document.getElementById("confirmFilename").textContent = folder;
-	document.getElementById("confirmModal").classList.add("show");
+	const msgEl = document.getElementById("confirmMessage");
+	if (msgEl) {
+		msgEl.textContent =
+			"Möchten Sie diesen Vorgangs-Ordner und alle enthaltenen Dokumente wirklich in den Papierkorb verschieben?";
+	}
+	const fnEl = document.getElementById("confirmFilename");
+	if (fnEl) fnEl.textContent = folder;
+	const modal = document.getElementById("confirmModal");
+	if (modal) modal.classList.add("show");
 }
 
 function closeConfirm() {
-	document.getElementById("confirmModal").classList.remove("show");
+	const modal = document.getElementById("confirmModal");
+	if (modal) modal.classList.remove("show");
 	state.pendingConfirm = null;
 }
 
 async function confirmAction() {
 	if (!state.pendingConfirm) return;
-	const { type, folder } = state.pendingConfirm;
+	const pc = state.pendingConfirm;
 	closeConfirm();
 	try {
-		if (type === "folder") {
+		if (typeof pc.callback === "function") {
+			await pc.callback();
+			return;
+		}
+		if (pc.type === "folder") {
+			const folder = pc.folder;
 			await api("/api/cases/" + encodeURIComponent(folder), {
 				method: "DELETE",
 			});
@@ -544,10 +569,10 @@ function closeLegal() {
    ═══════════════════════════════════════════════════════════ */
 function renderCategoryLegend() {
 	const container = document.getElementById("categoryLegend");
-	if (!container) return;
-
-		? getImportSkillsDocTypes()
-		: (state.config && state.config.document_types) || {};
+	const docTypes =
+		typeof getImportSkillsDocTypes === "function"
+			? getImportSkillsDocTypes()
+			: (state.config && state.config.document_types) || {};
 
 	const entries = Object.entries(docTypes).filter(([name]) => name.toUpperCase() !== "UNKNOWN");
 	if (entries.length === 0) {

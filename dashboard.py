@@ -43,6 +43,17 @@ def heartbeat_monitor() -> None:
         except Exception:
             pass
 
+        # If background jobs exist (e.g. split/OCR jobs in job_queue), keep heartbeat alive
+        try:
+            from core.jobs import get_job_queue
+
+            jq = get_job_queue()
+            if any(j.status in ("running", "pending") for j in jq.get_all_jobs()):
+                DashboardState.last_heartbeat = time.time()
+                continue
+        except Exception:
+            pass
+
         # If background document processing or queued files exist, keep heartbeat alive
         try:
             if DashboardState.processor:
@@ -56,10 +67,10 @@ def heartbeat_monitor() -> None:
         except Exception:
             pass
 
-        # 120 seconds (2 minutes) inactivity timeout when browser tab is closed and no tasks are running
-        if time.time() - DashboardState.last_heartbeat > 120:
+        # 300 seconds (5 minutes) inactivity timeout when browser tab is closed and no tasks are running
+        if time.time() - DashboardState.last_heartbeat > 300:
             logger.info(
-                "[*] Dashboard closed (no heartbeat for 120s and all processing idle). Terminating application..."
+                "[*] Dashboard closed (no heartbeat for 300s and all processing idle). Terminating application..."
             )
             DashboardState.shutdown_event.set()
             time.sleep(2)

@@ -219,11 +219,25 @@ def api_cases_approve():
         return jsonify({"error": str(e)}), 500
 
 
+def _safe_rename_dir(src: str, dst: str, retries: int = 5, delay: float = 0.15) -> None:
+    """Renames a directory with exponential backoff on transient Windows file locks."""
+    for attempt in range(retries):
+        try:
+            os.rename(src, dst)
+            return
+        except (PermissionError, OSError):
+            if attempt == retries - 1:
+                raise
+            time.sleep(delay * (2**attempt))
+
+
 @cases_api_bp.route("/api/cases/<path:folder_name>")
 def api_cases_detail(folder_name: str):
     if not DashboardState.config:
         return jsonify({"error": "Config not available"}), 503
     folder_path = os.path.join(DashboardState.config.target_base_dir, folder_name)
+    if not _is_within_base(folder_path, DashboardState.config.target_base_dir):
+        return jsonify({"error": "Access denied"}), 403
     if not os.path.isdir(folder_path):
         return jsonify({"error": "Folder not found"}), 404
 
@@ -291,6 +305,8 @@ def api_cases_edit(folder_name: str):
         return jsonify({"error": "Config not available"}), 503
 
     folder_path = os.path.join(DashboardState.config.target_base_dir, folder_name)
+    if not _is_within_base(folder_path, DashboardState.config.target_base_dir):
+        return jsonify({"error": "Access denied"}), 403
     if not os.path.isdir(folder_path):
         return jsonify({"error": "Folder not found"}), 404
 
@@ -308,11 +324,13 @@ def api_cases_edit(folder_name: str):
         return jsonify({"status": "ok", "folder": folder_name})
 
     new_path = os.path.join(DashboardState.config.target_base_dir, new_folder_name)
+    if not _is_within_base(new_path, DashboardState.config.target_base_dir):
+        return jsonify({"error": "Access denied"}), 403
     if os.path.exists(new_path):
         return jsonify({"error": "Target folder already exists"}), 409
 
     try:
-        os.rename(folder_path, new_path)
+        _safe_rename_dir(folder_path, new_path)
         logger.info("[Dashboard] Renamed folder: %s -> %s", folder_name, new_folder_name)
         return jsonify({"status": "ok", "folder": new_folder_name})
     except OSError as e:

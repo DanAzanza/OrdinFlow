@@ -4,6 +4,7 @@ import os
 import shutil
 import threading
 from collections import OrderedDict
+from pathlib import Path
 from typing import Any
 
 from flask import Response, jsonify, request
@@ -35,7 +36,12 @@ _MIME_MAP = {
 
 def _is_within_base(path: str, base_dir: str) -> bool:
     """Security check against directory traversal attacks."""
-    return os.path.abspath(path).startswith(os.path.abspath(base_dir))
+    try:
+        p = Path(path).resolve()
+        b = Path(base_dir).resolve()
+        return p.is_relative_to(b)
+    except (ValueError, TypeError, RuntimeError):
+        return False
 
 
 def load_meta_sidecar(filepath: str) -> dict[str, Any] | None:

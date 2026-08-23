@@ -107,7 +107,8 @@ def _extract_page_spatial_and_plain_text(
                     img_np = None
 
                 if img_np is not None:
-                    res, _ = engine(img_np)
+                    with _OCR_LOCK:
+                        res, _ = engine(img_np)
                     if res:
                         img_h, img_w = img_np.shape[:2]
                         ocr_spatial = []
@@ -256,21 +257,38 @@ def _are_similar_or_substring(a: str, b: str, threshold: float = 0.80) -> bool:
     return False
 
 
+def _casing_score(v: str) -> int:
+    """Evaluates the typographical quality of a string representative."""
+    s = v.strip()
+    if not s:
+        return 0
+    # Heavy penalty for screaming all-caps (if longer than 3 chars)
+    if s.isupper() and len(s) > 3:
+        return -10
+    # Moderate penalty for all-lowercase
+    if s.islower():
+        return -5
+    # Reward natural mixed case (has both upper and lower letters, e.g. 'Mustermann', 'Dr. med.')
+    has_upper = any(c.isupper() for c in s)
+    has_lower = any(c.islower() for c in s)
+    bonus = 10 if (has_upper and has_lower) else 0
+    return bonus + sum(1 for c in s if c.isupper())
+
+
 def _pick_best_representative(members: list[tuple[str, float]]) -> str:
     """Selects the cleanest/most canonical spelling from cluster members.
 
     Priority order:
     1. Vote weight count (the most frequently extracted spelling wins)
     2. String length (longest name breaks ties between equal vote counts)
-    3. Casing score (prefer uppercase / proper capitalization)
+    3. Casing score (prefer natural mixed case over screaming ALL CAPS)
     """
     counts: dict[str, float] = {}
     for val, w in members:
         counts[val] = counts.get(val, 0.0) + w
 
     def score(v: str) -> tuple[float, int, int]:
-        casing_score = sum(1 for c in v if c.isupper())
-        return (counts[v], len(v), casing_score)
+        return (counts[v], len(v), _casing_score(v))
 
     return max(counts.keys(), key=score)
 
@@ -585,7 +603,7 @@ class ExtractionPipeline:
                 winner, k_score, counts = _evaluate_field_consensus(
                     field_name,
                     [t1_vision_results, text_pass_results],
-                    [t1_dim, "text"],
+                    ["tier1", "text"],
                 )
                 w_weight = counts.get(winner, 0.0)
                 confidences[field_name] = k_score
@@ -666,7 +684,7 @@ class ExtractionPipeline:
                 winner, k_score, counts = _evaluate_field_consensus(
                     field_name,
                     [t1_vision_results, text_pass_results, t2_page_results],
-                    [t1_dim, "text", t2_dim],
+                    ["tier1", "text", "tier2"],
                 )
                 w_weight = counts.get(winner, 0.0)
                 confidences[field_name] = k_score
@@ -696,7 +714,7 @@ class ExtractionPipeline:
                         t2_page_results,
                         t3_page_results,
                     ],
-                    [t1_dim, "text", t2_dim, t3_dim],
+                    ["tier1", "text", "tier2", "tier3"],
                 )
                 confidences[field_name] = k_score
                 if winner and not is_missing_value(winner):

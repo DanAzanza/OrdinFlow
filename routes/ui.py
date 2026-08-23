@@ -1,6 +1,6 @@
 import os
 
-from flask import Blueprint, render_template
+from flask import Blueprint, jsonify, render_template
 
 ui_bp = Blueprint("ui", __name__)
 
@@ -28,10 +28,11 @@ def api_legal(doc_name: str):
         "checklist": os.path.join(root_dir, "docs", "legal", "COMPLIANCE_CHECKLIST.md"),
     }
     if doc_name not in valid:
-        return "Not found", 404
+        return jsonify({"error": "Not found"}), 404
 
     path = valid[doc_name]
     if os.path.exists(path):
         with open(path, encoding="utf-8") as f:
-            return f.read()
-    return "File not found on server", 404
+            return jsonify({"status": "ok", "content": f.read()})
+    return jsonify({"error": "File not found on server"}), 404
+

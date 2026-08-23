@@ -18,10 +18,14 @@ models/*.pt
 models/*.onnx
 
 # Project directories containing sensitive or test documents
+Inbox/
+Cases/
 Eingang/
 Vorgaenge/
 scratch/
 temp/
+*.tmp
+*.meta.tmp
 
 # Local logs, configs & secrets
 settings/skills/*.yaml
