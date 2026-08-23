@@ -4,12 +4,15 @@ from __future__ import annotations
 
 import logging
 import os
+import threading
 from dataclasses import asdict, dataclass, field
 from typing import Any
 
 import yaml
 
 logger = logging.getLogger(__name__)
+
+_CONFIG_LOCK = threading.Lock()
 
 
 @dataclass
@@ -97,19 +100,22 @@ class AppConfig:
 
     def save_to_yaml(self, filepath: str = "settings/config.yaml") -> None:
         """Saves system configuration (excluding document_types) to YAML and syncs document_types to default import skill."""
-        full_path = self._resolve_path(filepath)
-        settings_dir = os.path.dirname(full_path)
-        os.makedirs(settings_dir, exist_ok=True)
+        with _CONFIG_LOCK:
+            full_path = self._resolve_path(filepath)
+            settings_dir = os.path.dirname(full_path)
+            os.makedirs(settings_dir, exist_ok=True)
 
-        cfg_dict = {k: v for k, v in asdict(self).items() if k != "document_types"}
-        with open(full_path, "w", encoding="utf-8") as f:
-            yaml.dump(
-                cfg_dict,
-                f,
-                default_flow_style=False,
-                sort_keys=False,
-                allow_unicode=True,
-            )
+            cfg_dict = {k: v for k, v in asdict(self).items() if k != "document_types"}
+            tmp_path = full_path + ".tmp"
+            with open(tmp_path, "w", encoding="utf-8") as f:
+                yaml.dump(
+                    cfg_dict,
+                    f,
+                    default_flow_style=False,
+                    sort_keys=False,
+                    allow_unicode=True,
+                )
+            os.replace(tmp_path, full_path)
 
         if self.document_types:
             from core.skills.manager import SkillManager

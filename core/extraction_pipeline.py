@@ -6,6 +6,7 @@ Domain-agnostic module for page classification, multi-resolution extraction tier
 import logging
 import os
 import re
+import threading
 import unicodedata
 from difflib import SequenceMatcher
 from typing import Any
@@ -21,17 +22,20 @@ from core.vision import LLMExtractor
 logger = logging.getLogger(__name__)
 
 _RAPID_OCR_ENGINE = None
+_OCR_LOCK = threading.Lock()
 
 
 def _get_rapid_ocr():
     global _RAPID_OCR_ENGINE
     if _RAPID_OCR_ENGINE is None:
-        try:
-            from rapidocr_onnxruntime import RapidOCR  # type: ignore[import-untyped]
+        with _OCR_LOCK:
+            if _RAPID_OCR_ENGINE is None:
+                try:
+                    from rapidocr_onnxruntime import RapidOCR  # type: ignore[import-untyped]
 
-            _RAPID_OCR_ENGINE = RapidOCR()
-        except (ImportError, RuntimeError, OSError):
-            _RAPID_OCR_ENGINE = False
+                    _RAPID_OCR_ENGINE = RapidOCR()
+                except (ImportError, RuntimeError, OSError):
+                    _RAPID_OCR_ENGINE = False
     return _RAPID_OCR_ENGINE if _RAPID_OCR_ENGINE is not False else None
 
 
@@ -175,7 +179,8 @@ TIER_WEIGHTS: dict[int | str, float] = {
     1764: 1.5,
     0: 1.0,
 }
-KONSENS_THRESHOLD = 0.67
+CONSENSUS_THRESHOLD = 0.67
+KONSENS_THRESHOLD = CONSENSUS_THRESHOLD  # Backward compatibility alias
 
 # Fields excluded when collecting keys from extraction results
 _EXCLUDE_KEYS = {
@@ -585,7 +590,7 @@ class ExtractionPipeline:
                 w_weight = counts.get(winner, 0.0)
                 confidences[field_name] = k_score
                 winning_weights[field_name] = w_weight
-                if k_score >= KONSENS_THRESHOLD and w_weight >= MIN_EVIDENCE_WEIGHT:
+                if k_score >= CONSENSUS_THRESHOLD and w_weight >= MIN_EVIDENCE_WEIGHT:
                     group_final[field_name] = winner
                 else:
                     pending_fields.append(field_name)
@@ -614,7 +619,7 @@ class ExtractionPipeline:
         t2_target_fields = [
             f
             for f in (expected_fields | all_keys_after_t1)
-            if confidences.get(f, 0.0) < KONSENS_THRESHOLD or winning_weights.get(f, 0.0) < MIN_EVIDENCE_WEIGHT
+            if confidences.get(f, 0.0) < CONSENSUS_THRESHOLD or winning_weights.get(f, 0.0) < MIN_EVIDENCE_WEIGHT
         ]
         if not t2_target_fields:
             t2_target_fields = None
@@ -666,7 +671,7 @@ class ExtractionPipeline:
                 w_weight = counts.get(winner, 0.0)
                 confidences[field_name] = k_score
                 winning_weights[field_name] = w_weight
-                if k_score >= KONSENS_THRESHOLD:
+                if k_score >= CONSENSUS_THRESHOLD:
                     group_final[field_name] = winner
                 else:
                     conflicts.append(field_name)
@@ -752,7 +757,7 @@ class ExtractionPipeline:
                         f"Required field '{field}' is missing or invalid in {matched_type}",
                     )
                 conf = confidences.get(field, 1.0)
-                if conf < KONSENS_THRESHOLD:
+                if conf < CONSENSUS_THRESHOLD:
                     return (
                         False,
                         f"Low confidence for required field '{field}' (K={conf:.2f}) in {matched_type} – manual review required",

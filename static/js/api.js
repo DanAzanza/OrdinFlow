@@ -49,9 +49,13 @@ function formatSize(bytes) {
 }
 
 function escapeHtml(str) {
-	const div = document.createElement("div");
-	div.textContent = str;
-	return div.innerHTML;
+	if (str === null || str === undefined) return "";
+	return String(str)
+		.replace(/&/g, "&amp;")
+		.replace(/</g, "&lt;")
+		.replace(/>/g, "&gt;")
+		.replace(/"/g, "&quot;")
+		.replace(/'/g, "&#39;");
 }
 
 function formatDateString(dateStr) {
@@ -101,6 +105,7 @@ function renderValidationBadges(ext) {
 
 function toast(message, type = "success") {
 	const container = document.getElementById("toasts");
+	if (!container) return;
 	const el = document.createElement("div");
 	el.className = `toast ${type}`;
 	el.innerHTML = `${type === "success" ? "✅" : "❌"} ${escapeHtml(message)}`;
@@ -117,7 +122,19 @@ async function api(url, options = {}) {
 			headers: { "Content-Type": "application/json" },
 			...options,
 		});
-		if (!res.ok) throw new Error(`HTTP ${res.status}`);
+		if (!res.ok) {
+			let errorMsg = `HTTP ${res.status}`;
+			try {
+				const errData = await res.json();
+				errorMsg = errData.error || errData.message || errData.detail || errorMsg;
+			} catch (_) {
+				try {
+					const textData = await res.text();
+					if (textData) errorMsg = textData.slice(0, 120);
+				} catch (_) {}
+			}
+			throw new Error(errorMsg);
+		}
 		return await res.json();
 	} catch (e) {
 		console.error("API Error:", url, e);

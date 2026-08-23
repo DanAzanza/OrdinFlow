@@ -13,6 +13,7 @@ from core.skills.grounder import SoMGrounder
 
 import os
 import re
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +30,7 @@ def save_failure_screenshot(step_id: str, desc: str = "", window_title: str | No
         if screen is None:
             screen = SoMGrounder.capture_screen(None)
         if screen is not None:
-            base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+            base_dir = str(Path(__file__).resolve().parents[2])
             fail_dir = os.path.join(base_dir, "scratch", "rpa_failures")
             os.makedirs(fail_dir, exist_ok=True)
             sanitized_step = re.sub(r"[^\w\-_\.]", "_", step_id)

@@ -103,18 +103,22 @@ class FileService:
         safe_move(filepath, target_filepath)
         return target_filepath
 
-    def mark_as_pruefen(
+    def mark_for_review(
         self,
         filepath: str,
-        grund: str = "Extraction failed",
+        reason: str = "Extraction failed",
         extracted: dict[str, Any] | None = None,
     ) -> None:
         """Creates a sidecar .meta JSON file to flag documents requiring manual review."""
         meta_path = filepath + ".meta"
+        now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds")
         meta: dict[str, Any] = {
-            "status": "pruefen",
-            "grund": grund,
-            "zeit": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds"),
+            "status": "review",
+            "reason": reason,
+            "grund": reason,  # Backward compatibility alias
+            "zeit": now_iso,
+            "timestamp": now_iso,
+            "filename": os.path.basename(filepath),
             "dateiname": os.path.basename(filepath),
         }
         if extracted:
@@ -123,21 +127,27 @@ class FileService:
                 if k not in ["page_results", "images"]:
                     if isinstance(v, str):
                         extracted_raw[k] = clean_path_component(v)
-                    elif isinstance(v, bool):
-                        extracted_raw[k] = v
                     else:
-                        extracted_raw[str(k)] = str(v)
-            meta_extracted: dict[str, Any] = {"raw": extracted_raw}
-            desc = extracted.get("description") or extracted.get("vision_description") or ""
-            if isinstance(desc, str) and desc.strip():
-                meta_extracted["description"] = desc.strip()
-            meta["extracted"] = meta_extracted
+                        extracted_raw[k] = v
+            meta["extracted"] = extracted_raw
+
         try:
-            with open(meta_path, "w", encoding="utf-8") as f:
+            tmp_path = meta_path + ".tmp"
+            with open(tmp_path, "w", encoding="utf-8") as f:
                 json.dump(meta, f, ensure_ascii=False, indent=2)
-            logger.info(f"[*] Sidecar file created: {os.path.basename(meta_path)}")
+            os.replace(tmp_path, meta_path)
+            logger.info("[*] Marked file for review: '%s' (Reason: %s)", os.path.basename(filepath), reason)
         except (OSError, TypeError, ValueError) as e:
             logger.error(f"[!] Error writing sidecar file '{meta_path}': {e}")
+
+    def mark_as_pruefen(
+        self,
+        filepath: str,
+        grund: str = "Extraction failed",
+        extracted: dict[str, Any] | None = None,
+    ) -> None:
+        """Backward-compatible alias for mark_for_review."""
+        self.mark_for_review(filepath, reason=grund, extracted=extracted)
 
     def split_multi_page_pdf(
         self,

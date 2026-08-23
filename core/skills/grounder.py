@@ -64,19 +64,20 @@ class SoMGrounder:
                                     offset = cast(list[int], locator.get("offset", [0, 0]))
                                     return cx + offset[0], cy + offset[1]
 
-                            # Pass 2: Contains match
-                            for line in res:
-                                box, text, _ = line
-                                t = text.strip()
-                                if not t:
-                                    continue
-                                if search_term.lower() in t.lower() or t.lower() in search_term.lower():
-                                    xs = [float(p[0]) for p in box]
-                                    ys = [float(p[1]) for p in box]
-                                    cx = int(sum(xs) / len(xs))
-                                    cy = int(sum(ys) / len(ys))
-                                    offset = cast(list[int], locator.get("offset", [0, 0]))
-                                    return cx + offset[0], cy + offset[1]
+                            # Pass 2: Contains match (only for non-exact locator types)
+                            if loc_type != "ocr_exact":
+                                for line in res:
+                                    box, text, _ = line
+                                    t = text.strip()
+                                    if not t:
+                                        continue
+                                    if search_term.lower() in t.lower():
+                                        xs = [float(p[0]) for p in box]
+                                        ys = [float(p[1]) for p in box]
+                                        cx = int(sum(xs) / len(xs))
+                                        cy = int(sum(ys) / len(ys))
+                                        offset = cast(list[int], locator.get("offset", [0, 0]))
+                                        return cx + offset[0], cy + offset[1]
                 except Exception as e:
                     logger.warning("[SoMGrounder] RapidOCR Locator error: %s", e)
 
@@ -153,26 +154,34 @@ class SoMGrounder:
                 logger.warning("[SoMGrounder] Error focusing window '%s': %s", window_title, e)
 
         if sys.platform == "win32":
+            hdc = 0
+            memdc = 0
+            hbmp = 0
+            user32 = getattr(ctypes.windll, "user32", None)
+            gdi32 = getattr(ctypes.windll, "gdi32", None)
             try:
-                user32 = ctypes.windll.user32
-                gdi32 = ctypes.windll.gdi32
-                user32.SetProcessDPIAware()
-                w_s = user32.GetSystemMetrics(0)
-                h_s = user32.GetSystemMetrics(1)
-                hdc = user32.GetDC(0)
-                memdc = gdi32.CreateCompatibleDC(hdc)
-                hbmp = gdi32.CreateCompatibleBitmap(hdc, w_s, h_s)
-                gdi32.SelectObject(memdc, hbmp)
-                gdi32.BitBlt(memdc, 0, 0, w_s, h_s, hdc, 0, 0, 0x00CC0020)
-                buf = (ctypes.c_char * (w_s * h_s * 4))()
-                gdi32.GetBitmapBits(hbmp, len(buf), buf)
-                img = Image.frombuffer("RGBA", (w_s, h_s), buf, "raw", "BGRA", 0, 1)
-                user32.ReleaseDC(0, hdc)
-                gdi32.DeleteDC(memdc)
-                gdi32.DeleteObject(hbmp)
-                return img
+                if user32 and gdi32:
+                    user32.SetProcessDPIAware()
+                    w_s = user32.GetSystemMetrics(0)
+                    h_s = user32.GetSystemMetrics(1)
+                    hdc = user32.GetDC(0)
+                    if hdc:
+                        memdc = gdi32.CreateCompatibleDC(hdc)
+                        hbmp = gdi32.CreateCompatibleBitmap(hdc, w_s, h_s)
+                        gdi32.SelectObject(memdc, hbmp)
+                        gdi32.BitBlt(memdc, 0, 0, w_s, h_s, hdc, 0, 0, 0x00CC0020)
+                        buf = (ctypes.c_char * (w_s * h_s * 4))()
+                        gdi32.GetBitmapBits(hbmp, len(buf), buf)
+                        return Image.frombuffer("RGBA", (w_s, h_s), buf, "raw", "BGRA", 0, 1)
             except Exception as e:
                 logger.debug("[SoMGrounder] Win32 BitBlt capture failed, trying ImageGrab: %s", e)
+            finally:
+                if gdi32 and hbmp:
+                    gdi32.DeleteObject(hbmp)
+                if gdi32 and memdc:
+                    gdi32.DeleteDC(memdc)
+                if user32 and hdc:
+                    user32.ReleaseDC(0, hdc)
 
         if ImageGrab is not None:
             try:

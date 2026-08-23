@@ -61,15 +61,16 @@ def _encode_pil_fallback(
     if max_dim is not None and max_dim > 0:
         w, h = img.size
         longest_side = max(w, h)
-        if longest_side != max_dim and (longest_side > max_dim or upscale):
-            scale = max_dim / longest_side
-            new_w = max(1, int(round(w * scale)))
-            new_h = max(1, int(round(h * scale)))
+        target_max = (max_dim // 28) * 28 if max_dim >= 28 else 28
+        if (longest_side != target_max or (w % 28 != 0 or h % 28 != 0)) and (longest_side > target_max or upscale):
+            scale = target_max / longest_side
+            new_w = max(28, int(round((w * scale) / 28.0)) * 28)
+            new_h = max(28, int(round((h * scale) / 28.0)) * 28)
             img = img.resize((new_w, new_h), resample=Image.Resampling.LANCZOS)
 
-    buffered = io.BytesIO()
-    img.save(buffered, format="JPEG", quality=_JPEG_QUALITY)
-    return base64.b64encode(buffered.getvalue()).decode("utf-8")
+    with io.BytesIO() as buffered:
+        img.save(buffered, format="JPEG", quality=_JPEG_QUALITY)
+        return base64.b64encode(buffered.getvalue()).decode("utf-8")
 
 
 class ImagePreprocessor:
@@ -168,16 +169,17 @@ class ImagePreprocessor:
             if bw > 0:
                 img = cv2.copyMakeBorder(img, bw, bw, bw, bw, cv2.BORDER_CONSTANT, value=[255, 255, 255])
 
-            # --- Rescaling ---
+            # --- Rescaling (28px patch token alignment for vision transformers) ---
             img_h, img_w = img.shape[:2]
             longest_side = max(img_h, img_w)
-            if max_dim > 0 and longest_side != max_dim:
-                scale = max_dim / longest_side
-                new_w = max(1, int(round(img_w * scale)))
-                new_h = max(1, int(round(img_h * scale)))
-                if longest_side > max_dim:
+            target_max = (max_dim // 28) * 28 if max_dim >= 28 else 28
+            if max_dim > 0 and (longest_side != target_max or (img_w % 28 != 0 or img_h % 28 != 0)):
+                scale = target_max / longest_side
+                new_w = max(28, int(round((img_w * scale) / 28.0)) * 28)
+                new_h = max(28, int(round((img_h * scale) / 28.0)) * 28)
+                if longest_side > target_max:
                     img = cv2.resize(img, (new_w, new_h), interpolation=cv2.INTER_AREA)
-                elif upscale:
+                elif upscale or (new_w != img_w or new_h != img_h):
                     img = cv2.resize(img, (new_w, new_h), interpolation=cv2.INTER_LANCZOS4)
 
             _, buffer = cv2.imencode(".jpg", img, [int(cv2.IMWRITE_JPEG_QUALITY), _JPEG_QUALITY])

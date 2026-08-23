@@ -3,6 +3,7 @@ OrdinFlow — Document Processor Orchestrator Module
 Lean main orchestrator for classification, extraction, routing, and thread lifecycle control.
 """
 
+import gc
 import logging
 import os
 import threading
@@ -160,13 +161,21 @@ class DocumentProcessor:
     def _move_and_compress_file(self, filepath: str, target_dir: str, target_filename: str) -> str:
         return self.file_service.move_file(filepath, target_dir, target_filename)
 
+    def _mark_for_review(
+        self,
+        filepath: str,
+        reason: str = "Extraction failed",
+        extracted: dict[str, Any] | None = None,
+    ) -> None:
+        self.file_service.mark_for_review(filepath, reason, extracted)
+
     def _mark_as_pruefen(
         self,
         filepath: str,
         grund: str = "Extraction failed",
         extracted: dict[str, Any] | None = None,
     ) -> None:
-        self.file_service.mark_as_pruefen(filepath, grund, extracted)
+        self.file_service.mark_for_review(filepath, grund, extracted)
 
     # --- Extraction & Hybrid Voting ---
     def extract_hybrid_voting(self, filepath: str, save_empty_pages: bool = False) -> dict[str, Any] | None:
@@ -389,7 +398,7 @@ class DocumentProcessor:
                 if not os.path.exists(filepath):
                     logger.warning(f"[!] File '{filename}' no longer exists. Skipping sidecar creation.")
                     return False
-                self._mark_as_pruefen(filepath, reason, extracted)
+                self._mark_for_review(filepath, reason, extracted)
 
                 duration = time.time() - start_time
                 with self._stats_lock:
@@ -421,6 +430,4 @@ class DocumentProcessor:
             with self.processing_lock:
                 self.processing_files.discard(filepath)
             self.fs_router.cleanup_empty_directories(os.path.dirname(filepath))
-            import gc
-
             gc.collect()

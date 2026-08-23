@@ -49,8 +49,7 @@ class MemoryLogHandler(logging.Handler):
                 return
         try:
             with open(log_path, encoding="utf-8", errors="replace") as f:
-                all_lines = f.readlines()
-            recent = all_lines[-limit:] if len(all_lines) > limit else all_lines
+                recent = list(deque(f, maxlen=limit))
             for line in recent:
                 line_str = line.strip()
                 if not line_str:

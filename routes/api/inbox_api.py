@@ -22,7 +22,7 @@ from routes.api.document_helpers import (
     _validate_required_api_fields,
     load_meta_sidecar,
 )
-from routes.api.system_api import (
+from routes.schemas import (
     AssignDocumentSchema,
     validate_schema,
 )
@@ -60,9 +60,11 @@ def api_inbox():
                     {
                         "name": f,
                         "path": rel_path,
-                        "grund": reason,
+                        "reason": reason,
+                        "grund": reason,  # Backward compatibility alias
                         "extracted": extracted,
-                        "is_pruefen": is_review,
+                        "is_review": is_review,
+                        "is_pruefen": is_review,  # Backward compatibility alias
                         "size": stat.st_size,
                         "modified": time.strftime("%Y-%m-%d %H:%M", time.localtime(stat.st_mtime)),
                         "preview_url": f"/api/inbox/preview/{urllib.parse.quote(rel_path, safe='/')}"

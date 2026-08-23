@@ -25,7 +25,7 @@ from routes.api.document_helpers import (
     load_meta_sidecar,
     safe_move_with_meta,
 )
-from routes.api.system_api import (
+from routes.schemas import (
     FolderEditSchema,
     validate_schema,
 )

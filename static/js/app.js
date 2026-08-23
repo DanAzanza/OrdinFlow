@@ -466,7 +466,7 @@ function showSkeletons() {
 		html += `<tr><td><div class="skeleton skeleton-cell-name">&nbsp;</div></td>
       <td><div class="skeleton skeleton-cell-date">&nbsp;</div></td>
       <td><div class="skeleton skeleton-cell-cat">&nbsp;</div></td>
-      <td><div class="skeleton skeleton-cell-pill">&nbsp;</div></td>
+      <td><div class="skeleton skeleton-cell-pill"></div></td>
       <td><div class="skeleton skeleton-cell-sm">&nbsp;</div></td></tr>`;
 	}
 	tbody.innerHTML = html;
@@ -488,6 +488,14 @@ document.addEventListener("keydown", (e) => {
 	if (e.key === "Escape") {
 		closeConfirm();
 		closeAssign();
+		if (typeof closeLegal === "function") closeLegal();
+		if (typeof closeFolderEditModal === "function") closeFolderEditModal();
+		if (typeof closeFileEditModal === "function") closeFileEditModal();
+		if (typeof closeSelectSkillModal === "function") closeSelectSkillModal();
+		if (typeof closeSystemPathPickerModal === "function") closeSystemPathPickerModal();
+		if (typeof closeCreateSkillModal === "function") closeCreateSkillModal();
+		if (typeof closeAiSkillModal === "function") closeAiSkillModal();
+		if (typeof closeAppInspector === "function") closeAppInspector();
 	}
 });
 document.getElementById("confirmModal").addEventListener("click", (e) => {
@@ -513,17 +521,17 @@ async function openLegal(docName) {
 	};
 	document.getElementById("legalModalTitle").textContent =
 		titles[docName] || "Legal & Compliance";
-	document.getElementById("legalContent").textContent = "Loading...";
+	document.getElementById("legalModalBody").innerHTML =
+		'<div class="legal-loading">Loading document...</div>';
 	document.getElementById("legalModal").classList.add("show");
 
 	try {
-		const res = await fetch("/api/legal/" + docName);
-		if (!res.ok) throw new Error("Not found");
-		const text = await res.text();
-		document.getElementById("legalContent").textContent = text;
+		const res = await api(`/api/legal/${docName}`);
+		document.getElementById("legalModalBody").innerHTML =
+			res.content || "<p>No content available.</p>";
 	} catch (e) {
-		document.getElementById("legalContent").textContent =
-			"Error loading document: " + e.message;
+		document.getElementById("legalModalBody").innerHTML =
+			`<p style="color:var(--danger)">Error loading document: ${escapeHtml(e.message)}</p>`;
 	}
 }
 
@@ -532,13 +540,12 @@ function closeLegal() {
 }
 
 /* ═══════════════════════════════════════════════════════════
-   INIT & POLLING
+   CATEGORY LEGEND
    ═══════════════════════════════════════════════════════════ */
-function renderLegend() {
-	const container = document.getElementById("legendContainer");
+function renderCategoryLegend() {
+	const container = document.getElementById("categoryLegend");
 	if (!container) return;
 
-	const docTypes = typeof getImportSkillsDocTypes === "function"
 		? getImportSkillsDocTypes()
 		: (state.config && state.config.document_types) || {};
 
@@ -642,21 +649,44 @@ Promise.allSettled([
 	pollJobs(),
 ]);
 
-// Status and jobs ticker polling
-setInterval(fetchStatus, 4000);
-setInterval(pollJobs, 2000);
+// Background Tab Lifecycle & Polling Controller
+let statusPollTimer = null;
+let jobsPollTimer = null;
+let syncPollTimer = null;
 
-// Dedicated heartbeat keepalive every 12s
+function startUiPolling() {
+	if (!statusPollTimer) statusPollTimer = setInterval(fetchStatus, 4000);
+	if (!jobsPollTimer) jobsPollTimer = setInterval(pollJobs, 2000);
+	if (!syncPollTimer) syncPollTimer = setInterval(syncAppState, 6000);
+}
+
+function stopUiPolling() {
+	if (statusPollTimer) {
+		clearInterval(statusPollTimer);
+		statusPollTimer = null;
+	}
+	if (jobsPollTimer) {
+		clearInterval(jobsPollTimer);
+		jobsPollTimer = null;
+	}
+	if (syncPollTimer) {
+		clearInterval(syncPollTimer);
+		syncPollTimer = null;
+	}
+}
+
+startUiPolling();
+
+// Dedicated heartbeat keepalive every 12s - runs continuously even when tab is backgrounded
 setInterval(() => {
 	fetch("/api/heartbeat", { method: "POST" }).catch(() => {});
 }, 12000);
 
-// Global data synchronization every 6s
-setInterval(syncAppState, 6000);
-
-// On tab visibility change (e.g. return from sleeping or background tab) force immediate full sync
+// On tab visibility change (pause UI polling when hidden, resume & sync immediately on return)
 document.addEventListener("visibilitychange", () => {
 	if (document.visibilityState === "visible") {
+		fetch("/api/heartbeat", { method: "POST" }).catch(() => {});
+		startUiPolling();
 		syncAppState();
 		const activeTab = document.querySelector(".nav-item.active")?.dataset?.tab;
 		if (activeTab === "log" && typeof fetchLogDelta === "function") {
@@ -665,10 +695,13 @@ document.addEventListener("visibilitychange", () => {
 		} else if (activeTab === "skills" && typeof renderQueueInspector === "function") {
 			renderQueueInspector();
 		}
+	} else {
+		stopUiPolling();
 	}
 });
 
 // On window focus force immediate sync
 window.addEventListener("focus", () => {
+	fetch("/api/heartbeat", { method: "POST" }).catch(() => {});
 	syncAppState();
 });

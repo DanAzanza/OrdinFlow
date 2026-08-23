@@ -1,4 +1,4 @@
-"""REST-API Blueprint Registrierung und Export-Kapselung."""
+"""REST API Blueprint registration and export encapsulation."""
 
 from flask import Blueprint
 
@@ -16,10 +16,12 @@ from routes.api.documents_api import (
 from routes.api.skills_api import skills_api_bp
 from routes.api.system_api import (
     _CONFIG_SAFE_KEYS,
+    system_api_bp,
+)
+from routes.schemas import (
     AssignDocumentSchema,
     ConfigUpdateSchema,
     FolderEditSchema,
-    system_api_bp,
     validate_schema,
 )
 
