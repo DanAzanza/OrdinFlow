@@ -65,6 +65,48 @@ def ocr_snippet(image: Image.Image) -> str:
     return ""
 
 
+_MODIFIER_KEYS: dict[Any, str] = {}
+if PYNPUT_AVAILABLE and keyboard is not None:
+    _MODIFIER_KEYS = {
+        keyboard.Key.ctrl: "ctrl",
+        keyboard.Key.ctrl_l: "ctrl",
+        keyboard.Key.ctrl_r: "ctrl",
+        keyboard.Key.alt: "alt",
+        keyboard.Key.alt_l: "alt",
+        keyboard.Key.alt_r: "alt",
+        keyboard.Key.shift: "shift",
+        keyboard.Key.shift_l: "shift",
+        keyboard.Key.shift_r: "shift",
+        keyboard.Key.cmd: "win",
+        keyboard.Key.cmd_l: "win",
+        keyboard.Key.cmd_r: "win",
+    }
+
+
+def _get_modifier_name(key: Any) -> str | None:
+    """Returns canonical modifier name ('ctrl', 'alt', 'shift', 'win') or None."""
+    if key in _MODIFIER_KEYS:
+        return _MODIFIER_KEYS[key]
+    if hasattr(key, "name") and key.name:
+        key_str = str(key.name).lower()
+    elif isinstance(key, str):
+        key_str = key.lower()
+    else:
+        return None
+
+    if "alt_gr" in key_str:
+        return None
+    if "ctrl" in key_str or "control" in key_str:
+        return "ctrl"
+    if "alt" in key_str or "menu" in key_str:
+        return "alt"
+    if "shift" in key_str:
+        return "shift"
+    if "cmd" in key_str or "win" in key_str or "super" in key_str:
+        return "win"
+    return None
+
+
 class SkillRecorder:
     _instance = None
     _lock = threading.Lock()
@@ -86,6 +128,8 @@ class SkillRecorder:
         self.last_click_coords: tuple[int, int] = (0, 0)
 
         self._keyboard_buffer: list[str] = []
+        self._active_modifiers: set[str] = set()
+        self._active_hotkey_keys: set[str] = set()
         self._mouse_listener: Any | None = None
         self._keyboard_listener: Any | None = None
 
@@ -117,6 +161,8 @@ class SkillRecorder:
             self.last_click_coords = (0, 0)
             self.last_action_desc = "Recording started..."
             self._keyboard_buffer = []
+            self._active_modifiers = set()
+            self._active_hotkey_keys = set()
 
             # Initial active window check
             win = get_active_window_title()
@@ -134,7 +180,10 @@ class SkillRecorder:
 
             # Start pynput listeners
             self._mouse_listener = mouse.Listener(on_click=self._on_mouse_click)  # type: ignore[union-attr]
-            self._keyboard_listener = keyboard.Listener(on_press=self._on_key_press)  # type: ignore[union-attr]
+            self._keyboard_listener = keyboard.Listener(
+                on_press=self._on_key_press,
+                on_release=self._on_key_release,
+            )  # type: ignore[union-attr]
             self._mouse_listener.start()
             self._keyboard_listener.start()
 
@@ -168,6 +217,8 @@ class SkillRecorder:
                 self._keyboard_listener = None
 
             self._flush_keyboard_buffer()
+            self._active_modifiers.clear()
+            self._active_hotkey_keys.clear()
             return self._synthesize_skill()
 
     def get_status(self) -> dict[str, Any]:
@@ -211,90 +262,178 @@ class SkillRecorder:
         if mouse is None and button != "left":
             return
 
-        try:
-            now = time.time()
-            # Flush keyboard buffer before handling mouse click
-            self._flush_keyboard_buffer()
+        with self._lock:
+            try:
+                now = time.time()
+                # Flush keyboard buffer before handling mouse click
+                self._flush_keyboard_buffer()
 
-            # Check window focus change
-            active_win = get_active_window_title()
-            if active_win and active_win != self.current_window:
-                self.current_window = active_win
+                # Check window focus change
+                active_win = get_active_window_title()
+                if active_win and active_win != self.current_window:
+                    self.current_window = active_win
+                    self._add_step(
+                        {
+                            "id": "step_tmp",
+                            "description": f"Focus window: {active_win}",
+                            "action_type": "FOCUS_WINDOW",
+                            "window_title": active_win,
+                        }
+                    )
+
+                # Check for double click (same position within 450ms)
+                is_double_click = (
+                    (now - self.last_click_time < 0.45)
+                    and (abs(x - self.last_click_coords[0]) < 10)
+                    and (abs(y - self.last_click_coords[1]) < 10)
+                )
+
+                self.last_click_time = now
+                self.last_click_coords = (x, y)
+
+                if is_double_click and self.steps and self.steps[-1].get("action_type") == "CLICK":
+                    # Convert previous click to DOUBLE_CLICK
+                    self.steps[-1]["action_type"] = "DOUBLE_CLICK"
+                    self.steps[-1]["description"] = self.steps[-1]["description"].replace("Click", "Double click")
+                    self.last_action_desc = "Double click captured"
+                    return
+
+                # Capture cropped screenshot around click for OCR
+                ocr_text = ""
+                try:
+                    crop_box = (max(0, x - 90), max(0, y - 25), x + 90, y + 25)
+                    snippet = ImageGrab.grab(bbox=crop_box)
+                    ocr_text = ocr_snippet(snippet)
+                except (AttributeError, OSError, RuntimeError, ValueError):
+                    logger.debug("OCR capture during click failed", exc_info=True)
+
+                if ocr_text:
+                    locator = {"type": "ocr_contains", "prompt": ocr_text}
+                    desc = f"Click on '{ocr_text}'"
+                else:
+                    locator = {"type": "som_vlm", "prompt": f"Element at pos ({x}, {y})"}
+                    desc = f"Click at position ({x}, {y})"
+
+                time_diff = now - (self.last_event_time or now)
+                self.last_event_time = now
+                calculated_delay = max(500, min(10000, int(time_diff * 1000))) if time_diff > 0.8 else 500
+
                 self._add_step(
                     {
                         "id": "step_tmp",
-                        "description": f"Focus window: {active_win}",
-                        "action_type": "FOCUS_WINDOW",
-                        "window_title": active_win,
+                        "description": desc,
+                        "action_type": "CLICK",
+                        "locator": locator,
+                        "delay_ms": calculated_delay,
                     }
                 )
+                self.last_action_desc = desc
+            except Exception as e:
+                logger.error("[SkillRecorder] Error handling mouse click: %s", e, exc_info=True)
 
-            # Check for double click (same position within 450ms)
-            is_double_click = (
-                (now - self.last_click_time < 0.45)
-                and (abs(x - self.last_click_coords[0]) < 10)
-                and (abs(y - self.last_click_coords[1]) < 10)
-            )
+    def _on_key_release(self, key: Any) -> None:
+        if not self.is_recording:
+            return
+        with self._lock:
+            mod_name = _get_modifier_name(key)
+            if mod_name:
+                self._active_modifiers.discard(mod_name)
+            if hasattr(key, "char") and key.char:
+                char_val = key.char
+                if 1 <= ord(char_val) <= 26:
+                    char_val = chr(ord(char_val) + ord("a") - 1)
+                self._active_hotkey_keys.discard(char_val.lower())
+            elif hasattr(key, "name") and key.name:
+                self._active_hotkey_keys.discard(key.name.lower())
+            elif isinstance(key, str):
+                self._active_hotkey_keys.discard(key.lower())
 
-            self.last_click_time = now
-            self.last_click_coords = (x, y)
-
-            if is_double_click and self.steps and self.steps[-1].get("action_type") == "CLICK":
-                # Convert previous click to DOUBLE_CLICK
-                self.steps[-1]["action_type"] = "DOUBLE_CLICK"
-                self.steps[-1]["description"] = self.steps[-1]["description"].replace("Click", "Double click")
-                self.last_action_desc = "Double click captured"
-                return
-
-            # Capture cropped screenshot around click for OCR
-            ocr_text = ""
-            try:
-                crop_box = (max(0, x - 90), max(0, y - 25), x + 90, y + 25)
-                snippet = ImageGrab.grab(bbox=crop_box)
-                ocr_text = ocr_snippet(snippet)
-            except (AttributeError, OSError, RuntimeError, ValueError):
-                logger.debug("OCR capture during click failed", exc_info=True)
-
-            if ocr_text:
-                locator = {"type": "ocr_contains", "prompt": ocr_text}
-                desc = f"Click on '{ocr_text}'"
-            else:
-                locator = {"type": "som_vlm", "prompt": f"Element at pos ({x}, {y})"}
-                desc = f"Click at position ({x}, {y})"
-
-            time_diff = now - (self.last_event_time or now)
-            self.last_event_time = now
-            calculated_delay = max(500, min(10000, int(time_diff * 1000))) if time_diff > 0.8 else 500
-
-            self._add_step(
-                {
-                    "id": "step_tmp",
-                    "description": desc,
-                    "action_type": "CLICK",
-                    "locator": locator,
-                    "delay_ms": calculated_delay,
-                }
-            )
-            self.last_action_desc = desc
-        except Exception as e:
-            logger.error("[SkillRecorder] Error handling mouse click: %s", e, exc_info=True)
-
-    def _on_key_press(self, key: Any):
+    def _on_key_press(self, key: Any) -> None:
         if not self.is_recording:
             return
 
-        try:
-            if hasattr(key, "char") and key.char:
-                self._keyboard_buffer.append(key.char)
-            elif key == keyboard.Key.space:  # type: ignore[union-attr]
-                self._keyboard_buffer.append(" ")
-            elif key == keyboard.Key.backspace:  # type: ignore[union-attr]
-                if self._keyboard_buffer:
-                    self._keyboard_buffer.pop()
-            elif keyboard is not None and key in (keyboard.Key.enter, keyboard.Key.tab):
-                self._flush_keyboard_buffer(press_enter=(key == keyboard.Key.enter))
-        except (AttributeError, ValueError):
-            logger.debug("Keyboard event handling failed", exc_info=True)
+        with self._lock:
+            try:
+                # 1. Track modifier keys
+                mod_name = _get_modifier_name(key)
+                if mod_name:
+                    self._active_modifiers.add(mod_name)
+                    return
+
+                # 2. Check for AltGr on Windows
+                is_altgr = getattr(key, "name", None) == "alt_gr"
+                if is_altgr:
+                    return
+
+                # 3. Detect non-modifier key character and name
+                char_val = ""
+                key_name = ""
+                if hasattr(key, "char") and key.char is not None:
+                    # Windows control character normalization (\x01 - \x1a -> a - z)
+                    if 1 <= ord(key.char) <= 26:
+                        char_val = chr(ord(key.char) + ord("a") - 1)
+                    else:
+                        char_val = key.char
+                elif hasattr(key, "name") and key.name:
+                    key_name = key.name.lower()
+
+                # 4. Check if this is an active hotkey combination (Ctrl, Alt, or Win active)
+                ctrl_or_alt = bool(self._active_modifiers.intersection({"ctrl", "alt", "win"}))
+
+                # Handle AltGr printable characters (e.g. @, \, ~, [, ], {, }, €) on QWERTZ / European layouts
+                is_printable_altgr = (
+                    ctrl_or_alt
+                    and bool(char_val)
+                    and ord(char_val) >= 32
+                    and char_val not in "abcdefghijklmnopqrstuvwxyz"
+                )
+
+                if ctrl_or_alt and not is_printable_altgr:
+                    target_key = char_val.lower() if char_val else key_name
+                    if not target_key:
+                        return
+
+                    # Debounce auto-repeat
+                    if target_key in self._active_hotkey_keys:
+                        return
+                    self._active_hotkey_keys.add(target_key)
+
+                    # Flush buffer before recording hotkey
+                    self._flush_keyboard_buffer()
+
+                    # Build canonical keys list: [ctrl, alt, shift, win, <key>]
+                    keys_list: list[str] = []
+                    for mod in ("ctrl", "alt", "shift", "win"):
+                        if mod in self._active_modifiers:
+                            keys_list.append(mod)
+                    if target_key not in keys_list:
+                        keys_list.append(target_key)
+
+                    desc = f"Press hotkey: {' + '.join(k.upper() for k in keys_list)}"
+                    self._add_step(
+                        {
+                            "id": "step_tmp",
+                            "description": desc,
+                            "action_type": "HOTKEY",
+                            "keys": keys_list,
+                            "delay_ms": 500,
+                        }
+                    )
+                    self.last_action_desc = desc
+                    return
+
+                # 5. Regular text entry handling
+                if char_val:
+                    self._keyboard_buffer.append(char_val)
+                elif key == keyboard.Key.space:  # type: ignore[union-attr]
+                    self._keyboard_buffer.append(" ")
+                elif key == keyboard.Key.backspace:  # type: ignore[union-attr]
+                    if self._keyboard_buffer:
+                        self._keyboard_buffer.pop()
+                elif keyboard is not None and key in (keyboard.Key.enter, keyboard.Key.tab):
+                    self._flush_keyboard_buffer(press_enter=(key == keyboard.Key.enter))
+            except Exception as e:
+                logger.debug("Keyboard event handling failed: %s", e, exc_info=True)
 
     def _synthesize_skill(self) -> dict[str, Any]:
         """Cleans up and post-processes recorded steps into a complete Skill definition."""

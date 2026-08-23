@@ -82,6 +82,7 @@ class SkillSynthesizer:
             "4. Fasse zusammenhängende Aktionen in logische Aufgaben (Tasks) zusammen (z.B. Task 1: 'Datei im Programm öffnen', Task 2: 'Als CDR exportieren').\n"
             "5. Schlage einen prägnanten Skill-Namen auf Deutsch vor (z.B. 'Fußscan als CDR exportieren').\n"
             "6. Wähle die am besten passende Kategorie aus den bekannten Dokument-Kategorien (oder ['*'] für alle).\n\n"
+            "7. Behalte aufgenommene Tastenkürzel (action_type: HOTKEY) mit ihren Tasten (keys) bei und wandle sie nicht in Mausklicks um.\n\n"
             "Gib AUSSCHLIESSLICH ein valides JSON-Objekt mit folgender Schema-Struktur zurück:\n"
             "{\n"
             '  "name": "Fußscan als CDR exportieren",\n'
@@ -144,6 +145,14 @@ class SkillSynthesizer:
                 act["window_title"] = s.get("window_title", "Remote Desktop*")
             elif act_type in ("CLICK", "DOUBLE_CLICK"):
                 act["locator"] = s.get("locator", {"type": "auto", "prompt": ""})
+            elif act_type == "HOTKEY":
+                act["keys"] = s.get("keys", [])
+            elif act_type == "WAIT_FOR_ELEMENT":
+                act["locator"] = s.get("locator", {"type": "ocr_exact", "prompt": ""})
+                act["timeout_s"] = float(s.get("timeout_s", 10.0))
+            elif act_type in ("DELAY", "SLEEP", "WAIT"):
+                if "duration_s" in s:
+                    act["duration_s"] = float(s["duration_s"])
             elif act_type == "TYPE_TEXT":
                 raw_t = str(s.get("text", ""))
                 # Detect file path in text

@@ -50,8 +50,11 @@ def test_skill_recorder_event_handling():
     recorder.steps = []
     recorder.last_click_time = 0.0
     recorder.last_click_coords = (0, 0)
+    recorder._keyboard_buffer = []
+    recorder._active_modifiers = set()
+    recorder._active_hotkey_keys = set()
 
-    # 1. Simulate keypresses
+    # 1. Simulate normal keypresses
     class DummyKey:
         char = "a"
 
@@ -71,13 +74,73 @@ def test_skill_recorder_event_handling():
     assert "CLICK" in types
 
 
+def test_skill_recorder_hotkey_recording_and_modifiers():
+    recorder = SkillRecorder()
+    recorder.is_recording = True
+    recorder.steps = []
+    recorder._keyboard_buffer = []
+    recorder._active_modifiers = set()
+    recorder._active_hotkey_keys = set()
+
+    from core.skill_recorder import keyboard
+
+    # 1. Press Ctrl modifier
+    ctrl_key = getattr(keyboard.Key, "ctrl_l", keyboard.Key.ctrl) if keyboard else "ctrl_l"
+    recorder._on_key_press(ctrl_key)
+    assert "ctrl" in recorder._active_modifiers
+
+    # 2. Press 's' while Ctrl is active (Windows sends \x13 control character)
+    class CtrlSKey:
+        char = "\x13"
+
+    recorder._on_key_press(CtrlSKey())
+
+    # Should generate HOTKEY action with keys ["ctrl", "s"]
+    assert len(recorder.steps) == 1
+    hotkey_step = recorder.steps[0]
+    assert hotkey_step["action_type"] == "HOTKEY"
+    assert "ctrl" in hotkey_step["keys"]
+    assert "s" in hotkey_step["keys"]
+
+    # 3. Test debounce: repeated press of 's' while held down is ignored
+    recorder._on_key_press(CtrlSKey())
+    assert len(recorder.steps) == 1
+
+    # 4. Release 's' and release Ctrl
+    recorder._on_key_release(CtrlSKey())
+    assert "s" not in recorder._active_hotkey_keys
+    recorder._on_key_release(ctrl_key)
+    assert "ctrl" not in recorder._active_modifiers
+
+    # 5. Test AltGr special character (e.g. '@' on German keyboard)
+    # AltGr fires Ctrl+Alt modifiers internally in Win32
+    alt_key = getattr(keyboard.Key, "alt_r", keyboard.Key.alt) if keyboard else "alt_r"
+    recorder._on_key_press(ctrl_key)
+    recorder._on_key_press(alt_key)
+    assert "ctrl" in recorder._active_modifiers
+    assert "alt" in recorder._active_modifiers
+
+    class AtKey:
+        char = "@"
+
+    # Typing '@' with AltGr should be treated as text input into buffer, NOT a hotkey!
+    recorder._on_key_press(AtKey())
+    assert "@" in recorder._keyboard_buffer
+    assert len(recorder.steps) == 1  # No extra hotkey step added
+
+    recorder._on_key_release(ctrl_key)
+    recorder._on_key_release(alt_key)
+
+
 def test_skill_synthesizer_heuristics():
     from core.skills.synthesizer import SkillSynthesizer
 
     raw_steps = [
         {"action_type": "FOCUS_WINDOW", "window_title": "CAD Program*"},
         {"action_type": "CLICK", "description": "Menü Datei"},
+        {"action_type": "HOTKEY", "description": "HotKey Ctrl+O", "keys": ["ctrl", "o"]},
         {"action_type": "TYPE_TEXT", "text": "C:\\Cases\\Mueller\\Fußscan.pdf"},
+        {"action_type": "WAIT_FOR_ELEMENT", "locator": {"type": "ocr_exact", "prompt": "OK"}, "timeout_s": 12.0},
         {"action_type": "CLICK", "description": "Speichern"},
     ]
 
@@ -90,14 +153,28 @@ def test_skill_synthesizer_heuristics():
     assert "tasks" in synthesis
     assert len(synthesis["tasks"]) > 0
     assert "Fußscan" in synthesis["suggested_document_types"]
-    # Check that file path was converted to {document_fullpath}
+
+    # Check all synthesized actions
     all_actions = []
     for t in synthesis["tasks"]:
         all_actions.extend(t.get("actions", []))
 
+    # Verify TYPE_FILE_PATH variable substitution
     filepath_actions = [a for a in all_actions if a.get("action_type") == "TYPE_FILE_PATH"]
     assert len(filepath_actions) >= 1
     assert filepath_actions[0]["file_path"] == "{document_fullpath}"
+
+    # Verify HOTKEY preserves keys attribute
+    hotkey_actions = [a for a in all_actions if a.get("action_type") == "HOTKEY"]
+    assert len(hotkey_actions) == 1
+    assert hotkey_actions[0]["keys"] == ["ctrl", "o"]
+
+    # Verify WAIT_FOR_ELEMENT preserves locator and timeout
+    wait_actions = [a for a in all_actions if a.get("action_type") == "WAIT_FOR_ELEMENT"]
+    assert len(wait_actions) == 1
+    assert wait_actions[0]["locator"]["prompt"] == "OK"
+    assert wait_actions[0]["locator"]["type"] == "ocr_exact"
+    assert wait_actions[0]["timeout_s"] == 12.0
 
 
 def test_synthesize_api_endpoint(client):

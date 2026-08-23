@@ -11,7 +11,14 @@
 ---
 
 ## 2. Execution & Workflow Protocol
-* **Plan Before Implementation & "Grill Me" Architecture Sparring**: For multi-file changes or complex features, draft a structural plan and engage a multi-perspective sparring loop (up to 3 `plan_critic` subagents/turns) to ruthlessly challenge assumptions, prevent hallucinations, and stress-test alternatives (KISS/YAGNI, layer boundaries, edge cases, sidecar integrity). If full consensus is reached, synthesize the optimal design into `implementation_plan.md`. If irreconcilable architectural trade-offs remain, present them transparently to the user for a joint decision.
+* **Mandatory Architecture Sparring & "Grill Me" Gate (Zero-Exception Protocol)**:
+  * **Strict Requirement**: Prior to writing or updating `implementation_plan.md` and requesting user feedback, the agent MUST ALWAYS execute an adversarial sparring loop with the `plan_critic` subagent.
+  * **Automated Procedure (Never Wait for User Reminders)**:
+    1. Define the `plan_critic` subagent via `define_subagent` (if not already defined in the conversation).
+    2. Invoke `plan_critic` via `invoke_subagent` with a detailed architectural draft, explicit edge cases, platform considerations (Win32, Linux, macOS), and potential regression vectors.
+    3. Evaluate the critique, address all high-risk findings, and synthesize the finalized, hardened design into `implementation_plan.md`.
+    4. Only AFTER this subagent sparring is complete may the agent present the plan to the user for approval.
+  * Presenting an `implementation_plan.md` or asking the user for plan approval without preceding `plan_critic` sparring is a direct protocol violation.
 * **Incremental & Complete Edits**: Propose changes step-by-step.
 * **Zero Placeholders**: Never use placeholders, summaries, or truncation comments (e.g., `// ... existing code ...`, `/* remaining code unchanged */`). Always output fully complete, runnable code files or intact, self-contained functional blocks.
 * **Defensive & Dependency Hygiene**: Implement complete logic without unsolicited third-party packages. Rely on native capabilities and existing utilities first.
