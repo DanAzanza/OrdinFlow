@@ -69,11 +69,22 @@ graph TD
 
 ---
 
-## 4. Pre-Commit Verification Commands
+## 4. Pre-Commit Verification Commands & Quality Gate
 
-Always run and pass all 3 gates with 0 errors before presenting results to the user:
+Always run and pass all gates with 0 errors before presenting results to the user:
 ```bash
 venv\Scripts\ruff.exe check .
 npx -y pyright@latest core/ routes/
 venv\Scripts\python.exe -m pytest -q
 ```
+**Subagent Audit Gate**: Launch `pre_commit_auditor` subagent to audit git diff, architectural compliance, and edge cases prior to asking for user commit approval.
+
+---
+
+## 5. Specialized Multi-Agent Quality Subagents
+
+* **`plan_critic` ("Grill Me" Sparring Panel)**: Multi-perspective sparring partner before implementation (up to 3 subagents/iterations). Actively attacks assumptions, prevents hallucinations by verifying real codebase APIs, generates competing architectural alternatives, and enforces KISS/YAGNI. If consensus is reached, the plan is synthesized; if fundamental trade-offs remain, they are escalated transparently to the user.
+* **`pre_commit_auditor`**: Adversarial code auditor before commit approval. Scrutinizes `git diff` against `AGENTS.md` (no placeholders, memory/buffer cleanup, Win32 guards, SRP limits, zero synthetic secret leaks).
+
+
+

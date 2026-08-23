@@ -11,7 +11,7 @@
 ---
 
 ## 2. Execution & Workflow Protocol
-* **Plan Before Implementation**: For multi-file changes or complex features, output a concise structural plan (affected files, data flow, new files) before generating code.
+* **Plan Before Implementation & "Grill Me" Architecture Sparring**: For multi-file changes or complex features, draft a structural plan and engage a multi-perspective sparring loop (up to 3 `plan_critic` subagents/turns) to ruthlessly challenge assumptions, prevent hallucinations, and stress-test alternatives (KISS/YAGNI, layer boundaries, edge cases, sidecar integrity). If full consensus is reached, synthesize the optimal design into `implementation_plan.md`. If irreconcilable architectural trade-offs remain, present them transparently to the user for a joint decision.
 * **Incremental & Complete Edits**: Propose changes step-by-step.
 * **Zero Placeholders**: Never use placeholders, summaries, or truncation comments (e.g., `// ... existing code ...`, `/* remaining code unchanged */`). Always output fully complete, runnable code files or intact, self-contained functional blocks.
 * **Defensive & Dependency Hygiene**: Implement complete logic without unsolicited third-party packages. Rely on native capabilities and existing utilities first.
@@ -94,13 +94,14 @@ When asked to write or suggest Git commit messages, strictly adhere to the follo
 
 ## 8. CI, Testing & Pre-Commit Quality Gate
 * **Development Verification**: Use `python -m pytest -q` during iterative development to verify logic and prevent regressions quickly.
-* **Pre-Commit Quality Gate**: `ruff` and `pyright` are checked strictly when preparing and executing commits (upon user request):
+* **Pre-Commit Quality Gate**: `ruff`, `pyright`, `pytest`, and the `pre_commit_auditor` subagent are checked strictly when preparing and executing commits (upon user request):
   ```bash
   ruff check .
   npx pyright core/ routes/
   python -m pytest -q
   ```
-* **Zero Regression Standard**: Commits and pushes are strictly blocked if any linter warning, type diagnostic, or test failure is present. All 3 gates must succeed with 0 errors before committing.
+* **Subagent Code Review Gate**: Invoke the `pre_commit_auditor` subagent to conduct an adversarial audit on `git diff` / modified files (checking architecture, sidecars, resource hygiene, and AGENTS.md rules).
+* **Zero Regression Standard**: Commits and pushes are strictly blocked if any linter warning, type diagnostic, test failure, or auditor blocker is present. All gates must succeed with 0 errors before presenting changes to the user for commit approval.
 * **CI Parity**: Ensure local development environment tools match `.github/workflows/ci.yml` (Python 3.10+, Pyright, Ruff, Pytest).
 
 ---
