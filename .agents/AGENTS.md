@@ -101,15 +101,19 @@ When asked to write or suggest Git commit messages, strictly adhere to the follo
 
 ## 8. CI, Testing & Pre-Commit Quality Gate
 * **Development Verification**: Use `python -m pytest -q` during iterative development to verify logic and prevent regressions quickly.
-* **Pre-Commit Quality Gate**: `ruff`, `pyright`, `pytest`, and the `pre_commit_auditor` subagent are checked strictly when preparing and executing commits (upon user request):
-  ```bash
-  ruff check .
-  npx pyright core/ routes/
-  python -m pytest -q
-  ```
+* **Mandatory Pre-Commit Quality Gate (`scripts/verify_ci.py`)**:
+  * Before presenting results for commit approval or requesting user feedback on completed tasks, the agent MUST run the central verification script:
+    ```bash
+    python scripts/verify_ci.py
+    ```
+  * This script deterministically executes 1:1 CI parity with `.github/workflows/ci.yml`:
+    1. Full-repository Ruff linter (`python -m ruff check .`)
+    2. Full-scope Pyright type analysis (`npx pyright core/ routes/`) — *Never scope down or skip directories!*
+    3. Full test suite (`python -m pytest -q`)
 * **Subagent Code & Goal Audit Gate**: Invoke the `pre_commit_auditor` subagent to conduct an adversarial audit on `git diff` against:
   1. **Plan-to-Code Fidelity**: Does the code genuinely solve the root problem and deliver all commitments from `implementation_plan.md`, or were corners cut and edge cases dropped?
   2. **Code & Architecture Standards**: Adherence to AGENTS.md rules (no placeholders, resource hygiene, sidecar atomicity, Win32 guards, SRP limits, zero secret leaks).
+  3. **Verification Completeness**: Confirm that `python scripts/verify_ci.py` ran over the entire codebase with 0 errors.
 * **Zero Regression Standard**: Commits and pushes are strictly blocked if any linter warning, type diagnostic, test failure, or auditor blocker is present. All gates must succeed with 0 errors before presenting changes to the user for commit approval.
 * **CI Parity**: Ensure local development environment tools match `.github/workflows/ci.yml` (Python 3.10+, Pyright, Ruff, Pytest).
 
