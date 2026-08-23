@@ -145,7 +145,7 @@ class SkillRecorder:
             if self.is_recording:
                 return {"status": "already_recording", "step_count": len(self.steps)}
 
-            if not PYNPUT_AVAILABLE:
+            if not PYNPUT_AVAILABLE or keyboard is None or mouse is None:
                 raise RuntimeError("The module 'pynput' is not installed.")
 
             self.is_recording = True
