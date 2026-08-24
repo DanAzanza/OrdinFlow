@@ -33,14 +33,19 @@ graph TD
 
 ---
 
-## 2. Critical Gotchas, Quirks & Model Constraints
+## 2. Critical Gotchas, Quirks & Model/Platform Constraints
 
 ### 🎯 1. Vision Model (Qwen2.5-VL / Qwen3-VL) 28px Patch Token Alignment
 * **Why**: Vision Transformers utilize a $14\times14$ patch grid with a $2\times2$ spatial pooling convolution neck $\rightarrow$ effective token unit is **$28\times28$ pixels**.
 * **Rule**: All screen crops, quadrant slices, and region bounding boxes MUST be rounded down to exact multiples of **28 pixels** (`(val // 28) * 28`).
 * **Benefit**: Zero token padding waste in the vision encoder, zero bilinear interpolation blurring, and maximum spatial accuracy for UI element grounding.
 
-### 🖥️ 2. Multi-Monitor Virtual Desktop & Coordinate Translation
+### 🖥️ 2. Windows Session Isolation & Subshell Truthfulness
+* **Reality**: Agent subshells on Windows run in isolated sandbox virtual desktop stations (`exebox-...`), not in the interactive user desktop station (`WinSta0\Default`).
+* **Rule**: Native OS GUI actions (`pynput`, `pyautogui`, `ctypes.windll.user32.mouse_event`, `BitBlt`) executed from background subshells interact strictly with the virtual desktop of that process and are NOT visible on the user's physical monitor.
+* **Truthfulness**: Never claim a physical window was operated on the user's physical screen when executing from a subshell. Only web/browser interactions via Chrome DevTools MCP (CDP WebSocket) interact with the live user browser instance.
+
+### 🖥️ 3. Multi-Monitor Virtual Desktop & Coordinate Translation
 * **Reality**: On multi-monitor Windows setups, displays positioned to the left or above the primary monitor have negative coordinate spaces (e.g. $x_v = -1920$).
 * **Rule**: Screen bounds MUST be queried using virtual desktop metrics:
   - `SM_XVIRTUALSCREEN = 76`
@@ -49,7 +54,7 @@ graph TD
   - `SM_CYVIRTUALSCREEN = 79`
 * **Translation Offset**: The screen capture preserves `img._screen_origin = (x_v, y_v)`. `SoMGrounder.locate_target` MUST add `origin_x` and `origin_y` to target element coordinates before dispatching physical OS mouse clicks.
 
-### 📐 3. Modern Windows DPI Awareness Cascade
+### 📐 4. Modern Windows DPI Awareness Cascade & GDI BitBlt
 * **Rule**: Declare Per-Monitor V2 DPI awareness with progressive fallback before computing screen coordinates or capturing GDI BitBlt bitmaps:
   ```python
   # 1. Per-Monitor V2 (DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 = -4)
@@ -59,39 +64,52 @@ graph TD
   # 3. System DPI Aware fallback
   user32.SetProcessDPIAware()
   ```
-* **Benefit**: Eliminates blur and coordinate drift when applications run across mixed-DPI displays (e.g. 150% 4K laptop + 100% 1080p external monitor).
+* **Benefit**: Eliminates blur, coordinate drift, and `OSError: screen grab failed` when applications run across mixed-DPI displays (e.g. 150% 4K laptop + 100% 1080p external monitor).
 
-### 🏷️ 4. Set-of-Mark (SoM) Top-Edge Badge Placement
+### 🏷️ 5. Set-of-Mark (SoM) Top-Edge Badge Placement
 * **Gotcha**: When UI elements reside at the top edge of a window or screen ($y_1 < 16$), drawing badges above the bounding box (`y1 - 14`) truncates the badge off-screen.
 * **Rule**: When $y_1 < 16$, dynamically render the badge inside the top-left corner of the bounding box (`badge_top = y1`, `badge_bottom = min(y2, y1 + 14)`).
 
-### 📋 5. Win64 Ctypes Pointer Safety & Clipboard Protocol
+### 📋 6. Win64 Ctypes Pointer Safety & Clipboard Protocol
 * **Pointer Truncation**: In 64-bit Python on Windows, `ctypes` defaults `restype` to 32-bit `c_int`. All memory handles and pointers (`GlobalAlloc`, `GlobalLock`, `GetClipboardData`, `SetClipboardData`) MUST declare `restype = ctypes.c_void_p` and explicit `argtypes` to avoid pointer truncation (`0xc0000005` access violations).
 * **Clipboard Preservation & Yield Timing**:
   1. Back up existing clipboard unicode text before pasting.
   2. Use an `OpenClipboard` retry loop (5 attempts, 10ms delay) to bypass transient locks from sync utilities.
   3. Send `Ctrl+V` and enforce an **80ms yield delay** (`time.sleep(0.08)`), allowing the target application's message pump to consume `WM_PASTE` before restoring the user's prior clipboard data.
 
-### ⚖️ 6. Multi-Tier Consensus Mathematics & Typographical Election
+### 🧹 7. PyMuPDF (`fitz`) & OpenCV Native Buffer Hygiene & Garbage Collection
+* **Buffer Cleanup**: For native C/C++ libraries (`fitz` / PyMuPDF, `cv2` / OpenCV), explicitly deallocate large native buffers (e.g. `del pix`) immediately after byte extraction.
+* **Batch GC**: In long-running batch loops, trigger periodic garbage collection (`gc.collect()`) after processing each document to prevent C-heap fragmentation and OS-level access violations (`0xc0000005`).
+
+### 📦 8. Atomic File & Sidecar (`.meta`) Integrity
+* **Rule**: FileSystem operations (move, delete, split, rename) MUST handle source files and their accompanying `.meta` sidecar files atomically. Never orphan metadata during routing or case archiving.
+
+### ⚖️ 9. Multi-Tier Consensus Mathematics & Typographical Election
 * **Symbolic Tier Weights**: `ExtractionPipeline._evaluate_field_consensus` passes symbolic tier keys (`"tier1"`, `"text"`, `"tier2"`, `"tier3"`). This decouples consensus weighting ($1.0, 1.0, 1.25, 1.5$) from integer pixel dimensions configured in `config.yaml`.
 * **Casing Heuristic**: When cluster vote counts and lengths tie, `_casing_score` penalizes screaming ALL-CAPS (`-10`) and rewards mixed Title Case (`+10`), ensuring clean canonical names (e.g., electing `"Mustermann"` over `"MUSTERMANN"`).
 * **Substring Normalization**: Aggressive substring and token subset matching (`_are_similar_or_substring`) must remain intact for medical compound names (e.g. `'Wannink'` $\subset$ `'Bramkamp-Wannink'`).
 
-### 🔒 7. Reentrant Locks (`RLock`) & Double-Checked Model Caching
+### 🔒 10. Reentrant Locks (`RLock`) & Double-Checked Model Caching
 * **Reentrant Safety**: `_CONFIG_LOCK` in `core/config.py` and `_LLM_LOCK` in `core/llm_backends.py` use `threading.RLock()`, preventing self-deadlock during nested calls.
 * **Cold-Start VRAM Protection**: `_ensure_loaded()` uses double-checked locking inside `with _LLM_LOCK:` to guarantee that concurrent HTTP requests during startup instantiate exactly one LLM instance in VRAM.
 
-### 🛡️ 8. 100% Offline Air-Gap & PowerShell Injection Defense (CWE-78)
+### 🛡️ 11. 100% Offline Air-Gap & PowerShell Injection Defense (CWE-78)
 * **Air-Gap Standard**: No external CDNs, fonts (`fonts.googleapis.com`), or cloud telemetry. The frontend uses a native system UI font stack (`-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`).
 * **PowerShell EncodedCommand**: When invoking PowerShell subprocesses (e.g. folder pickers), escape single quotes, strip newlines, encode in UTF-16LE Base64, and pass via `powershell -NoProfile -NonInteractive -EncodedCommand <base64>`.
 
-### 📂 9. Windows Explorer Transient Lock Resilience
+### 📂 12. Windows Explorer Transient Lock Resilience
 * **Transient Locks**: Windows Explorer thumbnailers, indexers, or antivirus scanners temporarily hold read locks on newly processed directories.
 * **Rule**: Wrap directory renames/moves in a retry helper (`_safe_rename_dir`) with exponential backoff ($0.15s \to 0.30s \to 0.60s \to 1.20s \to 2.40s$) to handle transient `PermissionError` [WinError 5 / 32].
 
+### ⏱️ 13. Headless Background Keep-Alive Safety
+* **Rule**: Server heartbeat and keepalive monitors must evaluate all dimensions of ongoing background work (active skill queues, running file processors, non-empty queues) before executing automated idle shutdowns.
+
+### 🧩 14. KISS in Workflow & Task Editors
+* **Rule**: Keep Task & Action configuration interfaces direct, transparent, and immediately editable. Avoid nested view-mode toggles (e.g. "Simple vs. Expert") or complex collapse states that hide inputs and confuse non-technical users.
+
 ---
 
-## 3. Anti-Patterns & Hard Code Standards
+## 3. Anti-Patterns & Repository Invariants
 
 | Anti-Pattern | Correct Practice |
 |---|---|
@@ -101,10 +119,11 @@ graph TD
 | Unchecked ctypes pointer returns | Declare `restype = ctypes.c_void_p` for 64-bit pointers |
 | Dynamic `element.style` in JS | CSS classes and design tokens in [`static/css/app.css`](file:///g:/Meine%20Ablage/Projekte/OrdinFlow/static/css/app.css) |
 | Polling background loops in tools | Non-blocking execution & reactive wakeup |
+| Orphaned metadata files | Atomic sidecar (`.meta`) routing & deletion |
 
 ---
 
-## 4. Pre-Commit Verification Commands & Quality Gate
+## 4. Repository Verification Commands & Quality Gate
 
 Always run and pass all gates with 0 errors before presenting results to the user:
 ```bash
@@ -113,9 +132,7 @@ python scripts/verify_ci.py
 This executes:
 1. `python -m ruff check .`
 2. `npx pyright core/ routes/`
-3. `python -m pytest -q` (141 tests)
-
-**Subagent Audit Gate**: Launch `pre_commit_auditor` subagent to audit git diff, architectural compliance, and edge cases prior to asking for user commit approval.
+3. `python -m pytest -q` (140+ tests)
 
 ---
 
