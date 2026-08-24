@@ -3,6 +3,7 @@
     <head>
         <meta charset="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="description" content="OrdinFlow - Autonomous Document Routing and Local Skill Execution Engine" />
         <title>OrdinFlow</title>
         <link rel="stylesheet" href="/static/css/app.css" />
     </head>
@@ -63,6 +64,7 @@
                             type="text"
                             id="searchInbox"
                             placeholder="Search file..."
+                            aria-label="Search documents in inbox"
                             oninput="filterInbox()"
                         />
                     </div>
@@ -87,6 +89,7 @@
                             type="text"
                             id="searchCases"
                             placeholder="Search case..."
+                            aria-label="Search archived cases"
                             oninput="filterCases()"
                         />
                     </div>
@@ -122,7 +125,7 @@
                     <div style="display: flex; gap: 8px; align-items: center; justify-content: space-between;">
                         <div class="search-box" style="margin-bottom: 0; flex: 1;">
                             <span class="search-icon">🔍</span>
-                            <input type="text" id="logSearchInput" placeholder="Search log..." oninput="filterLogs()" />
+                            <input type="text" id="logSearchInput" placeholder="Search log..." aria-label="Search system logs" oninput="filterLogs()" />
                         </div>
                         <div style="display: flex; gap: 6px;">
                             <button class="btn btn-sm active" id="logFilterAll" onclick="setLogFilter('ALL')">All</button>
@@ -252,7 +255,7 @@
                                                 <!-- Messages populated dynamically -->
                                             </div>
                                             <div class="skill-chat-input-bar">
-                                                <input type="text" id="skillCopilotChatInput" class="skill-chat-input" placeholder="Describe your change (e.g. 'Add a 500ms delay before the click')..." onkeydown="if(event.key==='Enter' && !event.shiftKey) { event.preventDefault(); sendSkillCopilotMessage(); }" />
+                                                <input type="text" id="skillCopilotChatInput" class="skill-chat-input" placeholder="Describe your change (e.g. 'Add a 500ms delay before the click')..." aria-label="Skill copilot message" onkeydown="if(event.key==='Enter' && !event.shiftKey) { event.preventDefault(); sendSkillCopilotMessage(); }" />
                                                 <button type="button" class="btn btn-primary btn-chat-send" id="btnSkillCopilotSend" onclick="sendSkillCopilotMessage()">
                                                     <span>✨</span> Send
                                                 </button>
@@ -267,20 +270,20 @@
                                             <h4>⚙️ General Settings</h4>
                                             <div class="grid-2col">
                                                 <div class="form-group" style="margin: 0;">
-                                                    <label class="doc-editor-label">Skill Name <span style="font-size: 0.72rem; color: var(--text-dim); font-weight: normal;">(Cannot contain :, /, \, *, ?, ", &lt;, &gt;, |)</span></label>
-                                                    <input type="text" id="editorSkillName" class="doc-editor-input" placeholder="e.g. Export to Sanivision" oninput="onSkillNameInput(this.value)" />
+                                                    <label for="editorSkillName" class="doc-editor-label">Skill Name <span style="font-size: 0.72rem; color: var(--text-dim); font-weight: normal;">(Cannot contain :, /, \, *, ?, ", &lt;, &gt;, |)</span></label>
+                                                    <input type="text" id="editorSkillName" class="doc-editor-input" placeholder="e.g. Export to Sanivision" aria-label="Skill Name" oninput="onSkillNameInput(this.value)" />
                                                 </div>
                                                 <div class="form-group" style="margin: 0;">
-                                                    <label class="doc-editor-label">Skill Type</label>
-                                                    <select id="editorSkillType" class="doc-editor-input" onchange="onSkillTypeChange(this.value)">
+                                                    <label for="editorSkillType" class="doc-editor-label">Skill Type</label>
+                                                    <select id="editorSkillType" class="doc-editor-input" aria-label="Skill Type" onchange="onSkillTypeChange(this.value)">
                                                         <option value="export">Export Skill (RDP / GUI Automation)</option>
                                                         <option value="import">Import Skill (Folder Import & AI Classification)</option>
                                                     </select>
                                                 </div>
                                             </div>
                                             <div class="form-group" style="margin-top: 10px;">
-                                                <label class="doc-editor-label">Description</label>
-                                                <input type="text" id="editorSkillDesc" class="doc-editor-input" placeholder="Short explanation of the skill..." />
+                                                <label for="editorSkillDesc" class="doc-editor-label">Description</label>
+                                                <input type="text" id="editorSkillDesc" class="doc-editor-input" placeholder="Short explanation of the skill..." aria-label="Skill Description" />
                                             </div>
 
                                             <!-- EXPORT SPECIFIC SETTINGS -->
@@ -307,24 +310,24 @@
                                                     </summary>
                                                     <div class="grid-2col" style="margin-top: 8px;">
                                                         <div class="form-group" style="margin: 0;">
-                                                            <label class="doc-editor-label">Fallback Window Title Pattern</label>
-                                                            <input type="text" id="editorSkillTargetWindow" class="doc-editor-input" placeholder="Auto-detected from Focus Window step" />
+                                                            <label for="editorSkillTargetWindow" class="doc-editor-label">Fallback Window Title Pattern</label>
+                                                            <input type="text" id="editorSkillTargetWindow" class="doc-editor-input" placeholder="Auto-detected from Focus Window step" aria-label="Fallback Window Title Pattern" />
                                                         </div>
                                                         <div class="form-group" style="margin: 0;">
-                                                            <label class="doc-editor-label">RDP Path Prefix Mapping</label>
-                                                            <input type="text" id="editorSkillRdpPrefix" class="doc-editor-input" placeholder="\\tsclient\C" />
+                                                            <label for="editorSkillRdpPrefix" class="doc-editor-label">RDP Path Prefix Mapping</label>
+                                                            <input type="text" id="editorSkillRdpPrefix" class="doc-editor-input" placeholder="\\tsclient\C" aria-label="RDP Path Prefix Mapping" />
                                                         </div>
                                                     </div>
                                                     <div class="grid-2col" style="margin-top: 8px;">
                                                         <div class="form-group" style="margin: 0;">
-                                                            <label class="doc-editor-label">🚀 Launch / Login Skill (If window closed)</label>
-                                                            <select id="editorSkillLaunchSkill" class="doc-editor-input">
+                                                            <label for="editorSkillLaunchSkill" class="doc-editor-label">🚀 Launch / Login Skill (If window closed)</label>
+                                                            <select id="editorSkillLaunchSkill" class="doc-editor-input" aria-label="Launch Skill">
                                                                 <option value="">-- None (Direct Execution) --</option>
                                                             </select>
                                                         </div>
                                                         <div class="form-group" style="margin: 0;">
-                                                            <label class="doc-editor-label">📁 Executable Path (Fallback Launch)</label>
-                                                            <input type="text" id="editorSkillExecutablePath" class="doc-editor-input" placeholder="e.g. C:\Program Files\Corel\CorelDRAW.exe" />
+                                                            <label for="editorSkillExecutablePath" class="doc-editor-label">📁 Executable Path (Fallback Launch)</label>
+                                                            <input type="text" id="editorSkillExecutablePath" class="doc-editor-input" placeholder="e.g. C:\Program Files\Corel\CorelDRAW.exe" aria-label="Executable Path" />
                                                         </div>
                                                     </div>
                                                     <div style="display: flex; gap: 20px; margin-top: 8px; font-size: 0.78rem;">
@@ -365,25 +368,25 @@
                                         <h4>⚙️ Import Skill Settings</h4>
                                         <div class="grid-2col">
                                             <div class="form-group" style="margin: 0;">
-                                                <label class="doc-editor-label">Skill Name</label>
-                                                <input type="text" id="editorImportSkillName" class="doc-editor-input" placeholder="e.g. Inbox Scanner" oninput="onSkillNameInput(this.value)" />
+                                                <label for="editorImportSkillName" class="doc-editor-label">Skill Name</label>
+                                                <input type="text" id="editorImportSkillName" class="doc-editor-input" placeholder="e.g. Inbox Scanner" aria-label="Import Skill Name" oninput="onSkillNameInput(this.value)" />
                                             </div>
                                             <div class="form-group" style="margin: 0;">
-                                                <label class="doc-editor-label">Skill Type</label>
-                                                <select id="editorImportSkillType" class="doc-editor-input" onchange="onSkillTypeChange(this.value)">
+                                                <label for="editorImportSkillType" class="doc-editor-label">Skill Type</label>
+                                                <select id="editorImportSkillType" class="doc-editor-input" aria-label="Import Skill Type" onchange="onSkillTypeChange(this.value)">
                                                     <option value="import">Import Skill (Folder Import & AI Classification)</option>
                                                     <option value="export">Export Skill (RDP / GUI Automation)</option>
                                                 </select>
                                             </div>
                                         </div>
                                         <div class="form-group" style="margin-top: 10px;">
-                                            <label class="doc-editor-label">Description</label>
-                                            <input type="text" id="editorImportSkillDesc" class="doc-editor-input" placeholder="Short explanation of the skill..." />
+                                            <label for="editorImportSkillDesc" class="doc-editor-label">Description</label>
+                                            <input type="text" id="editorImportSkillDesc" class="doc-editor-input" placeholder="Short explanation of the skill..." aria-label="Import Skill Description" />
                                         </div>
                                         <div id="importSkillMetaSection" style="margin-top: 10px;">
                                             <div class="form-group" style="margin: 0 0 10px 0;">
-                                                <label class="doc-editor-label">Allowed file extensions (comma-separated)</label>
-                                                <input type="text" id="editorSkillAllowedExtensions" class="doc-editor-input" placeholder=".pdf, .png, .jpg, .jpeg, .tif, .tiff" />
+                                                <label for="editorSkillAllowedExtensions" class="doc-editor-label">Allowed file extensions (comma-separated)</label>
+                                                <input type="text" id="editorSkillAllowedExtensions" class="doc-editor-input" placeholder=".pdf, .png, .jpg, .jpeg, .tif, .tiff" aria-label="Allowed file extensions" />
                                             </div>
                                             <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 8px; margin-top: 8px;">
                                                 <div class="config-toggle-group">
@@ -440,7 +443,7 @@
                                             </button>
                                         </div>
                                     </div>
-                                    <textarea id="skillYamlEditorTextarea" class="skill-yaml-textarea" placeholder="# Loading YAML..." spellcheck="false"></textarea>
+                                    <textarea id="skillYamlEditorTextarea" class="skill-yaml-textarea" placeholder="# Loading YAML..." spellcheck="false" aria-label="YAML Skill Code"></textarea>
                                 </div>
                             </div>
                         </div>
@@ -505,7 +508,7 @@
                     <button type="button" class="modal-close-btn" onclick="closeFolderEdit()" aria-label="Close" title="Close">✖️</button>
                 </div>
                 <div class="modal-body">
-                    <input type="hidden" id="editFolderOldName" />
+                    <input type="hidden" id="editFolderOldName" name="editFolderOldName" aria-hidden="true" />
                     <div id="editFolderFields"></div>
                 </div>
                 <div class="modal-footer">
@@ -544,7 +547,7 @@
 
                     <div class="create-skill-options">
                         <label class="create-skill-card active" id="createSkillCardExport" onclick="selectCreateSkillType('export')">
-                            <input type="radio" name="newSkillTypeRadio" value="export" checked style="display: none;">
+                            <input type="radio" name="newSkillTypeRadio" value="export" checked class="sr-only" aria-label="Export Skill">
                             <div class="create-skill-card-icon">⚡</div>
                             <div class="create-skill-card-content">
                                 <div class="create-skill-card-title">Export Skill (GUI / RPA Automation)</div>
@@ -555,7 +558,7 @@
                         </label>
 
                         <label class="create-skill-card" id="createSkillCardImport" onclick="selectCreateSkillType('import')">
-                            <input type="radio" name="newSkillTypeRadio" value="import" style="display: none;">
+                            <input type="radio" name="newSkillTypeRadio" value="import" class="sr-only" aria-label="Import Skill">
                             <div class="create-skill-card-icon">📥</div>
                             <div class="create-skill-card-content">
                                 <div class="create-skill-card-title">Import Skill (Inbox & AI Classification)</div>
@@ -609,12 +612,12 @@
                     <!-- General Settings from AI -->
                     <div class="grid-2col" style="margin-top: 14px;">
                         <div class="form-group" style="margin: 0;">
-                            <label class="doc-editor-label">Suggested Skill Name</label>
-                            <input type="text" id="aiSynthesisSkillName" class="doc-editor-input" placeholder="e.g. Export Foot Scan as CDR" />
+                            <label for="aiSynthesisSkillName" class="doc-editor-label">Suggested Skill Name</label>
+                            <input type="text" id="aiSynthesisSkillName" class="doc-editor-input" placeholder="e.g. Export Foot Scan as CDR" aria-label="Suggested Skill Name" />
                         </div>
                         <div class="form-group" style="margin: 0;">
-                            <label class="doc-editor-label">Allowed Document Types</label>
-                            <select id="aiSynthesisDocTypeSelect" class="doc-editor-input">
+                            <label for="aiSynthesisDocTypeSelect" class="doc-editor-label">Allowed Document Types</label>
+                            <select id="aiSynthesisDocTypeSelect" class="doc-editor-input" aria-label="Allowed Document Types">
                                 <option value="*">⭐ * (All Document Types)</option>
                             </select>
                         </div>
@@ -639,9 +642,9 @@
 
                     <!-- AI Refinement Prompt -->
                     <div class="synthesis-prompt-box" style="margin-top: 14px;">
-                        <label class="doc-editor-label" style="color: #cbd5e1;">💬 Additional Instructions for AI Refinement (Optional):</label>
+                        <label for="aiSynthesisRefineInput" class="doc-editor-label" style="color: #cbd5e1;">💬 Additional Instructions for AI Refinement (Optional):</label>
                         <div style="display: flex; gap: 8px; margin-top: 4px;">
-                            <input type="text" id="aiSynthesisRefineInput" class="doc-editor-input" placeholder="e.g. 'Only apply to foot scans' or 'Close CAD application at the end'" onkeydown="if(event.key==='Enter') reSynthesizeSkillWithPrompt()" />
+                            <input type="text" id="aiSynthesisRefineInput" class="doc-editor-input" placeholder="e.g. 'Only apply to foot scans' or 'Close CAD application at the end'" aria-label="Additional Instructions for AI Refinement" onkeydown="if(event.key==='Enter') reSynthesizeSkillWithPrompt()" />
                             <button type="button" class="btn btn-primary" onclick="reSynthesizeSkillWithPrompt()" id="aiSynthesisRefineBtn" style="white-space: nowrap;">
                                 <span>✨</span> Refine with AI
                             </button>
@@ -680,8 +683,8 @@
                     </div>
                     <!-- Selected Path Display -->
                     <div class="path-picker-selected-row">
-                        <label class="doc-editor-label" style="margin: 0; white-space: nowrap; font-size: 0.75rem;">Ausgewählter Pfad:</label>
-                        <input type="text" class="doc-editor-input path-picker-input" id="pathPickerSelectedInput" placeholder="Pfad eingeben oder oben auswählen..." />
+                        <label for="pathPickerSelectedInput" class="doc-editor-label" style="margin: 0; white-space: nowrap; font-size: 0.75rem;">Ausgewählter Pfad:</label>
+                        <input type="text" class="doc-editor-input path-picker-input" id="pathPickerSelectedInput" placeholder="Pfad eingeben oder oben auswählen..." aria-label="Ausgewählter Dateipfad" />
                     </div>
                 </div>
                 <div class="modal-footer path-picker-footer">

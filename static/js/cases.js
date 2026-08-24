@@ -396,12 +396,13 @@ function openFolderEdit(folderName) {
 	struct.forEach((comp, idx) => {
 		const label = cleanHeaderLabel(comp);
 		const val = c.parts && c.parts[idx] ? c.parts[idx] : "";
+		const fieldId = `edit_folder_part_${idx}`;
 
 		const group = document.createElement("div");
 		group.className = "form-group";
 		group.innerHTML = `
-			<label class="doc-editor-label">${escapeHtml(label)}</label>
-			<input type="text" class="doc-editor-input" name="part_${idx}" data-idx="${idx}" value="${escapeHtml(val)}" />
+			<label for="${fieldId}" class="doc-editor-label">${escapeHtml(label)}</label>
+			<input type="text" id="${fieldId}" class="doc-editor-input" name="part_${idx}" data-idx="${idx}" value="${escapeHtml(val)}" aria-label="${escapeHtml(label)}" />
 		`;
 		formContainer.appendChild(group);
 	});

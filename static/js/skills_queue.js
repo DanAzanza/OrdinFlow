@@ -277,8 +277,8 @@ async function renderQueueInspector() {
 				${btnRowHtml}
 			</div>
 			<div class="queue-auto-repeat-row">
-				<label class="queue-toggle-label">
-					<input type="checkbox" id="queueAutoRepeatToggle" onchange="toggleQueueAutoRepeat(this.checked)" ${qState.auto_repeat_enabled ? "checked" : ""}>
+				<label class="queue-toggle-label" for="queueAutoRepeatToggle">
+					<input type="checkbox" id="queueAutoRepeatToggle" aria-label="Auto-run queue every 5 min" onchange="toggleQueueAutoRepeat(this.checked)" ${qState.auto_repeat_enabled ? "checked" : ""}>
 					<span>🔄 Auto-run queue every 5 min</span>
 				</label>
 			</div>
@@ -303,7 +303,7 @@ async function renderQueueInspector() {
 		<div class="queue-add-card">
 			<h4 class="queue-add-title">➕ Add Skill to Queue</h4>
 			<div class="queue-add-row">
-				<select id="queueAddSkillSelect" class="doc-editor-input queue-add-select">
+				<select id="queueAddSkillSelect" class="doc-editor-input queue-add-select" aria-label="Select skill to add to queue">
 					${skillOptions || '<option value="">No skills available</option>'}
 				</select>
 				<button type="button" class="btn btn-accent btn-sm" onclick="addSelectedSkillToQueue()">

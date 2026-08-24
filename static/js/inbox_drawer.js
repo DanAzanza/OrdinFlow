@@ -373,8 +373,8 @@ function buildGenericInspectorForm(docType, personStr, datum, produkt, extracted
 
 				<div class="grid-2col">
 					<div class="form-group zero-margin">
-						<label class="doc-editor-label">Document Type *</label>
-						<select class="doc-editor-input sec-dok-art inbox-drawer-field-select-lg" onchange="onSectionDokArtChange(${sec.id}, this.value)">
+						<label for="${sanitizeDomId("sec", sec.id, "dok_art")}" class="doc-editor-label">Document Type *</label>
+						<select id="${sanitizeDomId("sec", sec.id, "dok_art")}" class="doc-editor-input sec-dok-art inbox-drawer-field-select-lg" aria-label="Document Type" onchange="onSectionDokArtChange(${sec.id}, this.value)">
 							${dokArtOptions.length > 0
 								? dokArtOptions.map(opt => `<option value="${escapeHtml(opt)}" ${opt === curDokArt ? "selected" : ""}>${escapeHtml(opt)}</option>`).join("")
 								: `<option value="">Empty</option>`
@@ -383,8 +383,8 @@ function buildGenericInspectorForm(docType, personStr, datum, produkt, extracted
 					</div>
 
 					<div class="form-group zero-margin">
-						<label class="doc-editor-label">Pages (e.g. 1 or 2-3) *</label>
-						<input type="text" class="doc-editor-input sec-pages inbox-drawer-field-input-lg" value="${escapeHtml(sec.pages || "all")}" placeholder="all, 1, 2-3" />
+						<label for="${sanitizeDomId("sec", sec.id, "pages")}" class="doc-editor-label">Pages (e.g. 1 or 2-3) *</label>
+						<input type="text" id="${sanitizeDomId("sec", sec.id, "pages")}" class="doc-editor-input sec-pages inbox-drawer-field-input-lg" aria-label="Pages to extract" value="${escapeHtml(sec.pages || "all")}" placeholder="all, 1, 2-3" />
 					</div>
 				</div>
 
@@ -398,20 +398,34 @@ function buildGenericInspectorForm(docType, personStr, datum, produkt, extracted
 				const val = fieldValues[key] !== null && fieldValues[key] !== undefined ? String(fieldValues[key]) : "";
 				const isDate = key.toLowerCase().includes("datum") || key.toLowerCase().includes("date");
 				const isBool = typeof fieldValues[key] === "boolean" || key.toLowerCase() === "signed";
+				const safeFieldId = sanitizeDomId("sec", sec.id, "field", key);
+
+				let fieldControlHtml = "";
+				if (isDate) {
+					const isoDate = typeof normalizeDateForInput === "function" ? normalizeDateForInput(val) : null;
+					if (isoDate !== null) {
+						fieldControlHtml = `<input type="date" id="${safeFieldId}" class="doc-editor-input drawer-field inbox-drawer-field-date" data-field="${escapeHtml(key)}" value="${escapeHtml(isoDate)}" aria-label="${escapeHtml(key)}" />`;
+					} else if (val) {
+						// Non-standard date string (e.g. "Mai 2026", "unleserlich") -> fall back to text input to preserve OCR text
+						fieldControlHtml = `<input type="text" id="${safeFieldId}" class="doc-editor-input drawer-field inbox-drawer-field-input" data-field="${escapeHtml(key)}" value="${escapeHtml(val)}" placeholder="${escapeHtml(key)}" aria-label="${escapeHtml(key)}" title="Non-standard date format" />`;
+					} else {
+						fieldControlHtml = `<input type="date" id="${safeFieldId}" class="doc-editor-input drawer-field inbox-drawer-field-date" data-field="${escapeHtml(key)}" value="" aria-label="${escapeHtml(key)}" />`;
+					}
+				} else if (isBool) {
+					fieldControlHtml = `<select id="${safeFieldId}" class="doc-editor-input drawer-field inbox-drawer-field-select" data-field="${escapeHtml(key)}" aria-label="${escapeHtml(key)}">
+							<option value="true" ${val === "true" || val === "Yes" || fieldValues[key] === true ? "selected" : ""}>Yes / Signed</option>
+							<option value="false" ${val === "false" || val === "No" || fieldValues[key] === false ? "selected" : ""}>No / Not signed</option>
+					   </select>`;
+				} else {
+					fieldControlHtml = `<input type="text" id="${safeFieldId}" class="doc-editor-input drawer-field inbox-drawer-field-input" data-field="${escapeHtml(key)}" value="${escapeHtml(val)}" placeholder="${escapeHtml(key)}" aria-label="${escapeHtml(key)}" />`;
+				}
 
 				html += `
 					<div class="form-group drawer-field-group">
-						<label class="doc-field-label-sm">
+						<label for="${safeFieldId}" class="doc-field-label-sm">
 							<span>${escapeHtml(key)} *</span>
 						</label>
-						${isDate ? `<input type="date" class="doc-editor-input drawer-field inbox-drawer-field-date" data-field="${escapeHtml(key)}" value="${escapeHtml(val)}" />`
-								: isBool
-								? `<select class="doc-editor-input drawer-field inbox-drawer-field-select" data-field="${escapeHtml(key)}">
-										<option value="true" ${val === "true" || val === "Yes" || fieldValues[key] === true ? "selected" : ""}>Yes / Signed</option>
-										<option value="false" ${val === "false" || val === "No" || fieldValues[key] === false ? "selected" : ""}>No / Not signed</option>
-								   </select>`
-								: `<input type="text" class="doc-editor-input drawer-field inbox-drawer-field-input" data-field="${escapeHtml(key)}" value="${escapeHtml(val)}" placeholder="${escapeHtml(key)}" />`
-						}
+						${fieldControlHtml}
 					</div>`;
 			}
 		}
@@ -452,14 +466,29 @@ function buildFolderInspectorForm(folder, extractedData = {}) {
 	fieldSet.forEach(fieldKey => {
 		const label = cleanHeaderLabel ? cleanHeaderLabel(fieldKey) : fieldKey;
 		const val = extractedData[fieldKey] !== undefined ? extractedData[fieldKey] : "";
-		const inputType = (fieldKey.toLowerCase().includes("datum") || fieldKey.toLowerCase().includes("date")) ? "date" : "text";
+		const isDate = fieldKey.toLowerCase().includes("datum") || fieldKey.toLowerCase().includes("date");
+		const safeFieldId = sanitizeDomId("folder_field", fieldKey);
+
+		let fieldControlHtml = "";
+		if (isDate) {
+			const isoDate = typeof normalizeDateForInput === "function" ? normalizeDateForInput(val) : null;
+			if (isoDate !== null) {
+				fieldControlHtml = `<input type="date" id="${safeFieldId}" class="drawer-field input-sm inbox-drawer-field-input" data-field="${escapeHtml(fieldKey)}" value="${escapeHtml(isoDate)}" aria-label="${escapeHtml(label)}" />`;
+			} else if (val) {
+				fieldControlHtml = `<input type="text" id="${safeFieldId}" class="drawer-field input-sm inbox-drawer-field-input" data-field="${escapeHtml(fieldKey)}" value="${escapeHtml(val)}" placeholder="Enter ${escapeHtml(label)}..." aria-label="${escapeHtml(label)}" />`;
+			} else {
+				fieldControlHtml = `<input type="date" id="${safeFieldId}" class="drawer-field input-sm inbox-drawer-field-input" data-field="${escapeHtml(fieldKey)}" value="" aria-label="${escapeHtml(label)}" />`;
+			}
+		} else {
+			fieldControlHtml = `<input type="text" id="${safeFieldId}" class="drawer-field input-sm inbox-drawer-field-input" data-field="${escapeHtml(fieldKey)}" value="${escapeHtml(val)}" placeholder="Enter ${escapeHtml(label)}..." aria-label="${escapeHtml(label)}" />`;
+		}
 
 		html += `
 			<div class="form-group">
-				<label class="doc-field-label-sm">
+				<label for="${safeFieldId}" class="doc-field-label-sm">
 					${escapeHtml(label)}
 				</label>
-				<input type="${inputType}" class="drawer-field input-sm inbox-drawer-field-input" data-field="${escapeHtml(fieldKey)}" value="${escapeHtml(val)}" placeholder="Enter ${escapeHtml(label)}..." />
+				${fieldControlHtml}
 			</div>
 		`;
 	});

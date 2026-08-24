@@ -460,3 +460,60 @@ window.addEventListener("focus", () => {
 	fetch("/api/heartbeat", { method: "POST" }).catch(() => {});
 	syncAppState();
 });
+
+/* ── Shared UI/UX & Data Formatting Utilities ── */
+
+/**
+ * Validates real Gregorian calendar dates (including leap years).
+ */
+function isValidCalendarDate(year, month, day) {
+	if (year < 1900 || year > 2100 || month < 1 || month > 12 || day < 1 || day > 31) return false;
+	const d = new Date(Date.UTC(year, month - 1, day));
+	return d.getUTCFullYear() === year && d.getUTCMonth() === month - 1 && d.getUTCDate() === day;
+}
+
+/**
+ * Normalizes varied date strings (DD.MM.YYYY, DD/MM/YY, ISO timestamps) to strict ISO YYYY-MM-DD.
+ * Returns null if input cannot be safely parsed into a valid Gregorian date.
+ */
+function normalizeDateForInput(val) {
+	if (val === null || val === undefined) return null;
+	let s = String(val).trim();
+	if (!s) return null;
+
+	// Strip time portions if present (e.g. "2026-08-24T12:00:00Z" or "2026-08-24 10:00")
+	s = s.split(/[T\s]/)[0].trim();
+
+	let y, m, d;
+
+	// Pattern 1: ISO formats YYYY-MM-DD, YYYY.MM.DD, YYYY/MM/DD
+	let match = s.match(/^(\d{4})[./-](\d{1,2})[./-](\d{1,2})$/);
+	if (match) {
+		y = parseInt(match[1], 10);
+		m = parseInt(match[2], 10);
+		d = parseInt(match[3], 10);
+	} else {
+		// Pattern 2: European formats DD.MM.YYYY, DD-MM-YYYY, DD/MM/YYYY or 2-digit years
+		match = s.match(/^(\d{1,2})[./-](\d{1,2})[./-](\d{2,4})$/);
+		if (match) {
+			d = parseInt(match[1], 10);
+			m = parseInt(match[2], 10);
+			let rawYear = parseInt(match[3], 10);
+			y = rawYear < 100 ? (rawYear <= 50 ? 2000 + rawYear : 1900 + rawYear) : rawYear;
+		}
+	}
+
+	if (y && m && d && isValidCalendarDate(y, m, d)) {
+		return `${String(y).padStart(4, "0")}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+	}
+
+	return null;
+}
+
+/**
+ * Sanitizes strings into safe DOM ID tokens (only [a-zA-Z0-9_-]).
+ */
+function sanitizeDomId(prefix, ...parts) {
+	const cleanParts = parts.map((p) => encodeURIComponent(String(p || "")).replace(/[^a-zA-Z0-9_-]/g, "_"));
+	return `${prefix}_${cleanParts.join("_")}`;
+}

@@ -22,9 +22,10 @@ def run_gate(name: str, cmd: list[str]) -> bool:
     print(f"Command: {' '.join(cmd)}")
     start_t = time.time()
     try:
-        use_shell = sys.platform == "win32"
+        use_shell = sys.platform == "win32" and cmd[0] == "npx"
+        cmd_input = subprocess.list2cmdline(cmd) if use_shell else cmd
         res = subprocess.run(
-            cmd if not use_shell else " ".join(cmd),
+            cmd_input,
             shell=use_shell,
             cwd=str(ROOT_DIR),
             text=True,

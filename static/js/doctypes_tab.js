@@ -146,13 +146,13 @@ function renderDocTypeForm(typeName) {
 			return `
 				<tr class="doc-field-row">
 					<td class="doc-field-name-td">
-						<input type="text" class="doc-editor-input doc-field-key-input" value="${escapeHtml(fKey)}" readonly />
+						<input type="text" class="doc-editor-input doc-field-key-input" value="${escapeHtml(fKey)}" readonly aria-label="Field name: ${escapeHtml(fKey)}" />
 					</td>
 					<td class="doc-field-prompt-td">
-						<textarea class="doc-editor-textarea auto-resize-ta" rows="1" placeholder="Prompt for the AI..." oninput="autoResizeTextarea(this)" onchange="updateDocTypeField('${escapeHtml(typeName)}', '${escapeHtml(fKey)}', 'desc', this.value)">${escapeHtml(desc)}</textarea>
+						<textarea class="doc-editor-textarea auto-resize-ta" rows="1" placeholder="Prompt for the AI..." aria-label="Prompt for ${escapeHtml(fKey)}" oninput="autoResizeTextarea(this)" onchange="updateDocTypeField('${escapeHtml(typeName)}', '${escapeHtml(fKey)}', 'desc', this.value)">${escapeHtml(desc)}</textarea>
 					</td>
 					<td class="doc-field-req-td">
-						<input type="checkbox" class="config-checkbox" ${req ? "checked" : ""} onchange="updateDocTypeField('${escapeHtml(typeName)}', '${escapeHtml(fKey)}', 'req', this.checked)" />
+						<input type="checkbox" class="config-checkbox" ${req ? "checked" : ""} aria-label="Require field ${escapeHtml(fKey)}" onchange="updateDocTypeField('${escapeHtml(typeName)}', '${escapeHtml(fKey)}', 'req', this.checked)" />
 					</td>
 					<td class="doc-field-act-td">
 						<button type="button" class="btn btn-sm btn-danger" onclick="removeExtractionField('${escapeHtml(typeName)}', '${escapeHtml(fKey)}')" title="Remove field">🗑️</button>

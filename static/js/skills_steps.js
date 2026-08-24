@@ -295,7 +295,7 @@ function renderEditorSteps() {
 				<div class="workflow-task-header">
 					<div class="task-header-left">
 						<span class="task-num-badge">📦 Task ${taskIdx + 1}</span>
-						<input type="text" class="task-title-input" value="${escapeHtml(task.title || "")}" placeholder="e.g. Open file in target application" onchange="currentEditingTasks[${taskIdx}].title = this.value;" />
+						<input type="text" class="task-title-input" value="${escapeHtml(task.title || "")}" placeholder="e.g. Open file in target application" aria-label="Task ${taskIdx + 1} Title" onchange="currentEditingTasks[${taskIdx}].title = this.value;" />
 					</div>
 					<div class="task-header-right">
 						<button type="button" class="btn btn-icon btn-sm" onclick="moveTaskUp(${taskIdx})" ${isFirstTask ? "disabled" : ""} title="Move task up">⬆️</button>
