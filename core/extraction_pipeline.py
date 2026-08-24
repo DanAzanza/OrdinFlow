@@ -8,6 +8,7 @@ import os
 import re
 import threading
 import unicodedata
+from collections.abc import Sequence
 from difflib import SequenceMatcher
 from typing import Any
 
@@ -132,12 +133,6 @@ def _extract_page_spatial_and_plain_text(
     return "", ""
 
 
-def _run_ocr_with_bin_filter(raw_img: Any) -> str:
-    """Runs OCR on the raw image for name matching (uses RapidOCR/ONNX)."""
-    _, plain = _extract_page_spatial_and_plain_text(raw_img)
-    return plain
-
-
 def _is_bool_value(val: Any) -> bool:
     """Generically checks whether a value is a boolean."""
     if isinstance(val, bool):
@@ -170,18 +165,13 @@ def _to_bool_value(val: Any) -> bool:
 # Dual-Source Tier 1 (weight 1.0) + Spatial Text (weight 1.0)
 # Tier 2 (weight 1.25), Tier 3 (weight 1.5)
 # ──────────────────────────────────────────────────────────────
-TIER_WEIGHTS: dict[int | str, float] = {
+TIER_WEIGHTS: dict[str, float] = {
     "tier1": 1.0,
     "text": 1.0,
     "tier2": 1.25,
     "tier3": 1.5,
-    1260: 1.0,
-    1512: 1.25,
-    1764: 1.5,
-    0: 1.0,
 }
 CONSENSUS_THRESHOLD = 0.67
-KONSENS_THRESHOLD = CONSENSUS_THRESHOLD  # Backward compatibility alias
 
 # Fields excluded when collecting keys from extraction results
 _EXCLUDE_KEYS = {
@@ -326,7 +316,7 @@ def _cluster_votes(
 def _evaluate_field_consensus(
     field: str,
     page_results_lists: list[list[dict]],
-    tier_resolutions: list[int | str],
+    tier_resolutions: Sequence[str],
 ) -> tuple[Any, float, dict]:
     """Calculates the weighted consensus for a field.
 
@@ -371,6 +361,47 @@ def _evaluate_field_consensus(
         counts_info = {c["representative"]: round(c["total_weight"], 2) for c in clusters}
 
     return winner_value, confidence_k, counts_info
+
+
+def _evaluate_round(
+    field_names: set[str],
+    results_lists: list[list[dict]],
+    tier_names: Sequence[str],
+    optional_fields: set[str],
+    min_evidence_weight: float = 0.0,
+) -> tuple[dict[str, Any], dict[str, float], dict[str, float], list[str]]:
+    """Evaluates consensus round across specified tiers and field names."""
+    field_results: dict[str, Any] = {}
+    confidences: dict[str, float] = {}
+    winning_weights: dict[str, float] = {}
+    pending_or_conflicts: list[str] = []
+
+    for field_name in field_names:
+        is_optional_empty = field_name in optional_fields and all(
+            is_missing_value(res.get(field_name))
+            for res_list in results_lists
+            for res in res_list
+            if isinstance(res, dict)
+        )
+        if is_optional_empty:
+            confidences[field_name] = 1.0
+            winning_weights[field_name] = max(min_evidence_weight, 1.0)
+            field_results[field_name] = MISSING_PLACEHOLDER
+        else:
+            winner, k_score, counts = _evaluate_field_consensus(
+                field_name,
+                results_lists,
+                tier_names,
+            )
+            w_weight = counts.get(winner, 0.0)
+            confidences[field_name] = k_score
+            winning_weights[field_name] = w_weight
+            if k_score >= CONSENSUS_THRESHOLD and (min_evidence_weight <= 0.0 or w_weight >= min_evidence_weight):
+                field_results[field_name] = winner
+            else:
+                pending_or_conflicts.append(field_name)
+
+    return field_results, confidences, winning_weights, pending_or_conflicts
 
 
 class ExtractionPipeline:
@@ -583,46 +614,26 @@ class ExtractionPipeline:
             all_keys_after_t1.add("Signed")
 
         MIN_EVIDENCE_WEIGHT = 1.25
-        confidences: dict[str, float] = {}
-        winning_weights: dict[str, float] = {}
-        group_final: dict[str, Any] = {}
-        pending_fields: list[str] = []
+        group_final, confidences, winning_weights, pending_fields = _evaluate_round(
+            field_names=all_keys_after_t1,
+            results_lists=[t1_vision_results, text_pass_results],
+            tier_names=["tier1", "text"],
+            optional_fields=optional_fields,
+            min_evidence_weight=MIN_EVIDENCE_WEIGHT,
+        )
 
-        for field_name in all_keys_after_t1:
-            is_optional_empty = field_name in optional_fields and all(
-                is_missing_value(res.get(field_name))
-                for res_list in (t1_vision_results, text_pass_results)
-                for res in res_list
-                if isinstance(res, dict)
+        for pf in pending_fields:
+            logger.info(
+                "[*] Field '%s' pending after Tier 1 (consensus=%.2f, weight=%.2f < %.2f). Queued for Tier 2.",
+                pf,
+                confidences.get(pf, 0.0),
+                winning_weights.get(pf, 0.0),
+                MIN_EVIDENCE_WEIGHT,
             )
-            if is_optional_empty:
-                confidences[field_name] = 1.0
-                winning_weights[field_name] = MIN_EVIDENCE_WEIGHT
-                group_final[field_name] = MISSING_PLACEHOLDER
-            else:
-                winner, k_score, counts = _evaluate_field_consensus(
-                    field_name,
-                    [t1_vision_results, text_pass_results],
-                    ["tier1", "text"],
-                )
-                w_weight = counts.get(winner, 0.0)
-                confidences[field_name] = k_score
-                winning_weights[field_name] = w_weight
-                if k_score >= CONSENSUS_THRESHOLD and w_weight >= MIN_EVIDENCE_WEIGHT:
-                    group_final[field_name] = winner
-                else:
-                    pending_fields.append(field_name)
-                    logging.info(
-                        "[*] Field '%s' pending after Tier 1 (consensus=%.2f, weight=%.2f < %.2f). Queued for Tier 2.",
-                        field_name,
-                        k_score,
-                        w_weight,
-                        MIN_EVIDENCE_WEIGHT,
-                    )
 
         # ── If all fields validated (evidence weight >= 1.25 and K >= 0.67), finalize ──
         if not pending_fields and len(all_keys_after_t1) > 0:
-            logging.info(
+            logger.info(
                 f"[+] All {len(all_keys_after_t1)} field(s) validated with >= 2 measurements (evidence weight >= {MIN_EVIDENCE_WEIGHT}). Finalizing document."
             )
             if "Signed" not in group_final:
@@ -642,7 +653,7 @@ class ExtractionPipeline:
         if not t2_target_fields:
             t2_target_fields = None
 
-        logging.info(f"[*] Starting Vision-LLM Tier 2 for pending fields: {t2_target_fields}...")
+        logger.info(f"[*] Starting Vision-LLM Tier 2 for pending fields: {t2_target_fields}...")
         t2_page_results = self.run_extraction_tier(
             document_pages,
             "Document",
@@ -668,31 +679,16 @@ class ExtractionPipeline:
         if needs_signature:
             all_keys.add("Signed")
 
-        conflicts: list[str] = []
-
-        for field_name in all_keys:
-            is_optional_empty = field_name in optional_fields and all(
-                is_missing_value(res.get(field_name))
-                for res_list in (t1_vision_results, text_pass_results, t2_page_results)
-                for res in res_list
-                if isinstance(res, dict)
-            )
-            if is_optional_empty:
-                confidences[field_name] = 1.0
-                group_final[field_name] = MISSING_PLACEHOLDER
-            else:
-                winner, k_score, counts = _evaluate_field_consensus(
-                    field_name,
-                    [t1_vision_results, text_pass_results, t2_page_results],
-                    ["tier1", "text", "tier2"],
-                )
-                w_weight = counts.get(winner, 0.0)
-                confidences[field_name] = k_score
-                winning_weights[field_name] = w_weight
-                if k_score >= CONSENSUS_THRESHOLD:
-                    group_final[field_name] = winner
-                else:
-                    conflicts.append(field_name)
+        t2_final, t2_conf, t2_weights, conflicts = _evaluate_round(
+            field_names=all_keys,
+            results_lists=[t1_vision_results, text_pass_results, t2_page_results],
+            tier_names=["tier1", "text", "tier2"],
+            optional_fields=optional_fields,
+            min_evidence_weight=0.0,
+        )
+        group_final.update(t2_final)
+        confidences.update(t2_conf)
+        winning_weights.update(t2_weights)
 
         # ── Step 4: Vision-LLM Tier 3 Tiebreaker on conflict fields ──
         if conflicts:
@@ -705,22 +701,15 @@ class ExtractionPipeline:
                 target_fields=conflicts,
             )
 
-            for field_name in conflicts:
-                winner, k_score, counts = _evaluate_field_consensus(
-                    field_name,
-                    [
-                        t1_vision_results,
-                        text_pass_results,
-                        t2_page_results,
-                        t3_page_results,
-                    ],
-                    ["tier1", "text", "tier2", "tier3"],
-                )
-                confidences[field_name] = k_score
-                if winner and not is_missing_value(winner):
-                    group_final[field_name] = winner
-                else:
-                    group_final[field_name] = MISSING_PLACEHOLDER
+            t3_final, t3_conf, _, _ = _evaluate_round(
+                field_names=set(conflicts),
+                results_lists=[t1_vision_results, text_pass_results, t2_page_results, t3_page_results],
+                tier_names=["tier1", "text", "tier2", "tier3"],
+                optional_fields=optional_fields,
+                min_evidence_weight=0.0,
+            )
+            group_final.update(t3_final)
+            confidences.update(t3_conf)
 
         if "Signed" not in group_final:
             group_final["Signed"] = any(

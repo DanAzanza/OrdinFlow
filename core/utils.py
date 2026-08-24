@@ -1,4 +1,3 @@
-import datetime
 import logging
 import os
 import re
@@ -162,47 +161,6 @@ def clean_extracted_value(val: Any) -> str:
     s = str(val).strip()
     s = s.replace("\u0131", "i")  # Turkish/OCR dotless i -> i
     return s
-
-
-def format_date_robust(date_str: str) -> str:
-    """Robustly converts an extracted date string to YYYY-MM-DD format and validates date range."""
-    if not date_str or "MISSING" in date_str.upper() or "----" in date_str:
-        return "----"
-
-    final_date = None
-
-    # Check if already YYYY-MM-DD
-    if re.match(r"^\d{4}-\d{2}-\d{2}$", date_str):
-        final_date = date_str
-    else:
-        # Check DD.MM.YYYY, DD/MM/YYYY, DD-MM-YY, DD,MM,YYYY
-        match_ger = re.search(r"(\d{1,2})[\.\-\,\/]\s*(\d{1,2})[\.\-\,\/]\s*(\d{2,4})", date_str)
-        if match_ger:
-            d, m, y = match_ger.groups()
-            if len(y) == 2:
-                yy = int(y)
-                current_yy = datetime.datetime.now().year % 100
-                century = "20" if yy <= (current_yy + 10) else "19"
-                y = century + y
-            final_date = f"{int(y):04d}-{int(m):02d}-{int(d):02d}"
-        else:
-            # Check YYYY.MM.DD or YYYY/MM/DD
-            match_iso = re.search(r"(\d{4})[\.\-\/](\d{1,2})[\.\-\/](\d{1,2})", date_str)
-            if match_iso:
-                y, m, d = match_iso.groups()
-                final_date = f"{int(y):04d}-{int(m):02d}-{int(d):02d}"
-
-    if not final_date:
-        return date_str
-
-    # Validate that it is a real valid calendar date (e.g. not 31st of February)
-    try:
-        datetime.datetime.strptime(final_date, "%Y-%m-%d")
-        return final_date
-    except ValueError:
-        return "----"
-    except Exception:
-        return "----"
 
 
 def format_result(res: dict, include_missing: bool = True, mask_pii: bool = True) -> str:

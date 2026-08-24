@@ -1,7 +1,6 @@
 import json
 import logging
 import os
-import shutil
 import threading
 from collections import OrderedDict
 from pathlib import Path
@@ -19,7 +18,13 @@ from core.routing import (
     render_filename,
     render_folder_name,
 )
-from core.utils import deduplicate_path, is_missing_value, send_to_trash
+from core.utils import (
+    deduplicate_path,
+    is_missing_value,
+    remove_source_with_meta,
+    safe_move,
+    trash_source_with_meta,
+)
 from routes.state import DashboardState
 
 logger = logging.getLogger(__name__)
@@ -60,25 +65,19 @@ def _remove_meta_sidecar(filepath: str, use_trash: bool = True) -> None:
     """Deletes or trashes the .meta sidecar file if present."""
     meta_path = filepath if filepath.endswith(".meta") else filepath + ".meta"
     if os.path.exists(meta_path):
-        try:
-            if use_trash:
-                send_to_trash(meta_path)
-            else:
-                os.remove(meta_path)
-        except OSError as e:
-            logger.debug("[DocumentHelpers] Could not remove sidecar %s: %s", meta_path, e)
+        if use_trash:
+            trash_source_with_meta(meta_path)
+        else:
+            remove_source_with_meta(meta_path)
 
 
 def safe_move_with_meta(src_path: str, dst_path: str) -> None:
-    """Moves a file and its associated .meta sidecar file atomically if present."""
-    shutil.move(src_path, dst_path)
+    """Moves a file and its associated .meta sidecar file atomically if present with Windows lock retry."""
+    safe_move(src_path, dst_path)
     src_meta = src_path + ".meta"
     dst_meta = dst_path + ".meta"
     if os.path.isfile(src_meta):
-        try:
-            shutil.move(src_meta, dst_meta)
-        except OSError as e:
-            logger.warning("[DocumentHelpers] Could not move sidecar %s -> %s: %s", src_meta, dst_meta, e)
+        safe_move(src_meta, dst_meta)
 
 
 def _get_config_folder_structure() -> list | None:
@@ -170,23 +169,6 @@ def _parse_folder_name(folder_name: str) -> dict:
         folder_structure=_get_config_folder_structure(),
         delimiter=_get_config_delimiter(),
     )
-
-
-def _get_doc_types_from_files(folder_path: str) -> list:
-    """Determines existing document types from filenames."""
-    doc_types = set()
-    if not os.path.isdir(folder_path):
-        return []
-    delimiter = _get_config_delimiter()
-    for f in os.listdir(folder_path):
-        if os.path.isfile(os.path.join(folder_path, f)):
-            parts = f.split(delimiter)
-            if len(parts) >= 1:
-                doc_type = parts[0]
-                if not f.lower().endswith(".jpg") and not f.lower().endswith(".meta"):
-                    for dt in doc_type.split("+"):
-                        doc_types.add(dt.strip())
-    return sorted(doc_types)
 
 
 # ── LRU Thumbnail Cache ──

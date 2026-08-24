@@ -44,24 +44,7 @@ class ImportEngine(BaseSkill):
         reporter: Callable[[TaskProgress], None] | None = None,
         paused_msg: str = "Processing paused...",
     ) -> bool:
-        """Blocks while SkillQueueManager is paused. Returns False if execution was stopped."""
-        try:
-            from core.skills.queue import get_skill_queue_manager
-
-            qm = get_skill_queue_manager()
-            if not qm.is_running and not qm.is_paused:
-                return True
-            if qm.is_stopped:
-                return False
-            was_paused = False
-            while qm.is_paused and not qm.is_stopped:
-                if not was_paused and reporter:
-                    reporter(TaskProgress(message=f"⏸️ {paused_msg}"))
-                    was_paused = True
-                qm.wait_if_paused()
-            return not qm.is_stopped
-        except Exception:
-            return True
+        return self.wait_for_queue(reporter, paused_msg)
 
     def execute(
         self,
@@ -69,11 +52,7 @@ class ImportEngine(BaseSkill):
         reporter: Callable[[TaskProgress], None] | None = None,
     ) -> TaskResult:
         """Executes document import and AI routing."""
-        processor = self.processor
-        if not processor:
-            from routes.state import DashboardState
-
-            processor = DashboardState.processor
+        processor = self._get_processor()
 
         if not processor:
             return TaskResult(

@@ -1,9 +1,6 @@
-import datetime
-
 from core.utils import (
     clean_extracted_value,
     clean_path_component,
-    format_date_robust,
     is_missing_value,
 )
 
@@ -27,37 +24,6 @@ def test_clean_extracted_value():
     assert clean_extracted_value("\u0131") == "i"
     assert clean_extracted_value(" Test ") == "Test"
     assert clean_extracted_value(None) == "----"
-
-
-def test_format_date_robust():
-    today = datetime.date.today()
-
-    # Valides Format
-    valid_date = today - datetime.timedelta(days=10)
-    assert format_date_robust(valid_date.strftime("%Y-%m-%d")) == valid_date.strftime("%Y-%m-%d")
-
-    # Deutsches Format (mit Punkt)
-    assert format_date_robust(valid_date.strftime("%d.%m.%Y")) == valid_date.strftime("%Y-%m-%d")
-
-    # Deutsches Format (mit Komma als OCR-Fehler)
-    d = valid_date.strftime("%d")
-    m = valid_date.strftime("%m")
-    y = valid_date.strftime("%Y")
-    assert format_date_robust(f"{d},{m},{y}") == f"{y}-{m}-{d}"
-
-    # Historische Daten (z.B. Vorjahre / Altabdrücke von 2023) werden als valides Datum formatiert
-    old_date = today - datetime.timedelta(days=400)
-    assert format_date_robust(old_date.strftime("%Y-%m-%d")) == old_date.strftime("%Y-%m-%d")
-
-    # Zukunftsdaten werden ebenfalls formatiert
-    future_date = today + datetime.timedelta(days=40)
-    assert format_date_robust(future_date.strftime("%Y-%m-%d")) == future_date.strftime("%Y-%m-%d")
-
-    # Ungültige Kalenderdaten -> ----
-    assert format_date_robust("31.02.2026") == "----"
-
-    # Unbekannter String -> ----
-    assert format_date_robust("[MISSING]") == "----"
 
 
 def test_central_routing_module():

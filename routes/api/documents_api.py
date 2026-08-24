@@ -19,7 +19,6 @@ from routes.api.document_helpers import (
     _get_config_folder_structure,
     _get_doc_optional_fields,
     _get_doc_routing_cfg,
-    _get_doc_types_from_files,
     _is_within_base,
     _parse_folder_name,
     _remove_meta_sidecar,
@@ -62,7 +61,6 @@ __all__ = [
     "_render_target_filename",
     "_validate_required_api_fields",
     "_parse_folder_name",
-    "_get_doc_types_from_files",
     "_generate_pdf_thumbnail",
     "_parse_pages_input",
 ]

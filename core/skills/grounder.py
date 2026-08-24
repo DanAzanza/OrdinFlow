@@ -19,10 +19,15 @@ except ImportError:
     np = None  # type: ignore[assignment]
 
 
+_DPI_INITIALIZED = False
+
+
 def _init_dpi_awareness() -> None:
-    """Sets Per-Monitor V2 DPI awareness with progressive fallbacks."""
-    if sys.platform != "win32":
+    """Sets Per-Monitor V2 DPI awareness once with progressive fallbacks."""
+    global _DPI_INITIALIZED
+    if _DPI_INITIALIZED or sys.platform != "win32":
         return
+    _DPI_INITIALIZED = True
     u32 = getattr(ctypes.windll, "user32", None)
     shcore = getattr(ctypes.windll, "shcore", None)
     try:
@@ -42,6 +47,9 @@ def _init_dpi_awareness() -> None:
             u32.SetProcessDPIAware()
     except Exception:
         pass
+
+
+_init_dpi_awareness()
 
 
 class SoMGrounder:

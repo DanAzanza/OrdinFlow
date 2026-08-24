@@ -17,7 +17,6 @@ except ImportError:
     fitz = None
 
 from core.config import AppConfig
-from core.matcher import FileSystemRouter
 from core.routing import render_filename, render_folder_name
 from core.utils import (
     MISSING_PLACEHOLDER,
@@ -29,25 +28,46 @@ from core.utils import (
 )
 
 
+def _clean_folder_match_name(name: str) -> str:
+    if not name:
+        return ""
+    name = name.replace(".", " ")
+    return name.lower().replace("-", " ").strip()
+
+
 class FileService:
     """Encapsulates filesystem operations, sidecar creation, PDF splitting, and routing."""
 
-    def __init__(self, config: AppConfig, fs_router: FileSystemRouter | None = None):
+    def __init__(self, config: AppConfig):
         self.config = config
-        self.fs_router = fs_router or FileSystemRouter(config)
         self.can_split_pdf = fitz is not None
+
+    def find_existing_folder_by_keywords(self, base_dir: str, keywords: list[str]) -> str | None:
+        """Searches base directory for a matching folder based on a list of keywords."""
+        if not os.path.exists(base_dir) or not keywords:
+            return None
+        valid_kw = [_clean_folder_match_name(k) for k in keywords if k and not is_missing_value(k)]
+        valid_kw = [k for k in valid_kw if k]
+        if not valid_kw:
+            return None
+
+        for item in os.listdir(base_dir):
+            item_path = os.path.join(base_dir, item)
+            if os.path.isdir(item_path):
+                item_clean = _clean_folder_match_name(item)
+                if all(kw in item_clean for kw in valid_kw):
+                    return item_path
+        return None
 
     def determine_target_directory(
         self,
         extracted: dict[str, Any],
         routing_cfg: dict[str, Any] | None = None,
         optional_fields: set | None = None,
-        extraction_fields: set | None = None,
     ) -> str:
         """Determines or creates the target directory for a document based on extraction data."""
         routing_cfg = routing_cfg or {}
         optional_fields = optional_fields or set()
-        extraction_fields = extraction_fields or set()
 
         match_folder_by = routing_cfg.get("match_folder_by") or getattr(self.config, "match_folder_by", None) or []
         existing_folder = None
@@ -58,7 +78,7 @@ class FileService:
                 if not is_missing_value(extracted.get(k))
             ]
             if match_keywords:
-                existing_folder = self.fs_router.find_existing_folder_by_keywords(
+                existing_folder = self.find_existing_folder_by_keywords(
                     self.config.target_base_dir, match_keywords
                 )
 
@@ -66,7 +86,6 @@ class FileService:
             extracted,
             routing_cfg=routing_cfg,
             optional_fields=optional_fields,
-            extraction_fields=extraction_fields,
             folder_structure=getattr(self.config, "folder_structure", None),
             delimiter=getattr(self.config, "folder_delimiter", "--"),
         )
@@ -140,15 +159,6 @@ class FileService:
         except (OSError, TypeError, ValueError) as e:
             logger.error(f"[!] Error writing sidecar file '{meta_path}': {e}")
 
-    def mark_as_pruefen(
-        self,
-        filepath: str,
-        grund: str = "Extraction failed",
-        extracted: dict[str, Any] | None = None,
-    ) -> None:
-        """Backward-compatible alias for mark_for_review."""
-        self.mark_for_review(filepath, reason=grund, extracted=extracted)
-
     def split_multi_page_pdf(
         self,
         filepath: str,
@@ -156,7 +166,6 @@ class FileService:
         extracted_base: dict[str, Any],
         find_doc_type_cfg_fn: Any,
         optional_fields: set | None = None,
-        extraction_fields: set | None = None,
     ) -> bool:
         """Splits a batch PDF into multiple partial PDFs based on page groups."""
         if not self.can_split_pdf:
@@ -170,7 +179,6 @@ class FileService:
 
         logger.info(f"[*] Splitting batch PDF '{filename}' into {len(page_results)} separate files...")
         optional_fields = optional_fields or set()
-        extraction_fields = extraction_fields or set()
 
         try:
             with fitz.open(filepath) as doc:  # type: ignore[assignment]
@@ -196,20 +204,15 @@ class FileService:
                     g_routing = g_info.get("routing") or {} if g_info else {}
                     g_val = g_info.get("validation") or {} if g_info else {}
                     g_opt = set(g_val.get("optional_fields", []))
-                    g_ext_fields = g_info.get("extraction_fields", {}) if g_info else {}
 
                     g_is_dependent = bool(g_info.get("dependent", False)) if g_info else False
                     if g_is_dependent:
                         g_opt = g_opt | optional_fields
-                        g_ext_fields_keys = set(g_ext_fields.keys()) | extraction_fields
-                    else:
-                        g_ext_fields_keys = set(g_ext_fields.keys())
 
                     target_dir = self.determine_target_directory(
                         extracted=part_extracted,
                         routing_cfg=g_routing,
                         optional_fields=g_opt,
-                        extraction_fields=g_ext_fields_keys,
                     )
 
                     _, orig_ext = os.path.splitext(filepath.lower())
@@ -218,7 +221,6 @@ class FileService:
                         routing_cfg=g_routing,
                         ext=orig_ext,
                         optional_fields=g_opt,
-                        extraction_fields=g_ext_fields_keys,
                         fallbacks={"Document": g_type},
                     )
 

@@ -4,7 +4,6 @@ OrdinFlow — Web Dashboard Backend
 
 import logging
 import os
-import queue
 import subprocess
 import sys
 import threading
@@ -53,16 +52,13 @@ def heartbeat_monitor() -> None:
         except Exception:
             pass
 
-        # If background document processing or queued files exist, keep heartbeat alive
+        # If background document processing exists, keep heartbeat alive
         try:
             if DashboardState.processor:
                 with DashboardState.processor.processing_lock:
                     if len(DashboardState.processor.processing_files) > 0:
                         DashboardState.last_heartbeat = time.time()
                         continue
-            if DashboardState.file_queue is not None and not DashboardState.file_queue.empty():
-                DashboardState.last_heartbeat = time.time()
-                continue
         except Exception:
             pass
 
@@ -122,12 +118,10 @@ def open_browser(port: int) -> None:
 
 def start_dashboard(
     processor: DocumentProcessor | None,
-    file_queue: queue.Queue | None,
     config: AppConfig,
 ) -> None:
     if processor:
         DashboardState.processor = processor
-    DashboardState.file_queue = file_queue
     DashboardState.config = config
     DashboardState.last_heartbeat = time.time()
 

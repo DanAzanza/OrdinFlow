@@ -11,12 +11,13 @@ from unittest.mock import patch
 # ──────────────────────────────────────────────────────────────
 
 
-def test_run_ocr_without_image_returns_empty():
-    """Ohne Bild liefert _run_ocr_with_bin_filter die leere Zeichenkette."""
-    from core.extraction_pipeline import _run_ocr_with_bin_filter
+def test_extract_page_spatial_and_plain_text_without_image_returns_empty():
+    """Without an image, spatial and plain text extraction returns empty strings."""
+    from core.extraction_pipeline import _extract_page_spatial_and_plain_text
 
-    result = _run_ocr_with_bin_filter(None)
-    assert result == ""
+    spatial, plain = _extract_page_spatial_and_plain_text(None)
+    assert spatial == ""
+    assert plain == ""
 
 
 # ──────────────────────────────────────────────────────────────
@@ -227,7 +228,7 @@ def test_extract_hybrid_voting_two_phase_grouping(processor):
     """Testet, dass zusammenhängende Seiten gleichen Typs in Phase 1 gruppiert und in Phase 2 gebündelt verarbeitet werden."""
     mock_images = ["img1", "img2", "img3"]
 
-    def mock_classify(raw_img, idx, binarize=False):
+    def mock_classify(raw_img, idx, *args, **kwargs):
         types = ["Vertrag", "Datenschutzerklärung", "Datenschutzerklärung"]
         return {
             "idx": idx,

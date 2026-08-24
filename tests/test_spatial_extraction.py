@@ -12,7 +12,7 @@ from core.extraction_pipeline import (
     ExtractionPipeline,
     _extract_page_spatial_and_plain_text,
 )
-from core.skills.executor import SkillExecutor
+from core.skills import SkillExecutor
 from core.skills.manager import SkillManager
 from core.utils import wait_until_unlocked
 from core.vision import LLMExtractor

@@ -215,6 +215,7 @@ class SkillManager:
         skill_data["name"] = name
         skill_data["id"] = name
 
+        os.makedirs(self.skills_dir, exist_ok=True)
         filepath = os.path.join(self.skills_dir, f"{clean_filename}.yaml")
         with open(filepath, "w", encoding="utf-8") as f:
             yaml.safe_dump(skill_data, f, allow_unicode=True, sort_keys=False)
@@ -407,4 +408,34 @@ class SkillManager:
         new_data["id"] = candidate
         self.save_skill(new_data)
         return new_data
+
+
+_GLOBAL_SKILL_MANAGER: SkillManager | None = None
+_GLOBAL_SM_LOCK = threading.Lock()
+
+
+def get_skill_manager(skills_dir: str | None = None) -> SkillManager:
+    """Returns a thread-safe singleton SkillManager instance for the active directory."""
+    global _GLOBAL_SKILL_MANAGER
+    if skills_dir:
+        return SkillManager(skills_dir=skills_dir)
+
+    with _GLOBAL_SM_LOCK:
+        from routes.state import DashboardState
+
+        base_dir = (
+            getattr(DashboardState.config, "base_dir", os.getcwd())
+            if DashboardState.config
+            else os.getcwd()
+        )
+        resolved_dir = getattr(
+            DashboardState.config,
+            "skills_dir",
+            os.path.join(base_dir, "settings", "skills"),
+        ) if DashboardState.config else os.path.join(base_dir, "settings", "skills")
+        resolved_abs = os.path.abspath(resolved_dir)
+
+        if _GLOBAL_SKILL_MANAGER is None or _GLOBAL_SKILL_MANAGER.skills_dir != resolved_abs:
+            _GLOBAL_SKILL_MANAGER = SkillManager(skills_dir=resolved_abs)
+        return _GLOBAL_SKILL_MANAGER
 

@@ -399,7 +399,6 @@ def test_dependent_document_inherits_parent_optional_fields(processor):
         extracted=dependent_extracted,
         routing_cfg=matched_info["routing"],
         optional_fields=optional_fields,
-        extraction_fields=extraction_fields,
     )
 
     # Expected folder structure contains resolved first name without fallback placeholders

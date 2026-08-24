@@ -9,7 +9,7 @@ from typing import Any
 
 from flask import Blueprint, jsonify, request, send_file
 
-from core.skills.manager import SkillManager
+from core.skills import get_skill_manager
 from core.utils import cleanup_empty_folder, send_to_trash
 from routes.api.document_helpers import (
     _MIME_MAP,
@@ -35,16 +35,8 @@ cases_api_bp = Blueprint("api_cases", __name__)
 logger = logging.getLogger(__name__)
 
 
-_SKILL_MANAGER: SkillManager | None = None
-
-
-def _get_skill_manager() -> SkillManager:
-    global _SKILL_MANAGER
-    if _SKILL_MANAGER is None:
-        base_dir = DashboardState.config.base_dir if DashboardState.config else os.getcwd()
-        skills_dir = os.path.join(base_dir, "settings", "skills")
-        _SKILL_MANAGER = SkillManager(skills_dir=skills_dir)
-    return _SKILL_MANAGER
+def _get_skill_manager():
+    return get_skill_manager()
 
 
 @cases_api_bp.route("/api/cases")
@@ -441,18 +433,7 @@ def api_cases_delete_folder(folder_name: str):
         return jsonify({"error": str(e)}), 500
 
 
-@cases_api_bp.route("/api/preview/<path:filepath>")
-def api_preview(filepath: str):
-    if not DashboardState.config:
-        return jsonify({"error": "Config not available"}), 503
 
-    full_path = os.path.join(DashboardState.config.target_base_dir, filepath)
-
-    if not os.path.isfile(full_path):
-        return jsonify({"error": "File not found"}), 404
-    if not _is_within_base(full_path, DashboardState.config.target_base_dir):
-        return jsonify({"error": "Access denied"}), 403
-    return send_file(full_path, mimetype="image/jpeg")
 
 
 @cases_api_bp.route("/api/file/cases/<path:subpath>")

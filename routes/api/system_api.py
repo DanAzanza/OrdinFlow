@@ -84,12 +84,7 @@ def api_jobs_list():
     return jsonify({"jobs": job_queue.list_jobs()})
 
 
-@system_api_bp.route("/api/jobs/<job_id>", methods=["GET"])
-def api_job_detail(job_id: str):
-    job = job_queue.get_job(job_id)
-    if not job:
-        return jsonify({"error": "Job not found"}), 404
-    return jsonify(job)
+
 
 
 @system_api_bp.route("/api/router/pause", methods=["POST"])

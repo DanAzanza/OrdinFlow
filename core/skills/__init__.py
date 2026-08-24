@@ -4,7 +4,7 @@ from core.skills.base import BaseSkill
 from core.skills.engines.export_engine import ExportEngine
 from core.skills.engines.import_engine import ImportEngine
 from core.skills.grounder import SoMGrounder
-from core.skills.manager import SkillManager
+from core.skills.manager import SkillManager, get_skill_manager
 from core.skills.models import (
     SkillTask,
     SkillType,
@@ -23,6 +23,7 @@ __all__ = [
     "ExportEngine",
     "SkillExecutor",
     "SkillManager",
+    "get_skill_manager",
     "SkillQueueManager",
     "get_skill_queue_manager",
     "SkillTask",

@@ -123,143 +123,42 @@ function renderLogLines() {
 
 function calculateLogStatistics() {
 	const records = state.logRecords || [];
-	let completedFiles = 0;
-	let manualReviewFiles = 0;
-	let abortedFiles = 0;
-	let emptyFiles = 0;
-	let totalProcessingTime = 0;
-	let maxProcessingTime = 0;
-	let totalPages = 0;
-
-	let splitBatches = 0;
-	let partialDocsSaved = 0;
-	let directDocsMoved = 0;
-
-	const categoryCounts = {};
-	let tier1Count = 0;
-	let tier1DirectConsensus = 0;
-	let tier2Count = 0;
-	let tier3Count = 0;
-
-	let infoCount = 0;
-	let warnCount = 0;
-	let errorCount = 0;
-
+	let infoCount = 0, warnCount = 0, errorCount = 0;
 	records.forEach((rec) => {
-		const msg = rec.message || "";
 		const lvl = (rec.level || "").toUpperCase();
-
 		if (lvl === "INFO") infoCount++;
 		else if (lvl === "WARNING" || lvl === "WARN") warnCount++;
 		else if (lvl === "ERROR" || lvl === "CRITICAL") errorCount++;
-
-		const matchTime = msg.match(/completed successfully after ([\d\.]+) seconds/i);
-		if (matchTime) {
-			completedFiles++;
-			const secs = parseFloat(matchTime[1]);
-			totalProcessingTime += secs;
-			if (secs > maxProcessingTime) maxProcessingTime = secs;
-		}
-
-		const matchIncomplete = msg.match(/incomplete \(([\d\.]+)s\)/i);
-		if (matchIncomplete) {
-			manualReviewFiles++;
-			const secs = parseFloat(matchIncomplete[1]);
-			totalProcessingTime += secs;
-			if (secs > maxProcessingTime) maxProcessingTime = secs;
-		}
-
-		const matchAbort = msg.match(/aborted due to error after ([\d\.]+) seconds/i);
-		if (matchAbort) {
-			abortedFiles++;
-			const secs = parseFloat(matchAbort[1]);
-			totalProcessingTime += secs;
-			if (secs > maxProcessingTime) maxProcessingTime = secs;
-		}
-
-		if (msg.includes("consists only of empty pages and will be deleted")) {
-			emptyFiles++;
-		}
-
-		if (msg.includes("Splitting batch PDF")) {
-			splitBatches++;
-		}
-		if (msg.includes("saved successfully") && (msg.includes("Partial PDF") || msg.includes("partial PDF"))) {
-			partialDocsSaved++;
-		}
-		if (msg.includes("Moving file")) {
-			directDocsMoved++;
-		}
-
-		const matchClass = msg.match(/Page \d+ classification:\s*(.+)/i);
-		if (matchClass) {
-			totalPages++;
-			const cat = matchClass[1].trim();
-			categoryCounts[cat] = (categoryCounts[cat] || 0) + 1;
-		}
-
-		if (msg.includes("Starting Vision-LLM Tier 1")) {
-			tier1Count++;
-		}
-		if (
-			msg.includes("validated with >= 2 measurements") ||
-			msg.includes("Finalizing document") ||
-			msg.includes("Early stop after Tier 1")
-		) {
-			tier1DirectConsensus++;
-		}
-		if (
-			msg.includes("Starting Vision-LLM Tier 2 for pending fields") ||
-			msg.includes("Starting Tier 2")
-		) {
-			tier2Count++;
-		}
-		if (
-			msg.includes("Starting Vision-LLM Tier 3 Tiebreaker") ||
-			msg.includes("Disagreement in field(s)") ||
-			msg.includes("Starting Tier 3")
-		) {
-			tier3Count++;
-		}
 	});
-
-	const totalFiles = completedFiles + manualReviewFiles + abortedFiles + emptyFiles;
-	const totalArchivedDocs = partialDocsSaved + directDocsMoved;
-	const tier2Resolved = Math.max(0, tier2Count - tier3Count);
-	const tier3Resolved = tier3Count;
-
-	const avgTimePerFile = totalFiles > 0 ? (totalProcessingTime / totalFiles).toFixed(1) : "0.0";
-	const avgTimePerPage = totalPages > 0 ? (totalProcessingTime / totalPages).toFixed(1) : "0.0";
-	const successRate = totalFiles > 0 ? (((completedFiles) / totalFiles) * 100).toFixed(1) : "100.0";
 
 	return {
 		recordsCount: records.length,
-		totalFiles,
-		completedFiles,
-		manualReviewFiles,
-		abortedFiles,
-		emptyFiles,
-		splitBatches,
-		partialDocsSaved,
-		directDocsMoved,
-		totalArchivedDocs,
-		totalProcessingTime: totalProcessingTime.toFixed(1),
-		maxProcessingTime: maxProcessingTime.toFixed(1),
-		avgTimePerFile,
-		avgTimePerPage,
-		totalPages,
-		categoryCounts,
-		tier1Count,
-		tier1DirectConsensus,
-		tier2Count,
-		tier2Resolved,
-		tier3Count,
-		tier3Resolved,
-		earlyStopCount: tier1DirectConsensus,
-		successRate,
+		totalFiles: 0,
+		completedFiles: 0,
+		manualReviewFiles: 0,
+		abortedFiles: 0,
+		emptyFiles: 0,
+		splitBatches: 0,
+		partialDocsSaved: 0,
+		directDocsMoved: 0,
+		totalArchivedDocs: 0,
+		totalProcessingTime: "0.0",
+		maxProcessingTime: "0.0",
+		avgTimePerFile: "0.0",
+		avgTimePerPage: "0.0",
+		totalPages: 0,
+		categoryCounts: {},
+		tier1Count: 0,
+		tier1DirectConsensus: 0,
+		tier2Count: 0,
+		tier2Resolved: 0,
+		tier3Count: 0,
+		tier3Resolved: 0,
+		earlyStopCount: 0,
+		successRate: "100.0",
 		infoCount,
 		warnCount,
-		errorCount
+		errorCount,
 	};
 }
 

@@ -495,121 +495,7 @@
             </div>
         </div>
 
-        <!-- ═══════ ASSIGN MODAL ═══════ -->
-        <div class="modal-overlay" id="assignModal">
-            <div class="modal modal-sm">
-                <div class="modal-header">
-                    <h2 id="assignModalTitle">
-                        📂 Move / Assign file
-                    </h2>
-                    <button type="button" class="modal-close-btn" onclick="closeAssign()" aria-label="Close" title="Close">✖️</button>
-                </div>
-                <div class="modal-body">
-                    <p class="form-subtext">
-                        File: <strong id="assignFilename"></strong>
-                    </p>
 
-                    <div class="form-group">
-                        <label class="form-label-between">
-                            Document *
-                            <button
-                                type="button"
-                                class="btn btn-sm"
-                                onclick="addDokArtRow('assignDokArtContainer')"
-                                title="Add another document"
-                            >
-                                +
-                            </button>
-                        </label>
-                        <div id="assignDokArtContainer" class="steps-list">
-                            <!-- Dropdowns inserted via JS -->
-                        </div>
-                    </div>
-
-                    <div class="form-group">
-                        <label>Person (e.g. Dr. Mustermann, Max) *</label>
-                        <input
-                            id="assignPerson"
-                            type="text"
-                            list="personList"
-                            placeholder="Type or select name..."
-                        />
-                        <datalist id="personList"></datalist>
-                    </div>
-                    <div class="form-group">
-                        <label>Date *</label>
-                        <input id="assignDatum" type="date" />
-                    </div>
-                    <div class="form-group">
-                        <label>Product *</label>
-                        <input
-                            id="assignProdukt"
-                            type="text"
-                        />
-                    </div>
-                </div>
-                <div class="modal-footer">
-                    <button class="btn" onclick="closeAssign()">
-                        Cancel
-                    </button>
-                    <button class="btn btn-accent" onclick="submitAssign()">
-                        Move
-                    </button>
-                </div>
-            </div>
-        </div>
-
-        <!-- ═══════ FILE EDIT MODAL ═══════ -->
-        <div class="modal-overlay" id="fileEditModal">
-            <div class="modal modal-sm">
-                <div class="modal-header">
-                    <h2>✏️ Edit document</h2>
-                    <button type="button" class="modal-close-btn" onclick="closeFileEdit()" aria-label="Close" title="Close">✖️</button>
-                </div>
-                <div class="modal-body">
-                    <p class="form-subtext">
-                        File: <strong id="fileEditFilename"></strong>
-                    </p>
-                    <div class="form-group">
-                        <label class="form-label-between">
-                            Document *
-                            <button
-                                type="button"
-                                class="btn btn-sm"
-                                onclick="
-                                    addDokArtRow('fileEditDokArtContainer')
-                                "
-                                title="Add another document"
-                            >
-                                +
-                            </button>
-                        </label>
-                        <div id="fileEditDokArtContainer" class="steps-list">
-                            <!-- Dropdowns inserted via JS -->
-                        </div>
-                    </div>
-                    <div class="form-group">
-                        <label>Date *</label>
-                        <input id="fileEditDatum" type="date" />
-                    </div>
-                    <div class="form-group">
-                        <label>Product *</label>
-                        <input
-                            id="fileEditProdukt"
-                            type="text"
-                        />
-                    </div>
-                </div>
-                <div class="modal-footer">
-                    <button class="btn" onclick="closeFileEdit()">
-                        Cancel
-                    </button>
-                    <button class="btn btn-accent" onclick="submitFileEdit()">
-                        Save
-                    </button>
-                </div>
-            </div>
-        </div>
 
         <!-- ═══════ FOLDER EDIT MODAL ═══════ -->
         <div class="modal-overlay" id="editFolderModal">
@@ -642,30 +528,7 @@
             </div>
         </div>
 
-        <!-- SELECT SKILL FOR APPROVAL MODAL -->
-        <div class="modal-overlay" id="selectSkillModal">
-            <div class="modal modal-sm">
-                <div class="modal-header">
-                    <h2>🚀 Approve Case & Run Skill</h2>
-                    <button type="button" class="modal-close-btn" onclick="closeSelectSkillModal()" aria-label="Close" title="Close">✖️</button>
-                </div>
-                <div class="modal-body">
-                    <p class="form-subtext-sm">
-                        Folder: <strong id="selectSkillFolderLabel"></strong>
-                    </p>
-                    <div class="form-group">
-                        <label>Select skill to execute:</label>
-                        <select id="selectSkillDropdown">
-                            <!-- Options per JS -->
-                        </select>
-                    </div>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn" onclick="closeSelectSkillModal()">Cancel</button>
-                    <button type="button" class="btn btn-primary" onclick="confirmApproveAndRun()">🚀 Approve & Start</button>
-                </div>
-            </div>
-        </div>
+
 
         <!-- ═══════ CREATE SKILL MODAL ═══════ -->
         <div class="modal-overlay" id="createSkillModal">

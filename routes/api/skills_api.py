@@ -12,11 +12,15 @@ from typing import Any
 import yaml
 from flask import Blueprint, jsonify, request
 
+from core.skills import (
+    SkillManager,
+    SkillQueueManager,
+    SoMGrounder,
+    get_skill_manager,
+    get_skill_queue_manager,
+)
 from core.skills.engines.export_engine import ExportEngine
-from core.skills.grounder import SoMGrounder
-from core.skills.manager import SkillManager
 from core.skills.models import TaskProgress
-from core.skills.queue import SkillQueueManager, get_skill_queue_manager
 from core.skills.synthesizer import SkillSynthesizer
 from routes.api.documents_api import (
     _is_within_base,
@@ -28,16 +32,9 @@ skills_api_bp = Blueprint("api_skills", __name__)
 
 logger = logging.getLogger(__name__)
 
-_SKILL_MANAGER: SkillManager | None = None
-
 
 def _get_skill_manager() -> SkillManager:
-    global _SKILL_MANAGER
-    if _SKILL_MANAGER is None:
-        base_dir = DashboardState.config.base_dir if DashboardState.config else os.getcwd()
-        skills_dir = os.path.join(base_dir, "settings", "skills")
-        _SKILL_MANAGER = SkillManager(skills_dir=skills_dir)
-    return _SKILL_MANAGER
+    return get_skill_manager()
 
 
 def _get_configured_queue_manager() -> SkillQueueManager:

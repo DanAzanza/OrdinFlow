@@ -222,24 +222,7 @@ class ExportEngine(BaseSkill):
         reporter: Callable[[TaskProgress], None] | None = None,
         paused_msg: str = "Execution paused...",
     ) -> bool:
-        """Blocks while SkillQueueManager is paused. Returns False if execution was stopped."""
-        try:
-            from core.skills.queue import get_skill_queue_manager
-
-            qm = get_skill_queue_manager()
-            if not qm.is_running and not qm.is_paused:
-                return True
-            if qm.is_stopped:
-                return False
-            was_paused = False
-            while qm.is_paused and not qm.is_stopped:
-                if not was_paused and reporter:
-                    reporter(TaskProgress(message=f"⏸️ {paused_msg}"))
-                    was_paused = True
-                qm.wait_if_paused()
-            return not qm.is_stopped
-        except Exception:
-            return True
+        return self.wait_for_queue(reporter, paused_msg)
 
     def execute_actions(
         self,
@@ -248,34 +231,27 @@ class ExportEngine(BaseSkill):
         depth: int = 0,
         dry_run: bool = False,
     ) -> bool:
-        """Executes the defined actions sequentially with input shield protection."""
-        if depth > 5:
-            logger.error("[ExportEngine] Maximum recursion depth reached for CALL_SKILL: %s", self.id)
-            return False
+        """Executes the recorded or synthesized action sequence step-by-step."""
+        if not self.actions:
+            logger.info("[!] Skill '%s' has no actions configured. Completed as no-op.", self.id)
+            return True
 
-        if not self.enabled:
-            logger.warning("[ExportEngine] Skill '%s' is disabled.", self.id)
-            return False
-
-        actions = self.actions or self.steps
-        prefix = "[DRY RUN] " if dry_run else ""
-        logger.info("[*] %sExecuting RPA skill '%s' (%d actions)...", prefix, self.name, len(actions))
+        total_actions = len(self.actions)
+        step_map = {str(s.get("id")): idx for idx, s in enumerate(self.actions) if s.get("id")}
         act_idx = 0
-        step_map = {str(s.get("id")): idx for idx, s in enumerate(actions) if s.get("id")}
-        total_actions = len(actions)
-
-        while act_idx < len(actions):
-            step = actions[act_idx]
-            step_id = step.get("id", f"act_{act_idx}")
-            action_type = step.get("action_type", "NONE")
-            desc = step.get("description", action_type)
-
-            if not self._wait_for_queue(reporter, f"Paused before Action {act_idx + 1}/{total_actions}: {desc}"):
-                logger.info("[ExportEngine] Execution stopped by user request.")
+        while act_idx < total_actions:
+            if not self.wait_for_queue(reporter, "Skill paused..."):
+                logger.info("[*] Skill execution stopped by queue.")
                 return False
 
+            step = self.actions[act_idx]
+            action_type = str(step.get("action_type") or step.get("type", "")).upper()
+            step_id = step.get("id", f"act_{act_idx + 1}")
+            desc = step.get("description") or action_type
+            prefix = f"[Sub-Skill L{depth}] " if depth > 0 else ""
+
             if reporter:
-                pct = round((act_idx / max(total_actions, 1)) * 100, 1)
+                pct = int(((act_idx + 1) / total_actions) * 100)
                 reporter(
                     TaskProgress(
                         current=act_idx + 1,
@@ -288,16 +264,21 @@ class ExportEngine(BaseSkill):
             logger.info("  [Action %d/%d] %s%s: %s", act_idx + 1, total_actions, prefix, step_id, desc)
 
             if dry_run and action_type in (
-                "MOUSE_CLICK",
+                "CLICK",
                 "DOUBLE_CLICK",
                 "RIGHT_CLICK",
                 "TYPE_TEXT",
+                "TYPE_FILE_PATH",
                 "PASTE_CLIPBOARD",
                 "HOTKEY",
                 "PRESS_ENTER",
                 "PRESS_TAB",
                 "PRESS_KEY",
                 "RUN_SCRIPT",
+                "POWERSHELL",
+                "EXECUTE_COMMAND",
+                "SCRIPT",
+                "MOUSE_CLICK",
             ):
                 logger.info("  [DRY RUN] Simulated input action: %s", action_type)
                 act_idx += 1

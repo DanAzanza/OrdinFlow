@@ -27,8 +27,6 @@ from core.processor import DocumentProcessor
 from core.skills.queue import get_skill_queue_manager
 from core.utils import memory_log_handler
 
-ALLOWED_EXTENSIONS = {".pdf", ".png", ".jpg", ".jpeg", ".tif", ".tiff"}
-
 
 class FlushingFileHandler(logging.FileHandler):
     """FileHandler that flushes after every emit to prevent stale disk logs."""
@@ -176,7 +174,7 @@ def main() -> None:
 
         dash_thread = threading.Thread(
             target=dashboard.start_dashboard,
-            args=(processor, None, config),
+            args=(processor, config),
             daemon=True,
         )
         dash_thread.start()

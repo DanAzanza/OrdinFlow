@@ -363,46 +363,7 @@ class LLMExtractor:
         }
 
         res2 = self.call_vision_api_json(payload2)
-        if not res2 or not isinstance(res2, dict):
-            return {}
-
-        # Case normalization and strict filtering of requested fields
-        raw_fields = matched_doc_info.get("extraction_fields", {})
-        optional_list = matched_doc_info.get("validation", {}).get("optional_fields") or []
-        sig_req = matched_doc_info.get("validation", {}).get("signature_required", False)
-
-        if raw_fields or sig_req:
-            allowed_keys = set(extraction_fields.keys()) | set(optional_list)
-        else:
-            allowed_keys = set(res2.keys()) | set(optional_list)
-
-        normalized_res2: dict[str, Any] = {}
-        lower_to_key = {ref_k.lower(): ref_k for ref_k in allowed_keys}
-        for k, v in res2.items():
-            ref_key = lower_to_key.get(k.lower())
-            if ref_key or not (raw_fields or sig_req):
-                normalized_res2[ref_key or k] = v
-        res2 = normalized_res2
-
-        optional_fields = {k.lower() for k in optional_list}
-        all_keys = set(extraction_fields.keys()) | set(res2.keys())
-
-        for key in list(all_keys):
-            val = res2.get(key)
-            if key == "Signed":
-                if isinstance(val, str):
-                    res2["Signed"] = val.strip().lower() in ("true", "1", "yes")
-                else:
-                    res2["Signed"] = bool(val)
-            elif is_missing_value(val):
-                if key.lower() in optional_fields:
-                    res2[key] = ""
-                else:
-                    res2[key] = MISSING_PLACEHOLDER
-            else:
-                res2[key] = clean_extracted_value(val)
-
-        return res2
+        return _sanitize_extraction_output(res2, matched_doc_info, extraction_fields)
 
     def extract_data_from_text_with_type(
         self,
@@ -480,47 +441,52 @@ class LLMExtractor:
         }
 
         res = self.call_vision_api_json(payload)
-        if not res or not isinstance(res, dict):
-            return {}
+        return _sanitize_extraction_output(res, matched_doc_info, extraction_fields)
 
-        raw_fields = matched_doc_info.get("extraction_fields", {})
-        optional_list = matched_doc_info.get("validation", {}).get("optional_fields") or []
 
-        allowed_keys = (
-            set(extraction_fields.keys()) | set(optional_list) if raw_fields else set(res.keys()) | set(optional_list)
-        )
+def _sanitize_extraction_output(
+    raw_res: dict[str, Any] | None,
+    matched_doc_info: dict[str, Any],
+    extraction_fields: dict[str, str],
+) -> dict[str, Any]:
+    if not raw_res or not isinstance(raw_res, dict):
+        return {}
 
-        normalized_res: dict[str, Any] = {}
-        lower_to_key = {ref_k.lower(): ref_k for ref_k in allowed_keys}
-        for k, v in res.items():
-            ref_key = lower_to_key.get(k.lower())
-            if ref_key or not raw_fields:
-                normalized_res[ref_key or k] = v
-        res = normalized_res
+    raw_fields = matched_doc_info.get("extraction_fields", {})
+    optional_list = matched_doc_info.get("validation", {}).get("optional_fields") or []
+    sig_req = matched_doc_info.get("validation", {}).get("signature_required", False)
 
-        optional_fields = {k.lower() for k in optional_list}
-        all_keys = set(extraction_fields.keys()) | set(res.keys())
+    if raw_fields or sig_req:
+        allowed_keys = set(extraction_fields.keys()) | set(optional_list)
+    else:
+        allowed_keys = set(raw_res.keys()) | set(optional_list)
 
-        for key in list(all_keys):
-            val = res.get(key)
-            if is_missing_value(val):
-                if key.lower() in optional_fields:
-                    res[key] = ""
-                else:
-                    res[key] = MISSING_PLACEHOLDER
+    normalized_res: dict[str, Any] = {}
+    lower_to_key = {ref_k.lower(): ref_k for ref_k in allowed_keys}
+    for k, v in raw_res.items():
+        ref_key = lower_to_key.get(k.lower())
+        if ref_key or not (raw_fields or sig_req):
+            normalized_res[ref_key or k] = v
+
+    optional_fields = {k.lower() for k in optional_list}
+    all_keys = set(extraction_fields.keys()) | set(normalized_res.keys())
+
+    for key in list(all_keys):
+        val = normalized_res.get(key)
+        if key == "Signed":
+            if isinstance(val, str):
+                normalized_res["Signed"] = val.strip().lower() in ("true", "1", "yes")
             else:
-                res[key] = clean_extracted_value(val)
+                normalized_res["Signed"] = bool(val)
+        elif is_missing_value(val):
+            if key.lower() in optional_fields:
+                normalized_res[key] = ""
+            else:
+                normalized_res[key] = MISSING_PLACEHOLDER
+        else:
+            normalized_res[key] = clean_extracted_value(val)
 
-        return res
-
-    def describe_for_unknown(self, b64_image: str) -> dict[str, Any]:
-        """Returns a short description of the image (for UNKNOWN cases)."""
-        prompt = "<instruction>Describe the document briefly in 2-3 sentences.</instruction>"
-        res_raw = self.call_vision_api({"messages": [{"role": "user", "content": prompt, "images": [b64_image]}]})
-        return {
-            "description": res_raw.strip() if isinstance(res_raw, str) else "",
-            "pages": [],
-        }
+    return normalized_res
 
 
 __all__ = ["LLMExtractor"]

@@ -14,11 +14,11 @@ from core.config import AppConfig
 from core.extraction_pipeline import ExtractionPipeline
 from core.file_service import FileService
 from core.image_processing import ImagePreprocessor
-from core.matcher import FileSystemRouter
 from core.routing import render_filename
 from core.utils import (
     MISSING_PLACEHOLDER,
     clean_path_component,
+    cleanup_empty_folder,
     format_result,
     is_missing_value,
     remove_source_with_meta,
@@ -41,15 +41,13 @@ class DocumentProcessor:
         config: AppConfig,
         image_preprocessor: ImagePreprocessor | None = None,
         llm_extractor: LLMExtractor | None = None,
-        fs_router: FileSystemRouter | None = None,
         file_service: FileService | None = None,
         extraction_pipeline: ExtractionPipeline | None = None,
     ):
         self.config = config
         self.image_preprocessor = image_preprocessor or ImagePreprocessor(config)
         self.llm_extractor = llm_extractor or LLMExtractor(config)
-        self.fs_router = fs_router or FileSystemRouter(config)
-        self.file_service = file_service or FileService(config, self.fs_router)
+        self.file_service = file_service or FileService(config)
         self.extraction_pipeline = extraction_pipeline or ExtractionPipeline(
             config, self.image_preprocessor, self.llm_extractor
         )
@@ -139,11 +137,9 @@ class DocumentProcessor:
         return self.extraction_pipeline.classify_single_page(raw_img, idx, pdf_path=pdf_path)
 
     def _process_page_group(self, doc_type: str, group_pages: list) -> dict | None:
-        """Phase 2: Extraction and signature check on a bundled page group."""
         return self.extraction_pipeline.process_page_group(doc_type, group_pages)
 
     def _process_document_pages(self, document_pages: list) -> dict | None:
-        """Process document pages via extraction pipeline."""
         return self.extraction_pipeline.process_document_pages(document_pages)
 
     def _validate_extracted_data(self, extracted: dict[str, Any] | None) -> tuple[bool, str]:
@@ -156,7 +152,7 @@ class DocumentProcessor:
         optional_fields: set | None = None,
         extraction_fields: set | None = None,
     ) -> str:
-        return self.file_service.determine_target_directory(extracted, routing_cfg, optional_fields, extraction_fields)
+        return self.file_service.determine_target_directory(extracted, routing_cfg, optional_fields)
 
     def _move_and_compress_file(self, filepath: str, target_dir: str, target_filename: str) -> str:
         return self.file_service.move_file(filepath, target_dir, target_filename)
@@ -184,12 +180,9 @@ class DocumentProcessor:
         if not raw_images:
             return None
 
-        try:
-            classified_pages = [
-                self._classify_single_page(raw_img, idx, pdf_path=filepath) for idx, raw_img in enumerate(raw_images)
-            ]
-        except TypeError:
-            classified_pages = [self._classify_single_page(raw_img, idx) for idx, raw_img in enumerate(raw_images)]
+        classified_pages = [
+            self._classify_single_page(raw_img, idx, pdf_path=filepath) for idx, raw_img in enumerate(raw_images)
+        ]
 
         is_all_empty = all(p["matched_name"].upper() == "LEER" for p in classified_pages)
         if is_all_empty and not save_empty_pages:
@@ -334,14 +327,12 @@ class DocumentProcessor:
                         extracted=extracted,
                         routing_cfg=routing_cfg,
                         optional_fields=optional_fields,
-                        extraction_fields=extraction_fields,
                     )
                     tf = render_filename(
                         extracted,
                         routing_cfg=routing_cfg,
                         ext=orig_ext,
                         optional_fields=optional_fields,
-                        extraction_fields=extraction_fields,
                         fallbacks={"Document": matched_type if matched_type else dok_art_raw},
                     )
                     return td, tf
@@ -354,7 +345,6 @@ class DocumentProcessor:
                         extracted_base=extracted,
                         find_doc_type_cfg_fn=self.llm_extractor.find_doc_type_config,
                         optional_fields=optional_fields,
-                        extraction_fields=extraction_fields,
                     )
                     if not success:
                         target_dir, target_filename = _route_single_file()
@@ -429,5 +419,5 @@ class DocumentProcessor:
         finally:
             with self.processing_lock:
                 self.processing_files.discard(filepath)
-            self.fs_router.cleanup_empty_directories(os.path.dirname(filepath))
+            cleanup_empty_folder(os.path.dirname(filepath), stop_at=self.config.watch_dir)
             gc.collect()

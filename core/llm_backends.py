@@ -9,7 +9,6 @@ Instructor + Pydantic enforce error-free data structure – invalid JSON tokens 
 
 from __future__ import annotations
 
-import json
 import logging
 import os
 import sys
@@ -261,7 +260,7 @@ class _LlamaCppBackend(LLMBackend):
             formatted.append({"role": role, "content": content_parts})
         return formatted
 
-    def call_vision_api(self, payload: dict[str, object], force_json: bool = False) -> str:
+    def call_vision_api(self, payload: dict[str, object]) -> str:
         if not self._ensure_loaded():
             return ""
         with _LLM_LOCK:
@@ -289,8 +288,6 @@ class _LlamaCppBackend(LLMBackend):
                         "type": "json_object",
                         "schema": json_schema,
                     }
-                elif force_json:
-                    kwargs["response_format"] = {"type": "json_object"}
 
                 resp = self._llm.create_chat_completion(**kwargs)  # type: ignore[attr-defined]
 
@@ -317,20 +314,6 @@ class _LlamaCppBackend(LLMBackend):
             except (AttributeError, RuntimeError, ValueError, TypeError) as e:
                 logger.warning("[-] LLM call failed: %s", e)
                 return ""
-
-    def call_vision_api_json(self, payload: dict[str, object]) -> dict[str, object] | None:
-        raw = self.call_vision_api(payload, force_json=True)
-        if not raw:
-            return None
-        try:
-            return json.loads(raw)  # type: ignore[arg-type]
-        except json.JSONDecodeError as e:
-            logger.warning(
-                "[-] JSONDecodeError parsing Vision response: %s. Raw response: %r",
-                e,
-                raw,
-            )
-            return None
 
 
 # ---- Server Backend with Instructor/Pydantic (optional) ----

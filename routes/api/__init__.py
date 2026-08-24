@@ -5,7 +5,6 @@ from flask import Blueprint
 from routes.api.documents_api import (
     _deduplicate_filename,
     _get_doc_routing_cfg,
-    _get_doc_types_from_files,
     _is_within_base,
     _parse_folder_name,
     _render_target_filename,
@@ -38,7 +37,6 @@ __all__ = [
     "FolderEditSchema",
     "_deduplicate_filename",
     "_get_doc_routing_cfg",
-    "_get_doc_types_from_files",
     "_is_within_base",
     "_parse_folder_name",
     "_render_target_filename",

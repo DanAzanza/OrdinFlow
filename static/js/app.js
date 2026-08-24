@@ -173,7 +173,7 @@ async function deleteFile(type, folder, filename) {
 		}
 		const curInspect = document.getElementById("inspectorHeaderSubtitle")?.textContent;
 		if (curInspect && curInspect.includes(filename)) {
-			closeInspector();
+			closeAppInspector();
 		}
 	} catch (e) {
 		toast("Fehler beim Löschen: " + e.message, "error");
@@ -194,23 +194,6 @@ function openConfirm(message, filename, onConfirm) {
 	if (modal) modal.classList.add("show");
 }
 
-function deleteFolder(folder) {
-	state.pendingConfirm = {
-		type: "folder",
-		folder: folder,
-		filename: folder,
-	};
-	const msgEl = document.getElementById("confirmMessage");
-	if (msgEl) {
-		msgEl.textContent =
-			"Möchten Sie diesen Vorgangs-Ordner und alle enthaltenen Dokumente wirklich in den Papierkorb verschieben?";
-	}
-	const fnEl = document.getElementById("confirmFilename");
-	if (fnEl) fnEl.textContent = folder;
-	const modal = document.getElementById("confirmModal");
-	if (modal) modal.classList.add("show");
-}
-
 function closeConfirm() {
 	const modal = document.getElementById("confirmModal");
 	if (modal) modal.classList.remove("show");
@@ -226,260 +209,12 @@ async function confirmAction() {
 			await pc.callback();
 			return;
 		}
-		if (pc.type === "folder") {
-			const folder = pc.folder;
-			await api("/api/cases/" + encodeURIComponent(folder), {
-				method: "DELETE",
-			});
-			if (state.expandedFolder === folder) {
-				state.expandedFolder = null;
-				state.expandedFiles = [];
-			}
-			fetchCases();
-			toast("🗑️ Ordner in den Papierkorb verschoben: " + folder);
-			closeInspector();
-		}
 	} catch (e) {
-		toast("Fehler beim Löschen: " + e.message, "error");
+		toast("Fehler: " + e.message, "error");
 	}
 }
 
-/* ═══════════════════════════════════════════════════════════
-   DYNAMIC Dokument
-   ═══════════════════════════════════════════════════════════ */
-function getDokArtOptions() {
-	const docTypes = typeof getImportSkillsDocTypes === "function"
-		? getImportSkillsDocTypes()
-		: (state.config && state.config.document_types) || {};
-	const keys = Object.keys(docTypes);
-	return keys.filter((k) => k.toUpperCase() !== "UNKNOWN").sort();
-}
 
-function addDokArtRow(containerId, value = "") {
-	const container = document.getElementById(containerId);
-	const row = document.createElement("div");
-	row.style.display = "flex";
-	row.style.gap = "8px";
-	row.style.alignItems = "center";
-
-	const sel = document.createElement("select");
-	sel.style.flex = "1";
-
-	// Default options
-	const options = getDokArtOptions();
-	options.forEach((opt) => {
-		const o = document.createElement("option");
-		o.value = opt;
-		o.text = opt;
-		sel.appendChild(o);
-	});
-
-	// If value is unknown, add it to options
-	if (
-		value &&
-		!options.map((v) => v.toLowerCase()).includes(value.toLowerCase())
-	) {
-		const o = document.createElement("option");
-		o.value = value;
-		o.text = value;
-		sel.insertBefore(o, sel.firstChild);
-	}
-
-	if (value) {
-		let found = false;
-		for (let i = 0; i < sel.options.length; i++) {
-			if (sel.options[i].value.toLowerCase() === value.toLowerCase()) {
-				sel.selectedIndex = i;
-				found = true;
-				break;
-			}
-		}
-	} else {
-		sel.selectedIndex = 0;
-	}
-
-	const rmBtn = document.createElement("button");
-	rmBtn.type = "button";
-	rmBtn.className = "btn btn-sm btn-danger";
-	rmBtn.style.padding = "2px 8px";
-	rmBtn.textContent = "-";
-	rmBtn.title = "Remove document";
-	rmBtn.onclick = () => {
-		if (container.children.length > 1) {
-			container.removeChild(row);
-		} else {
-			toast("At least one document type must be present", "error");
-		}
-	};
-
-	row.appendChild(sel);
-	row.appendChild(rmBtn);
-	container.appendChild(row);
-}
-
-function getDokArtValues(containerId) {
-	const container = document.getElementById(containerId);
-	const selects = container.querySelectorAll("select");
-	const vals = [];
-	selects.forEach((s) => {
-		if (s.value) vals.push(s.value);
-	});
-	return vals.join("+");
-}
-
-function initDokArtContainer(containerId, dokArtStr) {
-	const container = document.getElementById(containerId);
-	container.innerHTML = "";
-	const parts = dokArtStr ? dokArtStr.split("+") : [""];
-	parts.forEach((p) => addDokArtRow(containerId, p.trim()));
-}
-
-async function submitAssign() {
-	const personStr = document.getElementById("assignPerson").value.trim();
-	const datum = document.getElementById("assignDatum").value;
-	const produkt = document.getElementById("assignProdukt").value.trim();
-	const dok_art = getDokArtValues("assignDokArtContainer");
-
-	if (!personStr || !datum || !produkt) {
-		toast("Please fill in all required fields", "error");
-		return;
-	}
-
-	let nachname = personStr,
-		vorname = "";
-	if (personStr.includes(",")) {
-		const parts = personStr.split(",");
-		nachname = parts[0].trim();
-		vorname = parts.slice(1).join(",").trim();
-	}
-
-	try {
-		if (state.assignType === "cases") {
-			await api(
-				"/api/cases/" +
-					encodeURIComponent(state.assignFolder) +
-					"/" +
-					encodeURIComponent(state.assignFile) +
-					"/edit",
-				{
-					method: "POST",
-					body: JSON.stringify({
-						nachname,
-						vorname,
-						datum,
-						produkt,
-						dokument: dok_art,
-					}),
-				},
-			);
-			state.expandedFolder = null; // Close detail to be safe
-		} else {
-			const safePath = state.assignFile
-				.split("/")
-				.map(encodeURIComponent)
-				.join("/");
-			await api("/api/inbox/" + safePath + "/assign", {
-				method: "POST",
-				body: JSON.stringify({
-					nachname,
-					vorname,
-					datum,
-					produkt,
-					dokument: dok_art,
-				}),
-			});
-		}
-		toast("File moved successfully");
-		closeAssign();
-		fetchInbox();
-		fetchCases();
-	} catch (e) {
-		toast("Processing error: " + e.message, "error");
-	}
-}
-
-function openFileEdit(folder, filename) {
-	state.editFileFolder = folder;
-	state.editFile = filename;
-
-	document.getElementById("fileEditFilename").textContent = filename;
-
-	const folderData = state.cases.find((v) => v.folder === folder);
-
-	const fileParts = splitByDelimiter(
-		filename.replace(".pdf", "").replace(".jpg", "").replace(/_\d+$/, ""),
-	);
-	const dokArt = fileParts[0] || "";
-	let produkt = fileParts[1] || "";
-	let datum = fileParts[2] || "";
-
-	if (!datum) datum = folderData ? folderData.datum : "";
-	if (!produkt) produkt = folderData ? folderData.produkt : "";
-
-	document.getElementById("fileEditDatum").value = datum;
-	document.getElementById("fileEditProdukt").value = produkt;
-
-	initDokArtContainer("fileEditDokArtContainer", dokArt);
-
-	document.getElementById("fileEditModal").classList.add("show");
-}
-
-function closeFileEdit() {
-	document.getElementById("fileEditModal").classList.remove("show");
-	state.editFile = null;
-}
-
-async function submitFileEdit() {
-	const datum = document.getElementById("fileEditDatum").value;
-	const produkt = document.getElementById("fileEditProdukt").value.trim();
-	const dok_art = getDokArtValues("fileEditDokArtContainer");
-
-	if (!datum || !produkt) {
-		toast("Please fill in all required fields", "error");
-		return;
-	}
-
-	// Extract person from original folder name
-	const editFolderData = state.cases.find(
-		(v) => v.folder === state.editFileFolder,
-	);
-	const personStr = editFolderData ? editFolderData.person : "";
-	let nachname = personStr,
-		vorname = "";
-	if (personStr.includes(",")) {
-		const parts = personStr.split(",");
-		nachname = parts[0].trim();
-		vorname = parts.slice(1).join(",").trim();
-	}
-
-	try {
-		await api(
-			"/api/cases/" +
-				encodeURIComponent(state.editFileFolder) +
-				"/" +
-				encodeURIComponent(state.editFile) +
-				"/edit",
-			{
-				method: "POST",
-				body: JSON.stringify({
-					nachname,
-					vorname,
-					datum,
-					produkt,
-					dokument: dok_art,
-					move: false,
-				}),
-			},
-		);
-		toast("File updated successfully");
-		closeFileEdit();
-		if (state.expandedFolder === state.editFileFolder)
-			state.expandedFolder = null;
-		fetchCases();
-	} catch (e) {
-		toast("Processing error: " + e.message, "error");
-	}
-}
 
 /* ═══════════════════════════════════════════════════════════
    LOADING SKELETONS
@@ -512,29 +247,19 @@ function showSkeletons() {
 document.addEventListener("keydown", (e) => {
 	if (e.key === "Escape") {
 		closeConfirm();
-		closeAssign();
 		if (typeof closeLegal === "function") closeLegal();
 		if (typeof closeFolderEdit === "function") closeFolderEdit();
-		if (typeof closeFolderEditModal === "function") closeFolderEditModal();
-		if (typeof closeFileEdit === "function") closeFileEdit();
-		if (typeof closeFileEditModal === "function") closeFileEditModal();
-		if (typeof closeSelectSkillModal === "function") closeSelectSkillModal();
 		if (typeof closeSystemPathPicker === "function") closeSystemPathPicker();
-		if (typeof closeSystemPathPickerModal === "function") closeSystemPathPickerModal();
 		if (typeof closeCreateSkillModal === "function") closeCreateSkillModal();
 		if (typeof closeAiSynthesisModal === "function") closeAiSynthesisModal();
-		if (typeof closeAiSkillModal === "function") closeAiSkillModal();
 		if (typeof closeAppInspector === "function") closeAppInspector();
 	}
 });
-document.getElementById("confirmModal").addEventListener("click", (e) => {
+document.getElementById("confirmModal")?.addEventListener("click", (e) => {
 	if (e.target === e.currentTarget) closeConfirm();
 });
-document.getElementById("assignModal").addEventListener("click", (e) => {
-	if (e.target === e.currentTarget) closeAssign();
-});
 
-document.getElementById("legalModal").addEventListener("click", (e) => {
+document.getElementById("legalModal")?.addEventListener("click", (e) => {
 	if (e.target === e.currentTarget) closeLegal();
 });
 
@@ -571,8 +296,9 @@ function closeLegal() {
 /* ═══════════════════════════════════════════════════════════
    CATEGORY LEGEND
    ═══════════════════════════════════════════════════════════ */
-function renderCategoryLegend() {
-	const container = document.getElementById("categoryLegend");
+function renderLegend() {
+	const container = document.getElementById("legendContainer");
+	if (!container) return;
 	const docTypes =
 		typeof getImportSkillsDocTypes === "function"
 			? getImportSkillsDocTypes()
@@ -580,11 +306,11 @@ function renderCategoryLegend() {
 
 	const entries = Object.entries(docTypes).filter(([name]) => name.toUpperCase() !== "UNKNOWN");
 	if (entries.length === 0) {
-		container.style.display = "none";
+		container.classList.add("hidden");
 		return;
 	}
 
-	container.style.display = "flex";
+	container.classList.remove("hidden");
 	let html = '<span class="legend-title">Legend:</span>';
 
 	for (const [name, info] of entries) {

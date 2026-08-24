@@ -1,4 +1,3 @@
-import re
 from typing import Any
 
 from core.utils import clean_path_component, clean_template_result, is_missing_value
@@ -12,12 +11,10 @@ class SafeTemplateDict(dict):
         data: dict,
         fallbacks: dict[str, Any] | None = None,
         optional_fields: set | None = None,
-        extraction_fields: set | None = None,
         preserve_placeholders: bool = False,
     ):
         super().__init__()
         self.optional_fields = {k.lower() for k in (optional_fields or set())}
-        self.extraction_fields = {k.lower() for k in (extraction_fields or set())}
         self.fallbacks = {k.lower(): v for k, v in (fallbacks or {}).items()}
         self.preserve_placeholders = preserve_placeholders
         self._lower_map: dict[str, Any] = {}
@@ -71,7 +68,6 @@ def render_folder_name(
     data: dict,
     routing_cfg: dict | None = None,
     optional_fields: set | None = None,
-    extraction_fields: set | None = None,
     folder_structure: list | None = None,
     delimiter: str = "--",
 ) -> str:
@@ -79,7 +75,6 @@ def render_folder_name(
     safe_ctx = SafeTemplateDict(
         data,
         optional_fields=optional_fields,
-        extraction_fields=extraction_fields,
     )
 
     if folder_structure is not None:
@@ -93,17 +88,7 @@ def render_folder_name(
     for i, comp in enumerate(effective_structure):
         _, tpl = _resolve_comp(comp, i)
         if tpl:
-            match = re.fullmatch(r"\{(\w+)\}", tpl.strip())
             val = clean_template_result(tpl.format_map(safe_ctx), delimiter=delimiter)
-
-            # If a standalone structure component is empty,
-            # ensure the placeholder ---- is used (unless the field is optional)
-            if match and (not val or is_missing_value(val)):
-                field_name = match.group(1)
-                if not safe_ctx._is_optional(field_name):
-                    val = "----"
-                else:
-                    val = ""
             if val:
                 parts.append(val)
 
@@ -118,14 +103,13 @@ def render_filename(
     routing_cfg: dict | None = None,
     ext: str = "",
     optional_fields: set | None = None,
-    extraction_fields: set | None = None,
     fallbacks: dict[str, Any] | None = None,
 ) -> str:
     """Generically generates a filename based on configuration and template."""
     routing_cfg = routing_cfg or {}
     filename_template = routing_cfg.get("filename_template") or "{Document}"
     safe_ctx = SafeTemplateDict(
-        data, fallbacks=fallbacks, optional_fields=optional_fields, extraction_fields=extraction_fields
+        data, fallbacks=fallbacks, optional_fields=optional_fields
     )
     delimiter = "__"
     if "--" in filename_template:

@@ -10,40 +10,19 @@ import threading
 import time
 from typing import Any
 
-from core.jobs import job_queue
-
 
 class DMSService:
     """Service wrapper for DMS runtime components."""
 
     def __init__(self):
-        self._lock = threading.Lock()
         self.config: Any = None
         self.processor: Any = None
-        self.file_queue: Any = None
         self._last_heartbeat: float = time.time()
         self._shutdown_event = threading.Event()
-
-    def is_ready(self) -> bool:
-        with self._lock:
-            return self.processor is not None and self.config is not None
-
-    def heartbeat(self):
-        with self._lock:
-            self._last_heartbeat = time.time()
-
-    def submit_background_job(self, name: str, func, *args, **kwargs) -> str:
-        """Submits a job to the sequential FIFO queue."""
-        return job_queue.submit(name, func, *args, **kwargs)
 
 
 # Global service context
 dms_service = DMSService()
-
-
-def get_dms_service() -> DMSService:
-    """Returns the central DMS service container instance."""
-    return dms_service
 
 
 # Static interception for direct attribute access on DashboardState
@@ -67,14 +46,6 @@ class _DashboardStateMeta(type):
     @processor.setter
     def processor(cls, value):
         dms_service.processor = value
-
-    @property
-    def file_queue(cls):
-        return dms_service.file_queue
-
-    @file_queue.setter
-    def file_queue(cls, value):
-        dms_service.file_queue = value
 
     @property
     def last_heartbeat(cls):

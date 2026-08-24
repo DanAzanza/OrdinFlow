@@ -32,7 +32,6 @@ const state = {
 	expandedFiles: [],
 	sortCol: 0,
 	sortAsc: true,
-	paused: false,
 	selectedInboxFile: null,
 	editingFolder: null,
 	editingFile: null,
@@ -148,35 +147,6 @@ async function api(url, options = {}) {
 async function fetchStatus() {
 	try {
 		const d = await api("/api/status");
-		state.paused = d.paused;
-		// Badge
-		const badge = document.getElementById("statusBadge");
-		const txt = document.getElementById("statusText");
-		if (badge) {
-			badge.className = "status-badge " + (d.paused ? "paused" : "active");
-		}
-		if (txt) {
-			txt.textContent = d.paused ? "Paused" : "Active";
-		}
-
-		const tgl = document.getElementById("toggleLabel");
-		if (tgl) {
-			tgl.textContent = d.paused ? "Resume" : "Pause";
-		}
-
-		const ico = document.getElementById("toggleIcon");
-		if (ico) {
-			ico.setAttribute(
-				"d",
-				d.paused
-					? "M11.596 8.697l-6.363 3.692c-.54.313-1.233-.066-1.233-.697V4.308c0-.63.692-1.01 1.233-.696l6.363 3.692a.802.802 0 0 1 0 1.393z"
-					: "M5.5 3.5A1.5 1.5 0 0 1 7 5v6a1.5 1.5 0 0 1-3 0V5a1.5 1.5 0 0 1 1.5-1.5zm5 0A1.5 1.5 0 0 1 12 5v6a1.5 1.5 0 0 1-3 0V5a1.5 1.5 0 0 1 1.5-1.5z",
-			);
-		}
-
-		// Stats
-		const statAvg = document.getElementById("statAvg");
-		if (statAvg) statAvg.textContent = (d.avg_duration ?? 0).toFixed(1);
 
 		// Skill Queue status check
 		if (d.skill_queue) {
@@ -190,33 +160,6 @@ async function fetchStatus() {
 		}
 	} catch (e) {
 		console.error("Error fetching status:", e);
-	}
-}
-
-async function toggleRouter() {
-	try {
-		const url = state.paused ? "/api/router/resume" : "/api/router/pause";
-		await api(url, { method: "POST" });
-		await fetchStatus();
-		toast(state.paused ? "Router paused" : "Router resumed");
-	} catch (e) {
-		toast("Error: " + e.message, "error");
-	}
-}
-
-async function shutdownApp() {
-	if (
-		confirm(
-			"Are you sure you want to exit DMS? The system will shut down completely.",
-		)
-	) {
-		try {
-			await api("/api/router/shutdown", { method: "POST" });
-			toast("System shutting down...", "success");
-			setTimeout(() => window.close(), 1500);
-		} catch (e) {
-			toast("Shutdown error: " + e.message, "error");
-		}
 	}
 }
 
