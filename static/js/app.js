@@ -75,7 +75,7 @@ function toggleSidebar() {
 	sidebar.classList.toggle("collapsed");
 	const icon = document.getElementById("sidebarToggleIcon");
 	if (icon) {
-		icon.textContent = sidebar.classList.contains("collapsed") ? "▶" : "◀";
+		icon.textContent = sidebar.classList.contains("collapsed") ? "▶️" : "◀️";
 	}
 }
 

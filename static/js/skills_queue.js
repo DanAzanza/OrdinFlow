@@ -40,11 +40,11 @@ function updateSkillsSidebarBadge(qState) {
 	if (!badge) return;
 
 	if (qState && qState.is_running && !qState.is_paused) {
-		badge.textContent = "▶";
+		badge.textContent = "▶️";
 		badge.className = "badge nav-badge badge-running";
 		badge.style.display = "inline-flex";
 	} else if (qState && qState.is_paused) {
-		badge.textContent = "⏸";
+		badge.textContent = "⏸️";
 		badge.className = "badge nav-badge badge-paused";
 		badge.style.display = "inline-flex";
 	} else {
@@ -71,7 +71,7 @@ function buildQueueListHtml(items, activeItemId) {
 
 			let statusBadge = `<span class="badge badge-waiting">Waiting</span>`;
 			if (isRunning) {
-				statusBadge = `<span class="badge badge-running">▶ Running...</span>`;
+				statusBadge = `<span class="badge badge-running">▶️ Running...</span>`;
 			} else if (isPaused) {
 				statusBadge = `<span class="badge badge-paused">Paused</span>`;
 			} else if (isCompleted) {
@@ -85,10 +85,10 @@ function buildQueueListHtml(items, activeItemId) {
 			const progressPct = (item.progress && item.progress.percent) ? item.progress.percent : 0;
 
 			return `
-				<div class="queue-item-card ${isRunning ? "queue-item-running" : "queue-item-idle"}" data-queue-id="${escapeHtml(item.id)}" draggable="${!isRunning}" ondragstart="onQueueDragStart(event, '${escapeHtml(item.id)}')" ondragover="onQueueDragOver(event)" ondrop="onQueueDrop(event, '${escapeHtml(item.id)}')">
+				<div class="queue-item-card ${isRunning ? "queue-item-running" : "queue-item-idle"}" data-queue-id="${escapeHtml(item.id)}" draggable="${!isRunning}" ondragstart="onQueueDragStart(event, '${escapeHtml(item.id)}')" ondragover="onQueueDragOver(event)" ondragleave="onQueueDragLeave(event)" ondragend="onQueueDragEnd(event)" ondrop="onQueueDrop(event, '${escapeHtml(item.id)}')">
 					<div class="queue-item-header">
 						<div class="queue-item-title-group">
-							<span class="queue-drag-handle">⋮⋮</span>
+							<span class="queue-drag-handle">↕️</span>
 							<span class="queue-icon">${icon}</span>
 							<div class="min-w-0">
 								<div class="queue-name">${escapeHtml(item.skill_name)}</div>
@@ -139,7 +139,7 @@ function updateQueueInspectorIfOpen(qState) {
 		if (isRunning && !isPaused) {
 			const activeName = qState.active_item ? qState.active_item.skill_name : "";
 			const progMsg = qState.active_item && qState.active_item.progress ? qState.active_item.progress.message : "";
-			subtitleEl.textContent = progMsg ? `▶ ${activeName}: ${progMsg}` : `▶ Running: ${activeName || "Execution in progress..."}`;
+			subtitleEl.textContent = progMsg ? `▶️ ${activeName}: ${progMsg}` : `▶️ Running: ${activeName || "Execution in progress..."}`;
 		} else if (isPaused) {
 			subtitleEl.textContent = "⏸️ Queue paused";
 		} else {
@@ -151,7 +151,7 @@ function updateQueueInspectorIfOpen(qState) {
 	const statusTitle = document.querySelector(".queue-status-title");
 	if (statusTitle) {
 		if (isRunning && !isPaused) {
-			statusTitle.innerHTML = `<span>▶</span> Status: Running`;
+			statusTitle.innerHTML = `<span>▶️</span> Status: Running`;
 		} else if (isPaused) {
 			statusTitle.innerHTML = `<span>⏸️</span> Status: Paused`;
 		} else {
@@ -187,7 +187,7 @@ function updateQueueInspectorIfOpen(qState) {
 		} else if (isPaused) {
 			btnRow.innerHTML = `
 				<button type="button" class="btn btn-primary btn-sm" onclick="resumeSkillQueue()" title="Resume queue execution">
-					▶ Resume
+					▶️ Resume
 				</button>
 				<button type="button" class="btn btn-danger btn-sm" onclick="stopSkillQueue()" title="Stop queue execution">
 					⏹️ Stop
@@ -196,7 +196,7 @@ function updateQueueInspectorIfOpen(qState) {
 		} else {
 			btnRow.innerHTML = `
 				<button type="button" class="btn btn-primary btn-sm queue-main-btn" onclick="startSkillQueue()">
-					▶ Start queue
+					▶️ Start queue
 				</button>
 			`;
 		}
@@ -240,7 +240,7 @@ async function renderQueueInspector() {
 
 	let btnRowHtml = `
 		<button type="button" class="btn btn-primary btn-sm queue-main-btn" onclick="startSkillQueue()">
-			▶ Start queue
+			▶️ Start queue
 		</button>
 	`;
 	if (isRunning && !isPaused) {
@@ -255,7 +255,7 @@ async function renderQueueInspector() {
 	} else if (isPaused) {
 		btnRowHtml = `
 			<button type="button" class="btn btn-primary btn-sm" onclick="resumeSkillQueue()" title="Resume queue execution">
-				▶ Resume
+				▶️ Resume
 			</button>
 			<button type="button" class="btn btn-danger btn-sm" onclick="stopSkillQueue()" title="Stop queue execution">
 				⏹️ Stop
@@ -267,7 +267,7 @@ async function renderQueueInspector() {
 		<div class="queue-status-card">
 			<div class="queue-status-header">
 				<h4 class="queue-status-title">
-					<span>${isRunning && !isPaused ? "▶" : isPaused ? "⏸️" : "⏹️"}</span> Status: ${isRunning && !isPaused ? "Running" : isPaused ? "Paused" : "Ready"}
+					<span>${isRunning && !isPaused ? "▶️" : isPaused ? "⏸️" : "⏹️"}</span> Status: ${isRunning && !isPaused ? "Running" : isPaused ? "Paused" : "Ready"}
 				</h4>
 				<span class="badge ${isRunning && !isPaused ? "badge-running" : isPaused ? "badge-paused" : "badge-idle"}">
 					${isPaused ? `Paused (${qState.items.length})` : `${qState.items.length} Tasks`}
@@ -315,8 +315,8 @@ async function renderQueueInspector() {
 
 	const subtitle = isRunning && !isPaused
 		? qState.active_item
-			? `▶ Running: ${escapeHtml(qState.active_item.skill_name)}`
-			: "▶ Execution running..."
+			? `▶️ Running: ${escapeHtml(qState.active_item.skill_name)}`
+			: "▶️ Execution running..."
 		: isPaused
 			? "⏸️ Queue paused"
 			: qState.auto_repeat_enabled
@@ -347,10 +347,28 @@ function onQueueDragOver(e) {
 	if (e.dataTransfer) {
 		e.dataTransfer.dropEffect = "move";
 	}
+	const card = e.currentTarget;
+	if (card && !card.classList.contains("queue-drag-over")) {
+		document.querySelectorAll(".queue-item-card.queue-drag-over").forEach((el) => el.classList.remove("queue-drag-over"));
+		card.classList.add("queue-drag-over");
+	}
+}
+
+function onQueueDragLeave(e) {
+	const card = e.currentTarget;
+	if (card) {
+		card.classList.remove("queue-drag-over");
+	}
+}
+
+function onQueueDragEnd() {
+	draggedQueueItemId = null;
+	document.querySelectorAll(".queue-item-card.queue-drag-over").forEach((el) => el.classList.remove("queue-drag-over"));
 }
 
 async function onQueueDrop(e, targetId) {
 	e.preventDefault();
+	document.querySelectorAll(".queue-item-card.queue-drag-over").forEach((el) => el.classList.remove("queue-drag-over"));
 	if (!draggedQueueItemId || draggedQueueItemId === targetId) return;
 
 	const currentNodes = Array.from(document.querySelectorAll("[data-queue-id]"));
@@ -381,14 +399,14 @@ async function startSkillQueue() {
 		const btn = document.querySelector(".queue-main-btn");
 		if (btn) {
 			btn.disabled = true;
-			btn.textContent = "▶ Starting...";
+			btn.textContent = "▶️ Starting...";
 		}
 		const res = await api("/api/skills/queue/start", { method: "POST" });
 		const qState = await api("/api/skills/queue");
 		updateQueueInspectorIfOpen(qState);
 		updateSkillsSidebarBadge(qState);
 		if (qState.is_running) {
-			toast("▶ Skill queue started!");
+			toast("▶️ Skill queue started!");
 			startQueuePolling();
 		} else {
 			toast("No pending tasks in queue.", "info");
@@ -418,7 +436,7 @@ async function pauseSkillQueue() {
 async function resumeSkillQueue() {
 	try {
 		await api("/api/skills/queue/resume", { method: "POST" });
-		toast("▶ Skill queue resumed.");
+		toast("▶️ Skill queue resumed.");
 		const qState = await api("/api/skills/queue");
 		updateQueueInspectorIfOpen(qState);
 		updateSkillsSidebarBadge(qState);

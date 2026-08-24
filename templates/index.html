@@ -16,7 +16,7 @@
                         <span class="brand-version">v1.0</span>
                     </div>
                     <button class="sidebar-toggle-btn" id="sidebarToggleBtn" onclick="toggleSidebar()" title="Collapse navigation">
-                        <span id="sidebarToggleIcon">◀</span>
+                        <span id="sidebarToggleIcon">◀️</span>
                     </button>
                 </div>
 
@@ -35,7 +35,7 @@
                     <button class="nav-item" data-tab="skills" onclick="switchTab('skills')">
                         <span class="nav-icon">⚡</span>
                         <span class="nav-label">Skills</span>
-                        <span class="badge nav-badge badge-running" id="badgeSkills" style="display: none">▶</span>
+                        <span class="badge nav-badge badge-running" id="badgeSkills" style="display: none">▶️</span>
                     </button>
                     <button class="nav-item" data-tab="config" onclick="switchTab('config')">
                         <span class="nav-icon">⚙️</span>
@@ -502,9 +502,7 @@
                     <h2 id="assignModalTitle">
                         📂 Move / Assign file
                     </h2>
-                    <button class="btn btn-icon" onclick="closeAssign()">
-                        ✕
-                    </button>
+                    <button type="button" class="modal-close-btn" onclick="closeAssign()" aria-label="Close" title="Close">✖️</button>
                 </div>
                 <div class="modal-body">
                     <p class="form-subtext">
@@ -566,9 +564,7 @@
             <div class="modal modal-sm">
                 <div class="modal-header">
                     <h2>✏️ Edit document</h2>
-                    <button class="btn btn-icon" onclick="closeFileEdit()">
-                        ✕
-                    </button>
+                    <button type="button" class="modal-close-btn" onclick="closeFileEdit()" aria-label="Close" title="Close">✖️</button>
                 </div>
                 <div class="modal-body">
                     <p class="form-subtext">
@@ -620,7 +616,7 @@
             <div class="modal modal-sm">
                 <div class="modal-header">
                     <h2>✏️ Edit Case Folder</h2>
-                    <button type="button" class="btn btn-icon" onclick="closeFolderEdit()">✕</button>
+                    <button type="button" class="modal-close-btn" onclick="closeFolderEdit()" aria-label="Close" title="Close">✖️</button>
                 </div>
                 <div class="modal-body">
                     <input type="hidden" id="editFolderOldName" />
@@ -638,7 +634,7 @@
             <div class="modal" style="max-width: 800px">
                 <div class="modal-header">
                     <h2 id="legalModalTitle">Legal & Compliance</h2>
-                    <button type="button" class="btn btn-icon" onclick="closeLegal()">✕</button>
+                    <button type="button" class="modal-close-btn" onclick="closeLegal()" aria-label="Close" title="Close">✖️</button>
                 </div>
                 <div class="modal-body modal-body-scroll-legal" id="legalModalBody">
                     <pre id="legalContent" class="legal-content-text"></pre>
@@ -651,7 +647,7 @@
             <div class="modal modal-sm">
                 <div class="modal-header">
                     <h2>🚀 Approve Case & Run Skill</h2>
-                    <button class="btn btn-icon" onclick="closeSelectSkillModal()">✕</button>
+                    <button type="button" class="modal-close-btn" onclick="closeSelectSkillModal()" aria-label="Close" title="Close">✖️</button>
                 </div>
                 <div class="modal-body">
                     <p class="form-subtext-sm">
@@ -665,8 +661,8 @@
                     </div>
                 </div>
                 <div class="modal-footer">
-                    <button class="btn" onclick="closeSelectSkillModal()">Cancel</button>
-                    <button class="btn btn-primary" onclick="confirmApproveAndRun()">🚀 Approve & Start</button>
+                    <button type="button" class="btn" onclick="closeSelectSkillModal()">Cancel</button>
+                    <button type="button" class="btn btn-primary" onclick="confirmApproveAndRun()">🚀 Approve & Start</button>
                 </div>
             </div>
         </div>
@@ -676,7 +672,7 @@
             <div class="modal modal-md">
                 <div class="modal-header">
                     <h2>✨ Create New Skill</h2>
-                    <button type="button" class="btn btn-icon" onclick="closeCreateSkillModal()">✕</button>
+                    <button type="button" class="modal-close-btn" onclick="closeCreateSkillModal()" aria-label="Close" title="Close">✖️</button>
                 </div>
                 <div class="modal-body">
                     <p class="form-subtext" style="margin-bottom: 16px;">
@@ -736,7 +732,7 @@
                             <div style="font-size: 0.76rem; color: #a5b4fc;">Automatic Task Structuring & Variable Detection</div>
                         </div>
                     </div>
-                    <button type="button" class="btn btn-icon" onclick="closeAiSynthesisModal()">✕</button>
+                    <button type="button" class="modal-close-btn" onclick="closeAiSynthesisModal()" aria-label="Close" title="Close">✖️</button>
                 </div>
                 <div class="modal-body">
                     <!-- AI Summary Card -->
@@ -803,7 +799,7 @@
             <div class="modal modal-md path-picker-modal">
                 <div class="modal-header">
                     <h3 id="pathPickerTitle" style="font-size: 0.95rem; font-weight: 700; color: var(--text); margin: 0;">📁 Ordner auswählen</h3>
-                    <button type="button" class="modal-close-btn" onclick="closeSystemPathPicker()" title="Schließen">✕</button>
+                    <button type="button" class="modal-close-btn" onclick="closeSystemPathPicker()" aria-label="Close" title="Schließen">✖️</button>
                 </div>
                 <div class="modal-body path-picker-modal-body">
                     <!-- Quick Bar & Drives -->
