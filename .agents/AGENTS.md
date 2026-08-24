@@ -23,8 +23,8 @@
 * **Zero Placeholders**: Never use placeholders, summaries, or truncation comments (e.g., `// ... existing code ...`, `/* remaining code unchanged */`). Always output fully complete, runnable code files or intact, self-contained functional blocks.
 * **Defensive & Dependency Hygiene**: Implement complete logic without unsolicited third-party packages. Rely on native capabilities and existing utilities first.
 * **Non-Blocking Execution & Zero-Polling Protocol**: When initiating background processes or async timers, never poll for status in a loop. Update the user with a concise status message and yield control to await background notifications.
-* **Mandatory Pre-Commit Verification**: Always run and pass the full local CI verification gate (Section 8) with 0 errors before presenting results for commit.
-* **Explicit User Authorization for Commits & Pushes**: Never commit or push changes automatically or "on the side". After all local verification steps pass with 0 errors, present the completed results to the user and wait for their explicit request (e.g., "please push", "commit now") before executing Git staging, committing, or pushing.
+* **Task Verification Gate**: Run fast automated tests (`python -m pytest -q` or `python scripts/verify_ci.py`) before presenting completed work or requesting user feedback.
+* **Explicit User Authorization & Pre-Commit Protocol**: Never commit or push changes automatically or "on the side". Present results to the user and wait for their explicit request (e.g., "please push", "bitte committen"). Once authorized, execute the full Pre-Commit Quality Gate (Section 8: `scripts/verify_ci.py` and `pre_commit_auditor`) before creating the commit and pushing.
 
 ---
 
@@ -100,9 +100,9 @@ When asked to write or suggest Git commit messages, strictly adhere to the follo
 ---
 
 ## 8. CI, Testing & Pre-Commit Quality Gate
-* **Development Verification**: Use `python -m pytest -q` during iterative development to verify logic and prevent regressions quickly.
-* **Mandatory Pre-Commit Quality Gate (`scripts/verify_ci.py`)**:
-  * Before presenting results for commit approval or requesting user feedback on completed tasks, the agent MUST run the central verification script:
+* **Development & Task Completion Gate**: Use `python -m pytest -q` or `python scripts/verify_ci.py` during iterative development and when completing tasks to verify logic and prevent regressions before presenting work to the user.
+* **Mandatory Pre-Commit Quality Gate (Triggered Upon Explicit Commit Request)**:
+  * When the user explicitly authorizes a commit/push, the agent MUST run the central verification script:
     ```bash
     python scripts/verify_ci.py
     ```
@@ -110,11 +110,11 @@ When asked to write or suggest Git commit messages, strictly adhere to the follo
     1. Full-repository Ruff linter (`python -m ruff check .`)
     2. Full-scope Pyright type analysis (`npx pyright core/ routes/`) — *Never scope down or skip directories!*
     3. Full test suite (`python -m pytest -q`)
-* **Subagent Code & Goal Audit Gate**: Invoke the `pre_commit_auditor` subagent to conduct an adversarial audit on `git diff` against:
+* **Subagent Code & Goal Audit Gate**: For non-trivial refactorings and features, invoke the `pre_commit_auditor` subagent to conduct an adversarial audit on `git diff` against:
   1. **Plan-to-Code Fidelity**: Does the code genuinely solve the root problem and deliver all commitments from `implementation_plan.md`, or were corners cut and edge cases dropped?
   2. **Code & Architecture Standards**: Adherence to AGENTS.md rules (no placeholders, resource hygiene, sidecar atomicity, Win32 guards, SRP limits, zero secret leaks).
   3. **Verification Completeness**: Confirm that `python scripts/verify_ci.py` ran over the entire codebase with 0 errors.
-* **Zero Regression Standard**: Commits and pushes are strictly blocked if any linter warning, type diagnostic, test failure, or auditor blocker is present. All gates must succeed with 0 errors before presenting changes to the user for commit approval.
+* **Zero Regression Standard**: Commits and pushes are strictly blocked if any linter warning, type diagnostic, test failure, or auditor blocker is present. All gates must succeed with 0 errors before executing the git commit.
 * **CI Parity**: Ensure local development environment tools match `.github/workflows/ci.yml` (Python 3.10+, Pyright, Ruff, Pytest).
 
 ---
