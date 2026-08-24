@@ -355,9 +355,9 @@ async function updateLogInspectorAnalytics() {
 			</div>
 
 			<div class="analytics-kpi-card analytics-kpi-card-purple">
-				<div class="analytics-kpi-title-purple">⚡ Avg Time / File</div>
-				<div class="analytics-kpi-val">${stats.avgTimePerFile || "0.0"}s</div>
-				<div class="analytics-kpi-sub">Ø ${stats.avgTimePerPage || "0.0"}s / page (${stats.totalPages || 0} pages)</div>
+				<div class="analytics-kpi-title-purple">⚡ Avg Speed / Page</div>
+				<div class="analytics-kpi-val">${stats.avgTimePerPage || "0.0"}s <span class="analytics-kpi-unit">/ page</span></div>
+				<div class="analytics-kpi-sub">Ø ${stats.avgTimePerFile || "0.0"}s / file • ${stats.totalPages || 0} pages total</div>
 			</div>
 		</div>
 
