@@ -143,9 +143,26 @@ class FileService:
         if extracted:
             extracted_raw = {}
             for k, v in extracted.items():
-                if k not in ["page_results", "images"]:
+                if k == "page_results" and isinstance(v, list):
+                    clean_page_results = []
+                    for pr in v:
+                        if isinstance(pr, dict):
+                            clean_pr = {}
+                            for pr_k, pr_v in pr.items():
+                                if pr_k not in ["images", "raw_images", "_img", "raw"]:
+                                    if isinstance(pr_v, str):
+                                        clean_pr[pr_k] = clean_path_component(pr_v)
+                                    elif isinstance(pr_v, (set, tuple)):
+                                        clean_pr[pr_k] = list(pr_v)
+                                    else:
+                                        clean_pr[pr_k] = pr_v
+                            clean_page_results.append(clean_pr)
+                    extracted_raw["page_results"] = clean_page_results
+                elif k not in ["images", "raw_images", "_img", "raw"]:
                     if isinstance(v, str):
                         extracted_raw[k] = clean_path_component(v)
+                    elif isinstance(v, (set, tuple)):
+                        extracted_raw[k] = list(v)
                     else:
                         extracted_raw[k] = v
             meta["extracted"] = extracted_raw

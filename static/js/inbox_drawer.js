@@ -228,6 +228,7 @@ async function openSplitInspector(contextOrFilename, folder = null, filename = n
 	}
 
 	state.currentInspectorExtracted = extractedData;
+	state.drawerDocSections = initDrawerDocSections(docType, extractedData);
 
 	if (typeof openAppInspector === "function") {
 		openAppInspector({
@@ -257,28 +258,109 @@ async function openSplitInspector(contextOrFilename, folder = null, filename = n
 	}
 }
 
+function formatPageRange(pages) {
+	if (!pages || pages === "all" || pages === "*") return "all";
+	if (Array.isArray(pages)) {
+		if (pages.length === 0) return "all";
+		const nums = pages.map(Number).filter(n => !isNaN(n)).sort((a, b) => a - b);
+		if (nums.length === 0) return "all";
+		const isContiguous = nums.every((n, i) => i === 0 || n === nums[i - 1] + 1);
+		if (isContiguous && nums.length > 1) {
+			return `${nums[0]}-${nums[nums.length - 1]}`;
+		}
+		return nums.join(", ");
+	}
+	return String(pages).trim();
+}
+
+function initDrawerDocSections(docType, extractedData = {}) {
+	const dokArtOptions = getDokArtOptions();
+	const pageResults = (extractedData && Array.isArray(extractedData.page_results) && extractedData.page_results.length > 0)
+		? extractedData.page_results
+		: null;
+
+	if (pageResults) {
+		return pageResults.map((pr, idx) => {
+			const prType = pr.Document || pr.document || pr.DocumentType || docType || dokArtOptions[0] || "Document";
+			const prPages = formatPageRange(pr.pages || (pageResults.length === 1 ? "all" : (idx + 1)));
+			const mergedExtracted = Object.assign({}, extractedData, pr);
+			return {
+				id: "sec_" + Date.now() + "_" + idx + "_" + Math.floor(Math.random() * 1000),
+				docType: prType,
+				pages: prPages,
+				extracted: mergedExtracted
+			};
+		});
+	}
+
+	const rawDoc = String(docType || "").trim();
+	const isCompound = rawDoc.includes("+") && !dokArtOptions.includes(rawDoc);
+	if (isCompound) {
+		const parts = rawDoc.split("+").map(s => s.trim()).filter(Boolean);
+		if (parts.length > 1) {
+			return parts.map((partType, idx) => ({
+				id: "sec_" + Date.now() + "_" + idx + "_" + Math.floor(Math.random() * 1000),
+				docType: partType,
+				pages: String(idx + 1),
+				extracted: Object.assign({}, extractedData, { Document: partType, document: partType })
+			}));
+		}
+	}
+
+	return [
+		{
+			id: "sec_" + Date.now() + "_0_" + Math.floor(Math.random() * 1000),
+			docType: rawDoc || dokArtOptions[0] || "Document",
+			pages: "all",
+			extracted: Object.assign({}, extractedData)
+		}
+	];
+}
+
+function saveCurrentDrawerFormState() {
+	if (!state.drawerDocSections) return;
+	const cards = document.querySelectorAll(".drawer-section-card");
+	cards.forEach((card) => {
+		const secId = card.dataset.secid;
+		const sec = state.drawerDocSections.find(s => String(s.id) === String(secId));
+		if (!sec) return;
+		const dokArt = card.querySelector(".sec-dok-art")?.value;
+		const pagesVal = card.querySelector(".sec-pages")?.value;
+		if (dokArt) sec.docType = dokArt;
+		if (pagesVal !== undefined) sec.pages = pagesVal;
+		if (!sec.extracted) sec.extracted = {};
+		card.querySelectorAll(".drawer-field").forEach((el) => {
+			const k = el.dataset.field;
+			if (k) sec.extracted[k] = el.value;
+		});
+	});
+}
+
 function addDrawerDocSection() {
+	saveCurrentDrawerFormState();
 	if (!state.drawerDocSections) state.drawerDocSections = [];
 	const options = getDokArtOptions();
 	const defaultType = options[0] || "Document";
 	state.drawerDocSections.push({
-		id: Date.now() + Math.random(),
+		id: "sec_" + Date.now() + "_" + Math.floor(Math.random() * 1000),
 		docType: defaultType,
 		pages: "",
-		extracted: {}
+		extracted: Object.assign({}, state.currentInspectorExtracted || {})
 	});
 	renderDrawerSections();
 }
 
 function removeDrawerDocSection(secId) {
+	saveCurrentDrawerFormState();
 	if (!state.drawerDocSections || state.drawerDocSections.length <= 1) return;
-	state.drawerDocSections = state.drawerDocSections.filter(s => s.id !== secId);
+	state.drawerDocSections = state.drawerDocSections.filter(s => String(s.id) !== String(secId));
 	renderDrawerSections();
 }
 
 function onSectionDokArtChange(secId, newDokArt) {
+	saveCurrentDrawerFormState();
 	if (!state.drawerDocSections) return;
-	const sec = state.drawerDocSections.find(s => s.id === secId);
+	const sec = state.drawerDocSections.find(s => String(s.id) === String(secId));
 	if (sec) {
 		sec.docType = newDokArt;
 		renderDrawerSections();
@@ -294,14 +376,12 @@ function renderDrawerSections() {
 
 function buildGenericInspectorForm(docType, personStr, datum, produkt, extractedData = {}) {
 	if (!state.drawerDocSections || state.drawerDocSections.length === 0) {
-		const initialType = docType || getDokArtOptions()[0] || "Document";
-		state.drawerDocSections = [
-			{ id: 1, docType: initialType, pages: "all", extracted: extractedData }
-		];
+		state.drawerDocSections = initDrawerDocSections(docType, extractedData);
 	}
 
 	const dokArtOptions = getDokArtOptions();
 	const isMulti = state.drawerDocSections.length > 1;
+	const isPdf = (state.inspectorFile || "").toLowerCase().endsWith(".pdf");
 
 	let html = `<div id="drawerSectionsList" class="drawer-sections-flex">`;
 
@@ -314,8 +394,10 @@ function buildGenericInspectorForm(docType, personStr, datum, produkt, extracted
 
 		const ignoredMetaKeys = new Set([
 			"raw", "status", "confidence", "_confidence",
-			"pages", "page_results", "dokument", "dokumentart", "dok_arts",
-			"vision_description", "is_pruefen", "file_url", "preview_url"
+			"pages", "page_results", "document", "documenttype", "document_type",
+			"dokument", "dokumentart", "dok_arts", "vision_description",
+			"is_pruefen", "file_url", "preview_url", "images", "raw_images", "_img",
+			"zeit", "timestamp", "filename", "dateiname", "grund", "reason"
 		]);
 
 		const targetFieldKeys = new Set();
@@ -362,21 +444,24 @@ function buildGenericInspectorForm(docType, personStr, datum, produkt, extracted
 			}
 		}
 
+		const hasMatch = dokArtOptions.includes(curDokArt);
+		const optionsList = hasMatch ? dokArtOptions : (curDokArt ? [curDokArt, ...dokArtOptions] : dokArtOptions);
+
 		html += `
-			<div class="drawer-section-card" data-secid="${sec.id}">
+			<div class="drawer-section-card" data-secid="${escapeHtml(String(sec.id))}">
 				<div class="drawer-section-header">
 					<span class="inbox-drawer-title-accent">
-						📄 Section ${idx + 1} ${isMulti ? `(${escapeHtml(curDokArt)})` : ""}
+						📄 Section ${idx + 1} (${escapeHtml(curDokArt)})
 					</span>
-					${isMulti ? `<button type="button" class="btn btn-sm btn-danger inbox-drawer-btn-remove" onclick="removeDrawerDocSection(${sec.id})">🗑️ Remove section</button>` : ""}
+					${isMulti ? `<button type="button" class="btn btn-sm btn-danger inbox-drawer-btn-remove" onclick="removeDrawerDocSection('${escapeHtml(String(sec.id))}')">🗑️ Remove section</button>` : ""}
 				</div>
 
 				<div class="grid-2col">
 					<div class="form-group zero-margin">
 						<label for="${sanitizeDomId("sec", sec.id, "dok_art")}" class="doc-editor-label">Document Type *</label>
-						<select id="${sanitizeDomId("sec", sec.id, "dok_art")}" class="doc-editor-input sec-dok-art inbox-drawer-field-select-lg" aria-label="Document Type" onchange="onSectionDokArtChange(${sec.id}, this.value)">
-							${dokArtOptions.length > 0
-								? dokArtOptions.map(opt => `<option value="${escapeHtml(opt)}" ${opt === curDokArt ? "selected" : ""}>${escapeHtml(opt)}</option>`).join("")
+						<select id="${sanitizeDomId("sec", sec.id, "dok_art")}" class="doc-editor-input sec-dok-art inbox-drawer-field-select-lg" aria-label="Document Type" onchange="onSectionDokArtChange('${escapeHtml(String(sec.id))}', this.value)">
+							${optionsList.length > 0
+								? optionsList.map(opt => `<option value="${escapeHtml(opt)}" ${opt === curDokArt ? "selected" : ""}>${escapeHtml(opt)}</option>`).join("")
 								: `<option value="">Empty</option>`
 							}
 						</select>
@@ -406,7 +491,6 @@ function buildGenericInspectorForm(docType, personStr, datum, produkt, extracted
 					if (isoDate !== null) {
 						fieldControlHtml = `<input type="date" id="${safeFieldId}" class="doc-editor-input drawer-field inbox-drawer-field-date" data-field="${escapeHtml(key)}" value="${escapeHtml(isoDate)}" aria-label="${escapeHtml(key)}" />`;
 					} else if (val) {
-						// Non-standard date string (e.g. "Mai 2026", "unleserlich") -> fall back to text input to preserve OCR text
 						fieldControlHtml = `<input type="text" id="${safeFieldId}" class="doc-editor-input drawer-field inbox-drawer-field-input" data-field="${escapeHtml(key)}" value="${escapeHtml(val)}" placeholder="${escapeHtml(key)}" aria-label="${escapeHtml(key)}" title="Non-standard date format" />`;
 					} else {
 						fieldControlHtml = `<input type="date" id="${safeFieldId}" class="doc-editor-input drawer-field inbox-drawer-field-date" data-field="${escapeHtml(key)}" value="" aria-label="${escapeHtml(key)}" />`;
@@ -435,11 +519,13 @@ function buildGenericInspectorForm(docType, personStr, datum, produkt, extracted
 
 	html += `</div>
 
-		<div class="inbox-drawer-add-row">
-			<button type="button" class="btn btn-sm inbox-drawer-btn-full" onclick="addDrawerDocSection()">
-				➕ Add another document type / page range
-			</button>
-		</div>
+		${isPdf ? `
+			<div class="inbox-drawer-add-row">
+				<button type="button" class="btn btn-sm inbox-drawer-btn-full" onclick="addDrawerDocSection()">
+					➕ Add another document type / page range
+				</button>
+			</div>
+		` : ""}
 
 		<div class="inbox-drawer-action-row">
 			<button type="button" class="btn btn-primary btn-sm inbox-drawer-btn-flex" onclick="submitDrawerInspector()">✅ Approve & Move</button>

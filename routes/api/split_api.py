@@ -148,6 +148,9 @@ def api_split_inspector_submit():
     total_pages = 1
     pdf_doc = None
 
+    if not is_pdf and len(documents_input) > 1:
+        return jsonify({"error": "Multi-document slicing is only supported for PDF files."}), 400
+
     if is_pdf and fitz is not None:
         try:
             with open(src_path, "rb") as f:
@@ -156,6 +159,27 @@ def api_split_inspector_submit():
         except (OSError, ValueError, RuntimeError, TypeError) as e:
             logger.warning("Could not open PDF for splitting: %s", e)
             is_pdf = False
+
+    # Atomic pre-validation of all section page ranges before any file slicing or folder creation
+    if is_pdf:
+        for sec_idx, doc_sec in enumerate(documents_input, 1):
+            doc_type = str(doc_sec.get("document") or doc_sec.get("Document") or "Document").strip()
+            pages_to_extract = _parse_pages_input(doc_sec.get("pages"), total_pages)
+            if len(pages_to_extract) == 0:
+                if pdf_doc:
+                    pdf_doc.close()
+                return (
+                    jsonify(
+                        {
+                            "error": f"Invalid or empty page range '{doc_sec.get('pages')}' in section {sec_idx} ({doc_type}). Total document pages: {total_pages}"
+                        }
+                    ),
+                    400,
+                )
+
+    if DashboardState.processor:
+        with DashboardState.processor.processing_lock:
+            DashboardState.processor.processing_files.discard(src_path)
 
     processed_results: list[dict[str, str]] = []
     is_multi_doc = len(documents_input) > 1
