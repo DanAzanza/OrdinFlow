@@ -19,6 +19,8 @@ const CONFIG_LABELS = {
     n_gpu_layers: "GPU Acceleration Layers (-1 = all)",
     n_batch: "Prompt Batch Size",
     flash_attn: "Flash Attention v2",
+    type_k: "KV-Cache K Quantization (8=Q8_0, 1=F16)",
+    type_v: "KV-Cache V Quantization (8=Q8_0, 1=F16)",
     vision_api_timeout: "AI Response Timeout (seconds)",
     vision_api_retries: "AI Retry Attempts on Error"
 };
@@ -41,6 +43,8 @@ const CONFIG_GROUPS = [
             "n_gpu_layers",
             "n_batch",
             "flash_attn",
+            "type_k",
+            "type_v",
             "vision_api_timeout",
             "vision_api_retries"
         ]

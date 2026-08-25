@@ -147,3 +147,32 @@ def test_generate_layer_candidates_explicit():
     assert _generate_layer_candidates(0) == [0]
     # Explicit 12 should start with 12 and step down
     assert _generate_layer_candidates(12) == [12, 10, 5, 0]
+
+
+def test_parse_ggml_type():
+    from core.llm_backends import _parse_ggml_type
+
+    # Standard valid integers
+    assert _parse_ggml_type(8) == 8
+    assert _parse_ggml_type(1) == 1
+    assert _parse_ggml_type(0) == 0
+    assert _parse_ggml_type(2) == 2
+
+    # String aliases
+    assert _parse_ggml_type("q8_0") == 8
+    assert _parse_ggml_type("Q8_0") == 8
+    assert _parse_ggml_type("f16") == 1
+    assert _parse_ggml_type("8bit") == 8
+    assert _parse_ggml_type("  q4_0  ") == 2
+
+    # Python bool trap: True should NOT resolve to 1
+    assert _parse_ggml_type(True) == 8
+    assert _parse_ggml_type(False) == 8
+
+    # Unsupported / invalid / K-quants fallback
+    assert _parse_ggml_type("q4_k_m") == 8
+    assert _parse_ggml_type("q8_k") == 8
+    assert _parse_ggml_type("iq3_s") == 8
+    assert _parse_ggml_type(99) == 8
+    assert _parse_ggml_type(None) == 8
+    assert _parse_ggml_type("garbage", default=1) == 1

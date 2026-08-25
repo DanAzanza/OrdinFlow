@@ -34,6 +34,8 @@ _CONFIG_SAFE_KEYS = [
     "n_batch",
     "n_ubatch",
     "flash_attn",
+    "type_k",
+    "type_v",
     "vision_api_timeout",
     "vision_api_retries",
     "crop_edge_threshold",

@@ -53,6 +53,64 @@ def _is_valid_gguf(path_str: str, min_mb: int = 10) -> bool:
         return False
 
 
+_KV_QUANT_MAP: dict[str, int] = {
+    # 8-bit (Recommended default)
+    "8": 8,
+    "q8_0": 8,
+    "q8": 8,
+    "8bit": 8,
+    "int8": 8,
+    "q8_1": 9,
+    # 16-bit / unquantized
+    "1": 1,
+    "f16": 1,
+    "fp16": 1,
+    "16bit": 1,
+    "half": 1,
+    # 32-bit
+    "0": 0,
+    "f32": 0,
+    "fp32": 0,
+    "32bit": 0,
+    "float": 0,
+    # 4-bit / 5-bit
+    "2": 2,
+    "q4_0": 2,
+    "q4": 2,
+    "4bit": 2,
+    "q4_1": 3,
+    "6": 6,
+    "q5_0": 6,
+    "q5": 6,
+    "5bit": 6,
+    "q5_1": 7,
+}
+
+_SUPPORTED_KV_TYPES = {0, 1, 2, 3, 6, 7, 8, 9}
+
+
+def _parse_ggml_type(val: Any, default: int = 8) -> int:
+    """Parses and sanitizes GGML KV cache quantization types, preventing C-level aborts."""
+    if val is None or isinstance(val, bool):
+        return default
+    if isinstance(val, int):
+        if val in _SUPPORTED_KV_TYPES:
+            return val
+        logger.warning("[-] Unsupported GGML KV type integer '%s'. Falling back to %s.", val, default)
+        return default
+    if isinstance(val, str):
+        normalized = val.strip().lower()
+        if normalized in _KV_QUANT_MAP:
+            return _KV_QUANT_MAP[normalized]
+        # Intercept common user mistake: K-quants / IQ for KV cache
+        if any(k in normalized for k in ["q4_k", "q5_k", "q6_k", "q8_k", "iq"]):
+            logger.warning(
+                "[-] KV cache does not support '%s' (K-quants/IQ). Using Q8_0 (8) fallback.", val
+            )
+            return default
+    return default
+
+
 def _generate_layer_candidates(requested: int) -> list[int]:
     """Generates a strictly decreasing layer ladder for dynamic VRAM fitting."""
     standard_steps = [36, 20, 10, 5, 0]
@@ -118,20 +176,43 @@ class _LlamaCppBackend(LLMBackend):
         n_batch = getattr(config, "n_batch", 512) or 512
         n_ubatch = getattr(config, "n_ubatch", 512) or 512
         flash_attn = bool(getattr(config, "flash_attn", True))
+        parsed_type_k = _parse_ggml_type(getattr(config, "type_k", 8))
+        parsed_type_v = _parse_ggml_type(getattr(config, "type_v", 8))
 
         n_threads = getattr(config, "n_threads", 0)
         if not n_threads or n_threads <= 0:
             n_threads = max(4, (os.cpu_count() or 4) - 2)
 
-        cache_key = (model_path, mmproj_raw, n_gpu_layers, n_ctx, n_batch, n_ubatch, flash_attn)
+        cache_key = (
+            model_path,
+            mmproj_raw,
+            n_gpu_layers,
+            n_ctx,
+            n_batch,
+            n_ubatch,
+            flash_attn,
+            parsed_type_k,
+            parsed_type_v,
+        )
 
         with _LLM_LOCK:
             # Check if global instance is already loaded (Double-checked locking)
-            if _GLOBAL_LLM_INSTANCE is not None and _GLOBAL_LLM_KEY == cache_key:
-                self._llm = _GLOBAL_LLM_INSTANCE
-                self._loaded = True
-                logger.debug("[+] Using LLM model instance already cached in VRAM.")
-                return True
+            if _GLOBAL_LLM_INSTANCE is not None:
+                if _GLOBAL_LLM_KEY == cache_key:
+                    self._llm = _GLOBAL_LLM_INSTANCE
+                    self._loaded = True
+                    logger.debug("[+] Using LLM model instance already cached in VRAM.")
+                    return True
+                # Explicitly unload stale instance before allocating a new model with changed parameters
+                logger.info("[*] LLM configuration changed. Unloading stale model from memory...")
+                try:
+                    if hasattr(_GLOBAL_LLM_INSTANCE, "close"):
+                        _GLOBAL_LLM_INSTANCE.close()  # type: ignore[attr-defined]
+                except Exception:
+                    pass
+                _GLOBAL_LLM_INSTANCE = None
+                _GLOBAL_LLM_KEY = None
+                gc.collect()
 
             if getattr(self, "_load_failed", False):
                 return False
@@ -233,6 +314,8 @@ class _LlamaCppBackend(LLMBackend):
                             "n_gpu_layers": cand,
                             "n_threads": n_threads,
                             "flash_attn": try_flash,
+                            "type_k": parsed_type_k,
+                            "type_v": parsed_type_v,
                         }
                         try:
                             gc.collect()
@@ -241,6 +324,8 @@ class _LlamaCppBackend(LLMBackend):
                             except TypeError:
                                 kwargs.pop("flash_attn", None)
                                 kwargs.pop("n_ubatch", None)
+                                kwargs.pop("type_k", None)
+                                kwargs.pop("type_v", None)
                                 loaded_llm = Llama(**kwargs)  # type: ignore[assignment]
 
                             logger.info(

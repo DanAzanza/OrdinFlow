@@ -30,6 +30,8 @@ class AppConfig:
     n_ubatch: int = 512
     n_ctx: int = 4096
     flash_attn: bool = True
+    type_k: int = 8  # GGML_TYPE_Q8_0
+    type_v: int = 8  # GGML_TYPE_Q8_0
     n_threads: int = 0
 
     # Preprocessing settings
