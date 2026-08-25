@@ -1,52 +1,51 @@
 @echo off
+setlocal enabledelayedexpansion
+title OrdinFlow Setup Launcher
+
 echo ====================================================
-echo OrdinFlow - Smart Installation Script
+echo OrdinFlow - Smart Installation Launcher
 echo ====================================================
 
-REM Check if Python is installed
-python --version >nul 2>&1
-IF %ERRORLEVEL% NEQ 0 (
-    echo ERROR: Python is not installed or not in PATH!
-    echo Please download Python and check the "Add Python to PATH" box during installation.
+REM 1. Check Python availability on PATH
+where python >nul 2>&1
+if %ERRORLEVEL% NEQ 0 (
+    echo.
+    echo [ERROR] Python is not installed or not in PATH!
+    echo Please install 64-bit Python from https://www.python.org/downloads/
+    echo Make sure to check the box "Add Python to PATH" during installation.
+    echo.
     pause
-    exit /b
+    exit /b 1
 )
 
-echo [*] Creating virtual environment (venv)...
-python -m venv venv
-
-echo [*] Activating venv and installing dependencies...
-call venv\Scripts\activate
-python -m pip install --upgrade pip
-
-REM Automatic GPU detection (NVIDIA vs. AMD/Intel vs. CPU) via PowerShell
-set GPU_RES=0
-powershell -NoProfile -Command "if ((Get-CimInstance Win32_VideoController | Select-Object -ExpandProperty Name) -match 'NVIDIA') { exit 10 } else if ((Get-CimInstance Win32_VideoController | Select-Object -ExpandProperty Name) -match 'AMD|Radeon|Intel') { exit 20 } else { exit 0 }"
-set GPU_RES=%ERRORLEVEL%
-
-if %GPU_RES% EQU 10 (
-    echo [*] NVIDIA GPU detected! Installing llama-cpp-python with NVIDIA CUDA hardware acceleration...
-    pip install --force-reinstall llama-cpp-python --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cu124
-    echo [*] Installing CUDA Runtime libraries...
-    pip install nvidia-cublas nvidia-cuda-runtime
-) else if %GPU_RES% EQU 20 (
-    echo [*] AMD / Intel GPU detected! Installing llama-cpp-python with Vulkan hardware acceleration...
-    pip install --force-reinstall "https://github.com/abetlen/llama-cpp-python/releases/download/v0.3.34-vulkan/llama_cpp_python-0.3.34-py3-none-win_amd64.whl"
-) else (
-    echo [*] No dedicated GPU found. Installing standard CPU variant...
-    pip install llama-cpp-python
+REM 2. Create virtual environment if missing
+if not exist "%~dp0venv\Scripts\python.exe" (
+    echo [*] Creating virtual environment...
+    python -m venv "%~dp0venv"
+    if !ERRORLEVEL! NEQ 0 (
+        echo.
+        echo [ERROR] Failed to create virtual environment!
+        echo Please ensure you have write permissions in this folder.
+        echo.
+        pause
+        exit /b 1
+    )
 )
 
-echo [*] Installing other dependencies from requirements.txt (incl. RapidOCR ONNX)...
-pip install -r requirements.txt
+REM 3. Hand off full installation to the isolated Python orchestrator
+echo [*] Launching OrdinFlow Environment Orchestrator...
+"%~dp0venv\Scripts\python.exe" "%~dp0scripts\setup_environment.py"
+if %ERRORLEVEL% NEQ 0 (
+    echo.
+    echo ====================================================
+    echo [ERROR] Installation did not complete successfully.
+    echo Please review the error messages above.
+    echo ====================================================
+    echo.
+    pause
+    exit /b 1
+)
 
-echo [*] Checking AI Vision models...
-python scripts/download_models.py
-
-echo.
-echo ====================================================
-echo Installation successfully completed!
-echo OrdinFlow is ready to use (Zero-Setup).
-echo ====================================================
 echo.
 pause
+exit /b 0

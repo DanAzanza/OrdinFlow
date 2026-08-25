@@ -22,6 +22,57 @@ try:
 except OSError:
     pass
 
+def _bootstrap_venv() -> None:
+    """Auto-detects if running outside the virtual environment and seamlessly re-executes inside venv."""
+    if os.environ.get("_ORDINFLOW_REEXEC") == "1":
+        return
+
+    # Check if running inside virtualenv (sys.prefix != sys.base_prefix)
+    is_venv = getattr(sys, "base_prefix", sys.prefix) != sys.prefix
+    if is_venv:
+        return
+
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    is_win = sys.platform == "win32"
+    is_pythonw = "pythonw" in os.path.basename(sys.executable).lower()
+
+    if is_win:
+        venv_exec = "pythonw.exe" if is_pythonw else "python.exe"
+        venv_python = os.path.join(base_dir, "venv", "Scripts", venv_exec)
+        if not os.path.exists(venv_python) and is_pythonw:
+            venv_python = os.path.join(base_dir, "venv", "Scripts", "python.exe")
+    else:
+        venv_python = os.path.join(base_dir, "venv", "bin", "python")
+
+    if os.path.exists(venv_python):
+        env = os.environ.copy()
+        env["_ORDINFLOW_REEXEC"] = "1"
+        try:
+            res = subprocess.run([venv_python] + sys.argv, env=env, check=False)
+            sys.exit(res.returncode)
+        except Exception as e:
+            if sys.stderr is not None:
+                sys.stderr.write(f"[ERROR] Failed to launch virtual environment: {e}\n")
+            sys.exit(1)
+    else:
+        msg = (
+            "\n"
+            + "=" * 60
+            + "\n"
+            " [ERROR] OrdinFlow virtual environment not found!\n"
+            " Please run 'Install_OrdinFlow.bat' first to set up OrdinFlow.\n"
+            + "=" * 60
+            + "\n\n"
+        )
+        if sys.stderr is not None:
+            sys.stderr.write(msg)
+        sys.exit(1)
+
+
+# Transparent auto-bootstrap into virtual environment before importing 3rd-party dependencies
+if __name__ == "__main__":
+    _bootstrap_venv()
+
 from core.config import AppConfig
 from core.processor import DocumentProcessor
 from core.skills.queue import get_skill_queue_manager

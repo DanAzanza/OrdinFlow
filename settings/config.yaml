@@ -4,9 +4,9 @@ server_api_key: not-needed
 llm_model_path: models/Qwen3-VL-8B-Instruct-UD-Q4_K_XL.gguf
 mmproj_path: models/mmproj-BF16.gguf
 n_gpu_layers: -1
-n_batch: 2048
+n_batch: 512
 n_ubatch: 512
-n_ctx: 16384
+n_ctx: 4096
 flash_attn: true
 n_threads: 0
 max_dimension: 1008
@@ -17,9 +17,9 @@ dashboard_port: 8080
 crop_edge_threshold: 45
 min_contour_area: 10
 classify_dimension: 1008
-tier1_dimension: 1260
-tier2_dimension: 1512
-tier3_dimension: 1764
+tier1_dimension: 1232
+tier2_dimension: 1372
+tier3_dimension: 1512
 vision_api_timeout: 120
 vision_api_retries: 3
 base_dir: .

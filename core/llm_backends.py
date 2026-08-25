@@ -40,6 +40,29 @@ _GLOBAL_LLM_KEY: tuple[Any, ...] | None = None
 _LLM_LOCK = threading.RLock()
 
 
+def _is_valid_gguf(path_str: str, min_mb: int = 10) -> bool:
+    """Verifies file exists, meets minimum size floor, and starts with b'GGUF'."""
+    if not path_str or not os.path.isfile(path_str):
+        return False
+    try:
+        if os.path.getsize(path_str) < min_mb * 1024 * 1024:
+            return False
+        with open(path_str, "rb") as f:
+            return f.read(4) == b"GGUF"
+    except (OSError, PermissionError):
+        return False
+
+
+def _generate_layer_candidates(requested: int) -> list[int]:
+    """Generates a strictly decreasing layer ladder for dynamic VRAM fitting."""
+    standard_steps = [36, 20, 10, 5, 0]
+    if requested < 0:
+        return [-1, 20, 10, 5, 0]
+    if requested == 0:
+        return [0]
+    return [requested] + [s for s in standard_steps if s < requested]
+
+
 class _LlamaCppBackend(LLMBackend):
     """Direct llama.cpp-python backend with singleton caching and grammar constraints."""
 
@@ -49,6 +72,8 @@ class _LlamaCppBackend(LLMBackend):
     def _ensure_loaded(self) -> bool:
         """Lazy init with singleton caching: Model is loaded once and reused."""
         global _GLOBAL_LLM_INSTANCE, _GLOBAL_LLM_KEY
+        import gc
+        import time
 
         config = self.config  # type: ignore[attr-defined]
         base_dir = os.path.abspath(str(getattr(config, "base_dir", ".")))
@@ -89,8 +114,8 @@ class _LlamaCppBackend(LLMBackend):
         if n_gpu_layers is None:
             n_gpu_layers = -1
 
-        n_ctx = getattr(config, "n_ctx", 16384) or 16384
-        n_batch = getattr(config, "n_batch", 2048) or 2048
+        n_ctx = getattr(config, "n_ctx", 4096) or 4096
+        n_batch = getattr(config, "n_batch", 512) or 512
         n_ubatch = getattr(config, "n_ubatch", 512) or 512
         flash_attn = bool(getattr(config, "flash_attn", True))
 
@@ -158,53 +183,100 @@ class _LlamaCppBackend(LLMBackend):
 
             try:
                 if not os.path.isfile(model_path):
-                    raise FileNotFoundError(f"Model not found: {model_path}")
+                    raise FileNotFoundError(f"Model file not found: {model_path}")
 
-                logger.info("[*] Loading local VL model from '%s' ...", os.path.basename(model_path))
-                logger.info(
-                    "[*] GPU acceleration: %s Layer(s) on GPU, n_batch=%d, n_ubatch=%d, flash_attn=%s",
-                    "ALL" if n_gpu_layers < 0 else str(n_gpu_layers),
-                    n_batch,
-                    n_ubatch,
-                    flash_attn,
-                )
+                if not _is_valid_gguf(model_path, min_mb=100):
+                    raise ValueError(
+                        f"Model file at '{model_path}' is corrupted or incomplete. "
+                        "Please run 'python scripts/download_models.py --yes' to download a clean model copy."
+                    )
+
+                logger.info("[*] Initializing local VL model from '%s' ...", os.path.basename(model_path))
 
                 chat_handler = None
                 if mmproj_raw and os.path.isfile(mmproj_raw):
-                    logger.info(
-                        "[*] Enabling Vision Projector (%s) via Qwen25VLChatHandler...",
-                        os.path.basename(mmproj_raw),
-                    )
-                    chat_handler = Qwen25VLChatHandler(clip_model_path=mmproj_raw, verbose=False)
+                    if _is_valid_gguf(mmproj_raw, min_mb=50):
+                        logger.info(
+                            "[*] Enabling Vision Projector (%s) via Qwen25VLChatHandler...",
+                            os.path.basename(mmproj_raw),
+                        )
+                        chat_handler = Qwen25VLChatHandler(clip_model_path=mmproj_raw, verbose=False)
+                    else:
+                        logger.warning(
+                            "[-] mmproj file at '%s' is corrupted or incomplete. Running without vision support.",
+                            mmproj_raw,
+                        )
                 else:
                     logger.warning("[-] No valid mmproj path found. Model loading without vision support.")
 
-                kwargs: dict[str, Any] = {
-                    "model_path": model_path,
-                    "n_ctx": n_ctx,
-                    "n_batch": n_batch,
-                    "n_ubatch": n_ubatch,
-                    "chat_handler": chat_handler,
-                    "verbose": False,
-                    "n_gpu_layers": n_gpu_layers,
-                    "n_threads": n_threads,
-                    "flash_attn": flash_attn,
-                }
-                try:
-                    self._llm = Llama(**kwargs)  # type: ignore[assignment]
-                except TypeError:
-                    # Fallback if older llama-cpp wheel doesn't support flash_attn / n_ubatch
-                    kwargs.pop("flash_attn", None)
-                    kwargs.pop("n_ubatch", None)
-                    self._llm = Llama(**kwargs)  # type: ignore[assignment]
+                candidates = _generate_layer_candidates(n_gpu_layers)
+                loaded_llm = None
 
+                for cand in candidates:
+                    flash_options = [flash_attn] if cand != 0 else [False]
+                    if flash_attn and cand != 0:
+                        flash_options.append(False)
+
+                    for try_flash in flash_options:
+                        logger.info(
+                            "[*] Attempting to load LLM with n_gpu_layers=%s, flash_attn=%s...",
+                            "ALL" if cand < 0 else str(cand),
+                            try_flash,
+                        )
+                        kwargs: dict[str, Any] = {
+                            "model_path": model_path,
+                            "n_ctx": n_ctx,
+                            "n_batch": n_batch,
+                            "n_ubatch": n_ubatch,
+                            "chat_handler": chat_handler,
+                            "verbose": False,
+                            "n_gpu_layers": cand,
+                            "n_threads": n_threads,
+                            "flash_attn": try_flash,
+                        }
+                        try:
+                            gc.collect()
+                            try:
+                                loaded_llm = Llama(**kwargs)  # type: ignore[assignment]
+                            except TypeError:
+                                kwargs.pop("flash_attn", None)
+                                kwargs.pop("n_ubatch", None)
+                                loaded_llm = Llama(**kwargs)  # type: ignore[assignment]
+
+                            logger.info(
+                                "[+] Successfully fitted %s layer(s) into GPU/system memory (flash_attn=%s).",
+                                "ALL" if cand < 0 else str(cand),
+                                try_flash,
+                            )
+                            break
+                        except Exception as alloc_err:
+                            logger.warning(
+                                "[-] Loading failed for n_gpu_layers=%s (flash_attn=%s): %s. Reclaiming memory...",
+                                "ALL" if cand < 0 else str(cand),
+                                try_flash,
+                                alloc_err,
+                            )
+                            loaded_llm = None
+                            gc.collect()
+                            time.sleep(0.1)
+
+                    if loaded_llm is not None:
+                        break
+
+                if loaded_llm is None:
+                    raise RuntimeError(
+                        "Could not load LLM even in CPU mode (n_gpu_layers=0). Check model integrity."
+                    )
+
+                self._llm = loaded_llm
                 _GLOBAL_LLM_INSTANCE = self._llm
                 _GLOBAL_LLM_KEY = cache_key
                 logger.info("[+] Local VL model loaded successfully and cached in memory.")
             except Exception as _e:
                 logger.error("[!] Error loading model: %s", _e)
+                self._load_failed = True
                 raise RuntimeError(
-                    "Could not load LLM. Please run 'Install_OrdinFlow.bat' and enable GPU acceleration (Vulkan/CUDA)."
+                    "Could not load LLM. Please run 'python scripts/download_models.py --yes' and verify GPU drivers."
                 ) from _e
 
             self._loaded = True
@@ -346,14 +418,27 @@ class _ServerBackend(LLMBackend):
         for m in payload.get("messages") or []:  # type: ignore[union-attr]
             role = m.get("role", "user")  # type: ignore[union-attr]
             content = m.get("content", "")  # type: ignore[union-attr]
-            # Convert to OpenAI format (list of dicts if str)
-            if isinstance(content, str):
-                msgs.append({"role": role, "content": [{"type": "text", "text": content}]})
+            images = m.get("images") or []  # type: ignore[union-attr]
+
+            content_parts: list[dict[str, Any]] = []
+            if isinstance(content, str) and content:
+                content_parts.append({"type": "text", "text": content})
             elif isinstance(content, list):
-                msgs.append({"role": role, "content": content})
+                content_parts.extend(content)
+
+            if images:
+                for img in images:
+                    if isinstance(img, str):
+                        img_url = img if img.startswith("data:") else f"data:image/jpeg;base64,{img}"
+                        content_parts.append({"type": "image_url", "image_url": {"url": img_url}})
+
+            if not content_parts:
+                content_parts.append({"type": "text", "text": ""})
+
+            msgs.append({"role": role, "content": content_parts})
         try:
             resp = self._client.chat.completions.create(  # type: ignore[attr-defined]
-                model="local-model",
+                model=getattr(self.config, "server_model", "local-model"),
                 messages=msgs,
                 temperature=(payload.get("options") or {}).get("temperature", 0.0),  # type: ignore[union-attr]
             )

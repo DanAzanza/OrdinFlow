@@ -26,9 +26,9 @@ class AppConfig:
     llm_model_path: str = "models/Qwen3-VL-8B-Instruct-UD-Q4_K_XL.gguf"
     mmproj_path: str = "models/mmproj-BF16.gguf"
     n_gpu_layers: int = -1
-    n_batch: int = 2048
+    n_batch: int = 512
     n_ubatch: int = 512
-    n_ctx: int = 16384
+    n_ctx: int = 4096
     flash_attn: bool = True
     n_threads: int = 0
 
@@ -44,9 +44,9 @@ class AppConfig:
     min_contour_area: int = 10
 
     classify_dimension: int = 1008
-    tier1_dimension: int = 1260
-    tier2_dimension: int = 1512
-    tier3_dimension: int = 1764
+    tier1_dimension: int = 1232
+    tier2_dimension: int = 1372
+    tier3_dimension: int = 1512
     vision_api_timeout: float = 120.0
     vision_api_retries: int = 3
 
