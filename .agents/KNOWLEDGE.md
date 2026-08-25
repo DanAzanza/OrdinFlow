@@ -107,6 +107,18 @@ graph TD
 ### 🧩 14. KISS in Workflow & Task Editors
 * **Rule**: Keep Task & Action configuration interfaces direct, transparent, and immediately editable. Avoid nested view-mode toggles (e.g. "Simple vs. Expert") or complex collapse states that hide inputs and confuse non-technical users.
 
+### ⚡ 15. VRAM-Safe Adaptive Layer Ladder & 4096 Context Budget
+* **Context Budget (`n_ctx = 4096`)**: To fit comfortably on consumer GPUs and APUs (e.g. AMD Radeon with 3.8 GB VRAM, 4GB/6GB Nvidia cards), tier dimensions MUST remain within a strict 4096-token ceiling (1,850 non-image tokens + 2,052 image tokens):
+  - **Tier 1**: $1232\text{ px}$ ($868 \times 1232\text{ px} = 1{,}364\text{ Tokens}$)
+  - **Tier 2**: $1372\text{ px}$ ($980 \times 1372\text{ px} = 1{,}715\text{ Tokens}$)
+  - **Tier 3**: $1512\text{ px}$ ($1064 \times 1512\text{ px} = 2{,}052\text{ Tokens}$)
+  - **Equidistant Scaling**: All tier dimensions scale in exact $+140\text{ px}$ ($+5$ patches) increments, perfectly divisible by 28.
+* **Steeper Adaptive Layer Ladder**: `_generate_layer_candidates()` steps down via `[-1, 20, 10, 5, 0]`. On ~4GB GPUs, 10 layers offload ~1.33 GB of weights into VRAM, leaving $\approx 1\text{ GB}$ of free memory headroom for the `mmproj` vision forward pass without triggering `VK_ERROR_OUT_OF_DEVICE_MEMORY` crashes.
+
+### 🚀 16. Zero-Setup Windows Bootstrap & GGUF Magic Integrity
+* **Auto-Bootstrap**: `main.py` detects when invoked with a global Python interpreter (`sys.prefix == sys.base_prefix`) and re-executes itself inside `venv\Scripts\python.exe` (or `pythonw.exe`) before importing third-party dependencies.
+* **GGUF Magic & Size Floor Verification**: `scripts/download_models.py` and `_is_valid_gguf()` check the 4-byte `b"GGUF"` magic header and enforce minimum size thresholds to detect and purge corrupted stub files (e.g. HTML 404 error pages) before feeding them to C++ `llama.cpp`.
+
 ---
 
 ## 3. Anti-Patterns & Repository Invariants
