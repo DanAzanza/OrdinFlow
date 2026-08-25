@@ -176,3 +176,28 @@ def test_parse_ggml_type():
     assert _parse_ggml_type(99) == 8
     assert _parse_ggml_type(None) == 8
     assert _parse_ggml_type("garbage", default=1) == 1
+
+
+def test_filter_supported_kwargs():
+    from core.llm_backends import _filter_supported_kwargs
+
+    class DummyClass:
+        def __init__(self, model_path: str, n_ctx: int = 2048, flash_attn: bool = True):
+            self.model_path = model_path
+            self.n_ctx = n_ctx
+            self.flash_attn = flash_attn
+
+    input_kwargs = {
+        "model_path": "test.gguf",
+        "n_ctx": 4096,
+        "flash_attn": True,
+        "unsupported_param": "foo",
+        "another_extra": 123,
+    }
+
+    filtered = _filter_supported_kwargs(DummyClass, input_kwargs)
+    assert "model_path" in filtered
+    assert "n_ctx" in filtered
+    assert "flash_attn" in filtered
+    assert "unsupported_param" not in filtered
+    assert "another_extra" not in filtered

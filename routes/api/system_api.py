@@ -36,6 +36,7 @@ _CONFIG_SAFE_KEYS = [
     "flash_attn",
     "type_k",
     "type_v",
+    "max_tokens",
     "vision_api_timeout",
     "vision_api_retries",
     "crop_edge_threshold",

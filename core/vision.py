@@ -204,7 +204,10 @@ class LLMExtractor:
             f"Options:\n{type_str}\n\n"
             "Reply ONLY with the exact category name - no JSON, no explanation."
         )
-        payload = {"messages": [{"role": "user", "content": prompt, "images": [b64_image]}]}
+        payload = {
+            "messages": [{"role": "user", "content": prompt, "images": [b64_image]}],
+            "max_tokens": 128,
+        }
 
         raw_resp = self.call_vision_api(payload)
         if raw_resp:

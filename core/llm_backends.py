@@ -9,6 +9,7 @@ Instructor + Pydantic enforce error-free data structure – invalid JSON tokens 
 
 from __future__ import annotations
 
+import inspect
 import logging
 import os
 import sys
@@ -17,6 +18,16 @@ from abc import ABC, abstractmethod
 from typing import Any
 
 logger = logging.getLogger(__name__)
+
+
+def _filter_supported_kwargs(cls: type, kwargs: dict[str, Any]) -> dict[str, Any]:
+    """Filters kwargs against class constructor parameters to prevent TypeErrors."""
+    try:
+        sig = inspect.signature(cls.__init__)
+        valid_keys = set(sig.parameters.keys())
+        return {k: v for k, v in kwargs.items() if k in valid_keys}
+    except (ValueError, TypeError):
+        return kwargs
 
 
 class LLMBackend(ABC):
@@ -316,17 +327,22 @@ class _LlamaCppBackend(LLMBackend):
                             "flash_attn": try_flash,
                             "type_k": parsed_type_k,
                             "type_v": parsed_type_v,
+                            "offload_kqv": (cand != 0),
+                            "no_perf": True,
                         }
                         try:
                             gc.collect()
+                            clean_kwargs = _filter_supported_kwargs(Llama, kwargs)
                             try:
-                                loaded_llm = Llama(**kwargs)  # type: ignore[assignment]
+                                loaded_llm = Llama(**clean_kwargs)  # type: ignore[assignment]
                             except TypeError:
-                                kwargs.pop("flash_attn", None)
-                                kwargs.pop("n_ubatch", None)
-                                kwargs.pop("type_k", None)
-                                kwargs.pop("type_v", None)
-                                loaded_llm = Llama(**kwargs)  # type: ignore[assignment]
+                                clean_kwargs.pop("flash_attn", None)
+                                clean_kwargs.pop("n_ubatch", None)
+                                clean_kwargs.pop("type_k", None)
+                                clean_kwargs.pop("type_v", None)
+                                clean_kwargs.pop("offload_kqv", None)
+                                clean_kwargs.pop("no_perf", None)
+                                loaded_llm = Llama(**clean_kwargs)  # type: ignore[assignment]
 
                             logger.info(
                                 "[+] Successfully fitted %s layer(s) into GPU/system memory (flash_attn=%s).",
@@ -430,14 +446,37 @@ class _LlamaCppBackend(LLMBackend):
                 raw_msgs = payload.get("messages") or []  # type: ignore[assignment]
                 messages = self._convert_messages(raw_msgs)  # type: ignore[arg-type]
 
-                max_tok = getattr(self.config, "max_tokens", 2048) or 2048
-                json_schema = payload.get("json_schema")
                 options = payload.get("options")
                 options_dict = options if isinstance(options, dict) else {}
+
+                # Check both root payload and options dictionary
+                temp_val = payload.get("temperature")
+                if temp_val is None:
+                    temp_val = options_dict.get("temperature", 0.0)
+                temperature = float(temp_val) if isinstance(temp_val, (int, float)) else 0.0
+
+                top_p_val = payload.get("top_p")
+                if top_p_val is None:
+                    top_p_val = options_dict.get("top_p", 0.1)
+                top_p = float(top_p_val) if isinstance(top_p_val, (int, float)) else 0.1
+
+                repeat_val = payload.get("repeat_penalty")
+                if repeat_val is None:
+                    repeat_val = options_dict.get("repeat_penalty", 1.0)
+                repeat_penalty = float(repeat_val) if isinstance(repeat_val, (int, float)) else 1.0
+
+                raw_max = payload.get("max_tokens") or options_dict.get("max_tokens") or getattr(self.config, "max_tokens", 2048) or 2048
+                try:
+                    max_tok = int(raw_max)  # type: ignore[arg-type]
+                except (ValueError, TypeError):
+                    max_tok = 2048
+
+                json_schema = payload.get("json_schema")
                 kwargs: dict[str, object] = {
                     "messages": messages,
-                    "temperature": options_dict.get("temperature", 0.0),
-                    "top_p": options_dict.get("top_p", 0.1),
+                    "temperature": temperature,
+                    "top_p": top_p,
+                    "repeat_penalty": repeat_penalty,
                     "max_tokens": max_tok,
                 }
                 if json_schema and isinstance(json_schema, dict):
@@ -521,11 +560,26 @@ class _ServerBackend(LLMBackend):
                 content_parts.append({"type": "text", "text": ""})
 
             msgs.append({"role": role, "content": content_parts})
+
+        options = payload.get("options")
+        options_dict = options if isinstance(options, dict) else {}
+        temp_val = payload.get("temperature")
+        if temp_val is None:
+            temp_val = options_dict.get("temperature", 0.0)
+        temperature = float(temp_val) if isinstance(temp_val, (int, float)) else 0.0
+
+        raw_max = payload.get("max_tokens") or options_dict.get("max_tokens") or getattr(self.config, "max_tokens", 2048) or 2048
+        try:
+            max_tok = int(raw_max)  # type: ignore[arg-type]
+        except (ValueError, TypeError):
+            max_tok = 2048
+
         try:
             resp = self._client.chat.completions.create(  # type: ignore[attr-defined]
                 model=getattr(self.config, "server_model", "local-model"),
                 messages=msgs,
-                temperature=(payload.get("options") or {}).get("temperature", 0.0),  # type: ignore[union-attr]
+                temperature=temperature,
+                max_tokens=max_tok,
             )
             return (resp.choices[0].message.content or "").strip()  # type: ignore[union-attr, attr-defined]
         except (AttributeError, RuntimeError, ValueError, TypeError) as e:
