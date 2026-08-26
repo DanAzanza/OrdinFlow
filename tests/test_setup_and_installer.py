@@ -50,9 +50,9 @@ def test_install_llama_cpp_fallback_to_cpu():
 
 
 def test_resolve_download_url():
-    hf_blob = "https://huggingface.co/unsloth/Qwen3-VL-8B-Instruct-GGUF/blob/main/model.gguf"
+    hf_blob = "https://huggingface.co/unsloth/Qwen3-VL-4B-Instruct-GGUF/blob/main/model.gguf"
     resolved = dm.resolve_download_url(hf_blob)
-    assert resolved == "https://huggingface.co/unsloth/Qwen3-VL-8B-Instruct-GGUF/resolve/main/model.gguf"
+    assert resolved == "https://huggingface.co/unsloth/Qwen3-VL-4B-Instruct-GGUF/resolve/main/model.gguf"
 
 
 def test_validate_gguf_file_valid(tmp_path: Path):
@@ -201,3 +201,10 @@ def test_filter_supported_kwargs():
     assert "flash_attn" in filtered
     assert "unsupported_param" not in filtered
     assert "another_extra" not in filtered
+
+
+def test_is_nvidia_cuda_available():
+    from core.llm_backends import _is_nvidia_cuda_available
+
+    res = _is_nvidia_cuda_available()
+    assert isinstance(res, bool)

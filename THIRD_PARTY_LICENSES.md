@@ -15,7 +15,7 @@
 | ONNX Runtime | Dependency of RapidOCR | MIT License | Inferenz Engine for OCR |
 | Pillow (PIL) | Latest available (via requirements.txt) | HPND | Image Processing & Manipulation |
 | llama-cpp-python | Latest available (via requirements.txt) | MIT License | Local Vision-LLM Inference (GGUF) |
-| Qwen3-VL-8B | GGUF Quantization Q4_K_M | Tongyi Qianwen / Apache 2.0 | Local Multimodal Vision Model |
+| Qwen3-VL-4B | GGUF Quantization Q4_K_XL | Tongyi Qianwen / Apache 2.0 | Local Multimodal Vision Model |
 | PyYAML | Latest available (via requirements.txt) | MIT License | YAML Configuration Parsing |
 | opencv-python | Latest available (via requirements.txt) | Apache License 2.0 | Computer Vision & Preprocessing |
 | numpy | Latest available (via requirements.txt) | BSD 3-Clause | Numerical Array Computing |
@@ -61,7 +61,7 @@ The full license text is available in `licenses/HPND.txt`.
 
 The full license text is available in `licenses/MIT_LICENSE.txt`.
 
-### 7. Qwen3-VL-8B-Instruct – Tongyi Qianwen License & Apache 2.0
+### 7. Qwen3-VL-4B-Instruct – Tongyi Qianwen License & Apache 2.0
 
 **Purpose:** Local multimodal AI model for document classification and schema extraction.  
 **Summary:** Permitted for open-source research and application usage. Output data must not be used to train competing commercial base models.

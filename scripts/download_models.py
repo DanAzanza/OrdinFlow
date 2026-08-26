@@ -13,13 +13,13 @@ if hasattr(sys.stdout, "reconfigure"):
         pass
 
 MODEL_URLS = {
-    "Qwen3-VL-8B-Instruct-UD-Q4_K_XL.gguf": "https://huggingface.co/unsloth/Qwen3-VL-8B-Instruct-GGUF/resolve/main/Qwen3-VL-8B-Instruct-UD-Q4_K_XL.gguf",
-    "mmproj-BF16.gguf": "https://huggingface.co/unsloth/Qwen3-VL-8B-Instruct-GGUF/resolve/main/mmproj-BF16.gguf",
+    "Qwen3-VL-4B-Instruct-UD-Q4_K_XL.gguf": "https://huggingface.co/unsloth/Qwen3-VL-4B-Instruct-GGUF/resolve/main/Qwen3-VL-4B-Instruct-UD-Q4_K_XL.gguf",
+    "mmproj-BF16.gguf": "https://huggingface.co/unsloth/Qwen3-VL-4B-Instruct-GGUF/resolve/main/mmproj-BF16.gguf",
 }
 
 EXPECTED_MIN_SIZES: dict[str, int] = {
-    "Qwen3-VL-8B-Instruct-UD-Q4_K_XL.gguf": 4 * 1024 * 1024 * 1024,  # 4.0 GiB floor
-    "mmproj-BF16.gguf": 1 * 1024 * 1024 * 1024,                     # 1.0 GiB floor
+    "Qwen3-VL-4B-Instruct-UD-Q4_K_XL.gguf": 2 * 1024 * 1024 * 1024,  # 2.0 GiB floor
+    "mmproj-BF16.gguf": 800 * 1024 * 1024,                          # 800 MiB floor
 }
 DEFAULT_MIN_GGUF_SIZE = 10 * 1024 * 1024  # 10 MiB generic floor
 
@@ -110,7 +110,7 @@ def download_file_atomic(url: str, dest_path: Path) -> bool:
 def main() -> None:
     root_dir = Path(__file__).resolve().parent.parent
 
-    llm_path_str = "models/Qwen3-VL-8B-Instruct-UD-Q4_K_XL.gguf"
+    llm_path_str = "models/Qwen3-VL-4B-Instruct-UD-Q4_K_XL.gguf"
     mmproj_path_str = "models/mmproj-BF16.gguf"
 
     config_path = root_dir / "settings" / "config.yaml"

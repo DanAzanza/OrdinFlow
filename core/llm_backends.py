@@ -30,6 +30,43 @@ def _filter_supported_kwargs(cls: type, kwargs: dict[str, Any]) -> dict[str, Any
         return kwargs
 
 
+def _is_nvidia_cuda_available() -> bool:
+    """Checks if NVIDIA CUDA acceleration is present on the current machine."""
+    if sys.platform == "win32":
+        system_root = os.environ.get("SystemRoot", r"C:\Windows")
+        nvcuda_path = os.path.join(system_root, "System32", "nvcuda.dll")
+        if os.path.exists(nvcuda_path):
+            try:
+                import ctypes
+
+                lib = ctypes.windll.LoadLibrary(nvcuda_path)
+                if lib:
+                    return True
+            except Exception:
+                pass
+        try:
+            import winreg
+
+            key_path = r"SYSTEM\CurrentControlSet\Control\Class\{4d36e968-e325-11ce-bfc1-08002be10318}"
+            with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, key_path) as root_key:
+                subkeys_count, _, _ = winreg.QueryInfoKey(root_key)
+                for i in range(subkeys_count):
+                    try:
+                        subkey_name = winreg.EnumKey(root_key, i)
+                        if subkey_name.isdigit():
+                            with winreg.OpenKey(root_key, subkey_name) as subkey:
+                                desc, _ = winreg.QueryValueEx(subkey, "DriverDesc")
+                                if "nvidia" in str(desc).lower():
+                                    return True
+                    except OSError:
+                        continue
+        except Exception:
+            pass
+    elif sys.platform == "linux":
+        return os.path.exists("/proc/driver/nvidia/version") or os.path.exists("/usr/local/cuda")
+    return False
+
+
 class LLMBackend(ABC):
     """Interface for all LLM backends."""
 
@@ -186,7 +223,7 @@ class _LlamaCppBackend(LLMBackend):
         n_ctx = getattr(config, "n_ctx", 4096) or 4096
         n_batch = getattr(config, "n_batch", 512) or 512
         n_ubatch = getattr(config, "n_ubatch", 512) or 512
-        flash_attn = bool(getattr(config, "flash_attn", True))
+        flash_attn = _is_nvidia_cuda_available()
         parsed_type_k = _parse_ggml_type(getattr(config, "type_k", 8))
         parsed_type_v = _parse_ggml_type(getattr(config, "type_v", 8))
 
@@ -325,11 +362,14 @@ class _LlamaCppBackend(LLMBackend):
                             "n_gpu_layers": cand,
                             "n_threads": n_threads,
                             "flash_attn": try_flash,
-                            "type_k": parsed_type_k,
-                            "type_v": parsed_type_v,
                             "offload_kqv": (cand != 0),
                             "no_perf": True,
                         }
+                        if try_flash:
+                            if parsed_type_k is not None:
+                                kwargs["type_k"] = parsed_type_k
+                            if parsed_type_v is not None:
+                                kwargs["type_v"] = parsed_type_v
                         try:
                             gc.collect()
                             clean_kwargs = _filter_supported_kwargs(Llama, kwargs)

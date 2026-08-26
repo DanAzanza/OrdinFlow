@@ -23,20 +23,18 @@ class AppConfig:
     llm_backend: str = "llama_cpp"  # 'llama_cpp' (direct) | 'server' (standalone llama-server)
     server_url: str = "http://127.0.0.1:8080/v1"
     server_api_key: str = "not-needed"
-    llm_model_path: str = "models/Qwen3-VL-8B-Instruct-UD-Q4_K_XL.gguf"
+    llm_model_path: str = "models/Qwen3-VL-4B-Instruct-UD-Q4_K_XL.gguf"
     mmproj_path: str = "models/mmproj-BF16.gguf"
     n_gpu_layers: int = -1
     n_batch: int = 512
     n_ubatch: int = 512
     n_ctx: int = 4096
-    flash_attn: bool = True
     type_k: int = 8  # GGML_TYPE_Q8_0
     type_v: int = 8  # GGML_TYPE_Q8_0
     max_tokens: int = 2048
     n_threads: int = 0
 
     # Preprocessing settings
-    max_dimension: int = 1008
     crop_padding: int = 5
     white_border: int = 8
     contrast_limit: float = 1.0
@@ -46,10 +44,10 @@ class AppConfig:
     crop_edge_threshold: int = 45
     min_contour_area: int = 10
 
-    classify_dimension: int = 1008
-    tier1_dimension: int = 1232
-    tier2_dimension: int = 1372
-    tier3_dimension: int = 1512
+    classify_dimension: int = 896
+    tier1_dimension: int = 1120
+    tier2_dimension: int = 1344
+    tier3_dimension: int = 1568
     vision_api_timeout: float = 120.0
     vision_api_retries: int = 3
 

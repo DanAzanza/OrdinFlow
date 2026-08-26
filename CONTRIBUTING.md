@@ -32,7 +32,7 @@ This project and everyone participating in it is governed by the [Contributor Co
    ```
 
 4. **Download Local Vision Models (Optional for Unit Tests):**
-   Place your GGUF models in `models/` (e.g. `Qwen3-VL-8B-Instruct-UD-Q4_K_XL.gguf` and `mmproj-BF16.gguf`). Note: The automated unit test suite uses synthetic fixtures and runs without downloading large model weights.
+   Place your GGUF models in `models/` (e.g. `Qwen3-VL-4B-Instruct-UD-Q4_K_XL.gguf` and `mmproj-BF16.gguf`). Note: The automated unit test suite uses synthetic fixtures and runs without downloading large model weights.
 
 ---
 

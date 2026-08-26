@@ -135,7 +135,7 @@ flowchart TD
 | :--- | :--- | :--- |
 | **Language** | Python 3.10+ | Modern typing support, native concurrency, rich scientific ecosystem. |
 | **VLM Inference** | `llama-cpp-python` / GGUF | In-process native C++ inference; eliminates external heavy model servers and minimizes VRAM footprint. |
-| **Models** | Qwen 2.5 / 3-VL (8B) | State-of-the-art visual document reasoning and multilingual comprehension. |
+| **Models** | Qwen 2.5 / 3-VL (4B) | State-of-the-art visual document reasoning and multilingual comprehension. |
 | **OCR Engine** | RapidOCR (`onnxruntime`) | Lightweight deep-learning OCR in ONNX format; zero system `.exe` dependencies (cross-platform, zero setup). |
 | **PDF & Graphics** | PyMuPDF (`fitz`), OpenCV, PIL | Fast C-backed PDF rendering, contour detection, and spatial block extraction. |
 | **Web Dashboard** | Flask, HTML5, Vanilla JS, CSS3 | Clean, dependency-light presentation layer without fragile npm/node build chains. |
@@ -240,7 +240,7 @@ python -m pytest -q
 
 ### Prerequisites
 - **Python 3.10+** (64-bit)
-- **Local Vision-LLM (GGUF):** Place your vision model (e.g., `Qwen3-VL-8B-Instruct-UD-Q4_K_XL.gguf` + `mmproj-BF16.gguf`) in the `models/` directory.
+- **Local Vision-LLM (GGUF):** Place your vision model (e.g., `Qwen3-VL-4B-Instruct-UD-Q4_K_XL.gguf` + `mmproj-BF16.gguf`) in the `models/` directory.
 
 ### Installation
 ```bash
