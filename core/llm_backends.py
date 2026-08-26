@@ -428,11 +428,18 @@ class _LlamaCppBackend(LLMBackend):
         if not self._ensure_loaded():
             return False
 
-        # Base64 64x64 solid white PNG to warm up vision projector & KV cache
-        dummy_b64_png = (
-            "iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAIAAAAlC+aJAAAAP0lEQVR4nO3BAQ0AAADCoPdPbQ43"
-            "oAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAeDAzWQAB8yCRZwAAAABJ"
-            "RU5ErkJggg=="
+        # Base64 56x56 solid white JPEG (multiple of 28 for Qwen2-VL patch grid) to warm up vision projector & KV cache
+        dummy_b64_jpg = (
+            "/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAIBAQEBAQIBAQECAgICAgQDAgICAgUEBAMEBgUGBgYFBgYGBwkIBgcJBwYGCAsICQ"
+            "oKCgoKBggLDAsKDAkKCgr/2wBDAQICAgICAgUDAwUKBwYHCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoK"
+            "CgoKCgoKCgoKCgr/wAARCAA4ADgDASIAAhEBAxEB/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAw"
+            "IEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6Q0RFRkdI"
+            "SUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1N"
+            "XW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/8QAHwEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoL/8QAtREAAgECBAQDBAcF"
+            "BAQAAQJ3AAECAxEEBSExBhJBUQdhcRMiMoEIFEKRobHBCSMzUvAVYnLRChYkNOEl8RcYGRomJygpKjU2Nzg5OkNERUZHSElKU1"
+            "RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6goOEhYaHiImKkpOUlZaXmJmaoqOkpaanqKmqsrO0tba3uLm6wsPExcbHyMnK0tPU1dbX"
+            "2Nna4uPk5ebn6Onq8vP09fb3+Pn6/9oADAMBAAIRAxEAPwD9/KKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAK"
+            "KKKACiiigAooooAKKKKACiiigAooooAKKKKAP/2Q=="
         )
         try:
             payload = {
@@ -440,7 +447,7 @@ class _LlamaCppBackend(LLMBackend):
                     {
                         "role": "user",
                         "content": "Warmup",
-                        "images": [dummy_b64_png],
+                        "images": [dummy_b64_jpg],
                     }
                 ],
                 "max_tokens": 1,
