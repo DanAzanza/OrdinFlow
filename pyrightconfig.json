@@ -1,6 +1,8 @@
 {
-  "include": ["core"],
+  "include": ["core", "routes"],
   "pythonVersion": "3.10",
+  "venvPath": ".",
+  "venv": "venv",
   "reportMissingImports": false,
   "reportMissingModuleSource": false
 }
