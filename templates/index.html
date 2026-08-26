@@ -168,12 +168,10 @@
                         <span style="font-size: 1.1rem;">⚙️</span>
                         <span style="font-weight: 700; font-size: 0.95rem; color: var(--text);">System Setup & Configuration</span>
                     </div>
-                    <div style="display: flex; gap: 8px;">
-                        <button class="btn btn-sm btn-secondary" onclick="loadConfigTab()">
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <div id="configSaveStatus" class="config-save-status" aria-live="polite"></div>
+                        <button type="button" class="btn btn-sm btn-secondary" onclick="loadConfigTab()" title="Reload settings from server">
                             🔄 Reset
-                        </button>
-                        <button class="btn btn-sm btn-primary" id="btnSaveConfig" onclick="saveConfigFromForm()">
-                            💾 Save Setup
                         </button>
                     </div>
                 </div>

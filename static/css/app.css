@@ -2377,6 +2377,66 @@ color: #fff;
     margin-bottom: 6px;
 }
 
+.config-save-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.78rem;
+    font-weight: 500;
+    min-height: 28px;
+    padding: 2px 8px;
+    border-radius: var(--radius-xs);
+    opacity: 0;
+    transition: opacity 0.2s ease, color 0.2s ease, background 0.2s ease;
+    color: var(--text-muted);
+}
+
+.config-save-status.saving {
+    opacity: 1;
+    color: var(--text-muted);
+}
+
+.config-save-status.saved {
+    opacity: 1;
+    color: #10b981;
+    background: rgba(16, 185, 129, 0.08);
+}
+
+.config-save-status.error {
+    opacity: 1;
+    color: #ef4444;
+    background: rgba(239, 68, 68, 0.1);
+}
+
+.config-save-spinner {
+    width: 12px;
+    height: 12px;
+    border: 2px solid rgba(148, 163, 184, 0.3);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+    display: inline-block;
+}
+
+.config-save-retry-btn {
+    background: none;
+    border: none;
+    color: inherit;
+    text-decoration: underline;
+    cursor: pointer;
+    font-size: inherit;
+    font-weight: 700;
+    padding: 0 2px;
+}
+
+.config-save-retry-btn:hover {
+    color: #f87171;
+}
+
+.input-invalid-intermediate {
+    border-color: #f59e0b !important;
+}
+
 /* ── Modals & Dialogs ──────────────────────────────────────────────── */
 .modal-overlay {
     position: fixed;

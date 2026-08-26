@@ -1,5 +1,5 @@
 /* ═══════════════════════════════════════════════════════════
-   SETUP & SYSTEM CONFIG EDITOR TAB
+   SETUP & SYSTEM CONFIG EDITOR TAB (AUTO-SAVE)
    ═══════════════════════════════════════════════════════════ */
 
 const CONFIG_LABELS = {
@@ -56,27 +56,217 @@ const PATH_CONFIG = {
     mmproj_path: { type: "file", title: "GGUF mmproj-Projektordatei auswählen", filter: ".gguf" }
 };
 
-function markConfigDirty(dirty = true) {
-    state.configDirty = dirty;
-    const btn = document.getElementById("btnSaveConfig");
-    if (!btn) return;
-    if (dirty) {
-        btn.classList.add("unsaved");
-        btn.innerHTML = "🔴 Save Unsaved Changes";
+const CONFIG_INT_KEYS = new Set([
+    "dashboard_port",
+    "n_gpu_layers",
+    "n_batch",
+    "n_ubatch",
+    "n_ctx",
+    "type_k",
+    "type_v",
+    "max_tokens",
+    "vision_api_retries"
+]);
+
+const CONFIG_FLOAT_KEYS = new Set([
+    "vision_api_timeout",
+    "contrast_limit"
+]);
+
+// ── Auto-Save Controller State ──
+const _autoSaveState = {
+    timer: null,
+    statusTimer: null,
+    inFlight: false,
+    queued: false,
+    lastSaved: {},
+    abortController: null
+};
+
+function updateConfigStatus(status, errorMsg = "") {
+    const el = document.getElementById("configSaveStatus");
+    if (!el) return;
+
+    if (_autoSaveState.statusTimer) {
+        clearTimeout(_autoSaveState.statusTimer);
+        _autoSaveState.statusTimer = null;
+    }
+
+    el.className = `config-save-status ${status}`.trim();
+    if (status === "saving") {
+        el.innerHTML = '<span class="config-save-spinner"></span> Saving...';
+        el.title = "Persisting settings to server...";
+    } else if (status === "saved") {
+        el.innerHTML = "✓ Saved";
+        el.title = "All settings persisted";
+        _autoSaveState.statusTimer = setTimeout(() => {
+            el.className = "config-save-status";
+            el.innerHTML = "";
+            el.title = "";
+        }, 2500);
+    } else if (status === "error") {
+        el.innerHTML = '⚠️ Save failed <button type="button" class="config-save-retry-btn" onclick="triggerConfigAutoSave(true)">Retry</button>';
+        el.title = errorMsg || "Failed to persist settings";
     } else {
-        btn.classList.remove("unsaved");
-        btn.innerHTML = "💾 Save Settings";
+        el.innerHTML = "";
+        el.title = "";
+    }
+}
+
+function cancelPendingAutoSave() {
+    if (_autoSaveState.timer) {
+        clearTimeout(_autoSaveState.timer);
+        _autoSaveState.timer = null;
+    }
+    _autoSaveState.queued = false;
+    if (_autoSaveState.abortController) {
+        _autoSaveState.abortController.abort();
+        _autoSaveState.abortController = null;
+    }
+    _autoSaveState.inFlight = false;
+}
+
+function flushPendingConfigSave() {
+    if (_autoSaveState.timer) {
+        clearTimeout(_autoSaveState.timer);
+        _autoSaveState.timer = null;
+        executeConfigAutoSave();
+    }
+}
+
+function buildConfigDeltaPayload(lastSaved) {
+    const payload = {};
+    let hasChanges = false;
+    let hasValidationError = false;
+
+    const allKeys = CONFIG_GROUPS.flatMap(g => g.keys);
+    for (const key of allKeys) {
+        const el = document.getElementById(`cfg_${key}`);
+        if (!el) continue;
+
+        let val;
+        if (el.type === "checkbox") {
+            val = el.checked;
+        } else if (key === "folder_structure") {
+            val = el.value ? el.value.split(",").map(s => s.trim()).filter(Boolean) : [];
+        } else if (CONFIG_INT_KEYS.has(key)) {
+            const raw = el.value.trim();
+            if (raw === "" || (isNaN(Number(raw)) && raw !== "-")) {
+                el.classList.add("input-invalid-intermediate");
+                hasValidationError = true;
+                continue;
+            }
+            if (raw === "-") {
+                hasValidationError = true;
+                continue;
+            }
+            el.classList.remove("input-invalid-intermediate");
+            val = parseInt(raw, 10);
+        } else if (CONFIG_FLOAT_KEYS.has(key)) {
+            const raw = el.value.trim();
+            if (raw === "" || (isNaN(Number(raw)) && raw !== "-")) {
+                el.classList.add("input-invalid-intermediate");
+                hasValidationError = true;
+                continue;
+            }
+            if (raw === "-") {
+                hasValidationError = true;
+                continue;
+            }
+            el.classList.remove("input-invalid-intermediate");
+            val = parseFloat(raw);
+        } else {
+            val = el.value.trim();
+        }
+
+        const prevVal = lastSaved ? lastSaved[key] : undefined;
+        if (JSON.stringify(val) !== JSON.stringify(prevVal)) {
+            payload[key] = val;
+            hasChanges = true;
+        }
+    }
+
+    return { payload, hasChanges, hasValidationError };
+}
+
+function triggerConfigAutoSave(immediate = false) {
+    if (_autoSaveState.timer) {
+        clearTimeout(_autoSaveState.timer);
+        _autoSaveState.timer = null;
+    }
+
+    if (immediate) {
+        executeConfigAutoSave();
+    } else {
+        _autoSaveState.timer = setTimeout(executeConfigAutoSave, 500);
+    }
+}
+
+async function executeConfigAutoSave() {
+    if (_autoSaveState.inFlight) {
+        _autoSaveState.queued = true;
+        return;
+    }
+
+    const { payload, hasChanges, hasValidationError } = buildConfigDeltaPayload(_autoSaveState.lastSaved);
+    if (!hasChanges) {
+        if (!hasValidationError && !_autoSaveState.queued) {
+            // Already in sync
+        }
+        return;
+    }
+
+    _autoSaveState.inFlight = true;
+    _autoSaveState.queued = false;
+    updateConfigStatus("saving");
+
+    try {
+        _autoSaveState.abortController = new AbortController();
+        const res = await api("/api/config", {
+            method: "PUT",
+            body: JSON.stringify(payload),
+            signal: _autoSaveState.abortController.signal
+        });
+
+        if (res && (res.status === "ok" || res.changed !== undefined)) {
+            Object.assign(_autoSaveState.lastSaved, payload);
+            if (state.config) {
+                Object.assign(state.config, payload);
+            }
+            updateConfigStatus("saved");
+
+            // Broadcast config refresh only if directory/routing structural settings changed
+            if ("folder_structure" in payload || "folder_delimiter" in payload) {
+                AppEvents.emit("config:refresh");
+            }
+        } else {
+            throw new Error(res?.error || "Failed to persist configuration");
+        }
+    } catch (e) {
+        if (e.name !== "AbortError") {
+            console.error("[ConfigAutoSave] Error saving configuration:", e);
+            updateConfigStatus("error", e.message);
+            toast("Error saving settings: " + e.message, "error");
+        }
+    } finally {
+        _autoSaveState.inFlight = false;
+        _autoSaveState.abortController = null;
+        if (_autoSaveState.queued) {
+            _autoSaveState.queued = false;
+            executeConfigAutoSave();
+        }
     }
 }
 
 function attachConfigInputListeners() {
     const inputs = document.querySelectorAll("#setupConfigContainer input, #setupConfigContainer select, #setupConfigContainer textarea");
     inputs.forEach(el => {
-        el.addEventListener("input", () => markConfigDirty(true));
-        el.addEventListener("change", () => markConfigDirty(true));
+        el.addEventListener("input", () => triggerConfigAutoSave(false));
+        el.addEventListener("change", () => triggerConfigAutoSave(true));
     });
 }
 
+// ── Path Picker Integration ──
 let _activePathPicker = null;
 
 function browseSystemPath(key) {
@@ -232,11 +422,9 @@ function confirmSystemPathPicker() {
     const inputPathEl = document.getElementById("pathPickerSelectedInput");
     const chosen = inputPathEl ? inputPathEl.value.trim() : (_activePathPicker.selectedPath || _activePathPicker.currentPath);
 
-    if (chosen) {
-        if (_activePathPicker.inputEl) {
-            _activePathPicker.inputEl.value = chosen;
-            markConfigDirty(true);
-        }
+    if (chosen && _activePathPicker.inputEl) {
+        _activePathPicker.inputEl.value = chosen;
+        _activePathPicker.inputEl.dispatchEvent(new Event("change", { bubbles: true }));
     }
     closeSystemPathPicker();
 }
@@ -250,10 +438,15 @@ function closeSystemPathPicker() {
     _activePathPicker = null;
 }
 
+// ── Tab Lifecycle ──
 async function loadConfigTab() {
+    cancelPendingAutoSave();
+    updateConfigStatus("");
+
     try {
         const cfg = await api("/api/config");
         state.config = cfg;
+        _autoSaveState.lastSaved = JSON.parse(JSON.stringify(cfg));
 
         const container = document.getElementById("setupConfigContainer");
         if (!container) return;
@@ -304,9 +497,7 @@ async function loadConfigTab() {
         }
 
         container.innerHTML = html;
-
         attachConfigInputListeners();
-        markConfigDirty(false);
         updateConfigInspector();
     } catch (e) {
         console.error("Error loading config:", e);
@@ -320,40 +511,6 @@ function updateConfigInspector() {
     }
 }
 
-async function saveConfigFromForm() {
-    try {
-        const payload = {};
-        const allKeys = CONFIG_GROUPS.flatMap(g => g.keys);
-
-        for (const key of allKeys) {
-            const el = document.getElementById(`cfg_${key}`);
-            if (!el) continue;
-
-            if (el.type === "checkbox") {
-                payload[key] = el.checked;
-            } else {
-                let val = el.value.trim();
-                if (key === "folder_structure") {
-                    payload[key] = val ? val.split(",").map(s => s.trim()).filter(Boolean) : [];
-                } else if (["vision_api_timeout", "dashboard_port", "vision_api_retries", "n_gpu_layers", "n_batch"].includes(key)) {
-                    payload[key] = Number(val) || 0;
-                } else {
-                    payload[key] = val;
-                }
-            }
-        }
-
-        await api("/api/config", {
-            method: "PUT",
-            body: JSON.stringify(payload),
-        });
-
-        toast("Settings saved successfully!");
-        markConfigDirty(false);
-        await loadConfigTab();
-        AppEvents.emit("config:refresh");
-    } catch (e) {
-        console.error("Error saving config:", e);
-        toast("Error saving settings: " + e.message, "error");
-    }
-}
+window.addEventListener("beforeunload", () => {
+    flushPendingConfigSave();
+});

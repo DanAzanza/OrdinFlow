@@ -1,4 +1,7 @@
 function switchTab(name) {
+	if (typeof flushPendingConfigSave === "function") {
+		flushPendingConfigSave();
+	}
 	resetAppInspectorContent();
 
 	document
