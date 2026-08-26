@@ -121,9 +121,13 @@ class ImagePreprocessor:
                     margin_left.flatten(),
                     margin_right.flatten(),
                 ])
-                bg_val = int(np.percentile(margin_samples, 85)) if len(margin_samples) > 0 else 255
+                bg_val = (
+                    int(np.percentile(np.asarray(margin_samples, dtype=np.float64), 85))
+                    if len(margin_samples) > 0
+                    else 255
+                )  # type: ignore[call-overload, arg-type]
             else:
-                bg_val = int(np.median(gray)) if gray.size > 0 else 255
+                bg_val = int(np.median(np.asarray(gray, dtype=np.float64))) if gray.size > 0 else 255  # type: ignore[call-overload, arg-type]
 
             # 2. Symmetric Absolute Difference & Gaussian Denoising
             blurred = cv2.GaussianBlur(gray, (5, 5), 0)
