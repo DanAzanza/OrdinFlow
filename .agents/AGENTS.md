@@ -6,7 +6,7 @@
 * **Ask Before Action**: Never speculate on underspecified requirements or missing context. Ask targeted questions before beginning implementation.
 * **Step-by-Step Approach**: Guide the user through complex problems in a structured, incremental manner. Request necessary constraints before initiating next steps.
 * **Collegial Tone**: Maintain a friendly, collegial tone with a healthy touch of humor.
-* **Continuous Self-Improvement & Repository Memory**: You are authorized and encouraged to expand this `AGENTS.md` file and keep [`.agents/KNOWLEDGE.md`](file:///g:/Meine%20Ablage/Projekte/OrdinFlow/.agents/KNOWLEDGE.md) updated with new architectural insights, gotchas, and component mappings for future agents.
+* **Continuous Self-Improvement & Repository Memory**: You are authorized and encouraged to expand this `AGENTS.md` file and keep [`.agents/KNOWLEDGE.md`](.agents/KNOWLEDGE.md) updated with new architectural insights, gotchas, and component mappings for future agents.
 
 ---
 
@@ -23,8 +23,8 @@
 * **Zero Placeholders**: Never use placeholders, summaries, or truncation comments (e.g., `// ... existing code ...`, `/* remaining code unchanged */`). Always output fully complete, runnable code files or intact, self-contained functional blocks.
 * **Defensive & Dependency Hygiene**: Implement complete logic without unsolicited third-party packages. Rely on native capabilities and existing utilities first.
 * **Non-Blocking Execution & Zero-Polling Protocol**: When initiating background processes or async timers, never poll for status in a loop. Update the user with a concise status message and yield control to await background notifications.
-* **Task Verification Gate**: Run the automated test suite or repository CI verification script before presenting completed work or requesting user feedback.
-* **Explicit User Authorization & Pre-Commit Protocol**: Never commit or push changes automatically or "on the side". Present results to the user and wait for their explicit request (e.g., "please push", "bitte committen"). Once authorized, execute the full Pre-Commit Quality Gate (Section 8: CI verification script and `pre_commit_auditor`) before creating the commit and pushing.
+* **Task Verification Gate (Code Changes Only)**: Run automated unit tests (`pytest -q` or equivalent) ONLY when executable application source code was modified. Do NOT run unit tests for pure documentation/markdown changes, questions, or config edits. Never run linters (Ruff) or static type checkers (Pyright) during intermediate steps.
+* **Explicit User Authorization & Pre-Commit Protocol**: Never commit or push changes automatically or "on the side". Present results to the user and wait for their explicit request (e.g., "please push", "bitte committen"). Once authorized, execute the full Pre-Commit Quality Gate (Section 8: CI verification script with Ruff, Pyright, full test suite and `pre_commit_auditor`) before creating the commit and pushing.
 
 ---
 
@@ -96,9 +96,13 @@ When asked to write or suggest Git commit messages, strictly adhere to the follo
 ---
 
 ## 8. CI, Testing & Pre-Commit Quality Gate
-* **Development & Task Completion Gate**: Run the repository's fast automated test suite during iterative development and before presenting completed work to the user.
-* **Mandatory Pre-Commit Quality Gate (Triggered Upon Explicit Commit Request)**:
-  * When the user explicitly authorizes a commit/push, the agent MUST run the central verification script documented in [`.agents/KNOWLEDGE.md`](file:///g:/Meine%20Ablage/Projekte/OrdinFlow/.agents/KNOWLEDGE.md).
+* **Development & Task Completion Gate (Conditional Unit Tests Only)**:
+  * Run unit tests ONLY if application source code (`.py`, `.js`, etc.) was modified in the task.
+  * If the task involved only documentation, markdown (`.md`), explanations, or non-executable assets, skip test runs entirely.
+  * Linters (e.g. Ruff) and static type checkers (e.g. Pyright) are strictly FORBIDDEN during development iterations to save time and compute.
+* **Mandatory Pre-Commit Quality Gate (Triggered Strictly Upon Explicit Commit/Push Request)**:
+  * Linters (Ruff), static type checkers (Pyright), and the full test suite are executed ONLY when the user explicitly instructs to commit or push (e.g., "bitte committen", "commit and push").
+  * Run the central verification script documented in [`.agents/KNOWLEDGE.md`](.agents/KNOWLEDGE.md) (`python scripts/verify_ci.py`).
   * Deterministically execute CI parity: Linter, Static Type Checker, and Full Test Suite.
 * **Subagent Code & Goal Audit Gate**: For non-trivial refactorings and features, invoke the `pre_commit_auditor` subagent to conduct an adversarial audit on `git diff` against:
   1. **Plan-to-Code Fidelity**: Does the code genuinely solve the root problem and deliver all commitments from `implementation_plan.md`, or were corners cut and edge cases dropped?

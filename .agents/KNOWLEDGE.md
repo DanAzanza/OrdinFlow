@@ -19,17 +19,17 @@ graph TD
 ```
 
 ### Core Directory Layout
-* [`core/extraction_pipeline.py`](file:///g:/Meine%20Ablage/Projekte/OrdinFlow/core/extraction_pipeline.py): Multi-tier consensus voting engine, spatial RapidOCR fusion, GBNF grammar constraints, and typographical casing representative election.
-* [`core/skills/engines/export_engine.py`](file:///g:/Meine%20Ablage/Projekte/OrdinFlow/core/skills/engines/export_engine.py): Main RPA execution loop, action dispatcher, recursive `CALL_SKILL` invocation, and simulation `dry_run` mode.
-* [`core/skills/grounder.py`](file:///g:/Meine%20Ablage/Projekte/OrdinFlow/core/skills/grounder.py): Set-of-Mark (SoM) visual badge grounding, 28px-aligned 4K quadrant tiling, multi-monitor virtual desktop capture, and Per-Monitor V2 DPI awareness cascade.
-* [`core/skills/text_helpers.py`](file:///g:/Meine%20Ablage/Projekte/OrdinFlow/core/skills/text_helpers.py): Win32 Unicode keystrokes, safe 64-bit clipboard paste with prior-content restoration, 80ms yield timing, and `{Var|modifier}` string formatters.
-* [`core/skills/window_manager.py`](file:///g:/Meine%20Ablage/Projekte/OrdinFlow/core/skills/window_manager.py): Window activation, maximize, app launch skills, `IsHungAppWindow` freeze recovery, and modal popup handling.
-* [`core/skills/case_router.py`](file:///g:/Meine%20Ablage/Projekte/OrdinFlow/core/skills/case_router.py): Case folder batch routing, document type filtering, and atomic `.meta` sidecar execution tracking.
-* [`core/skills/queue.py`](file:///g:/Meine%20Ablage/Projekte/OrdinFlow/core/skills/queue.py): Thread-safe background execution queue (pause, resume, cancel, retry).
-* [`core/llm_backends.py`](file:///g:/Meine%20Ablage/Projekte/OrdinFlow/core/llm_backends.py): Local `llama-cpp-python` VRAM backend with double-checked reentrant locking.
-* [`routes/api/cases_api.py`](file:///g:/Meine%20Ablage/Projekte/OrdinFlow/routes/api/cases_api.py): Case review REST endpoints with path containment guards and exponential backoff retry directory renames.
-* [`routes/api/system_api.py`](file:///g:/Meine%20Ablage/Projekte/OrdinFlow/routes/api/system_api.py): Base64 `-EncodedCommand` PowerShell path pickers and system diagnostics.
-* [`static/js/`](file:///g:/Meine%20Ablage/Projekte/OrdinFlow/static/js/): Modular frontend controllers (`skills_tab.js`, `skills_steps.js`, `skills_queue.js`, `skills_doctypes.js`, `skills_copilot.js`, `inbox.js`, `cases.js`, `app.js`).
+* [`core/extraction_pipeline.py`](../core/extraction_pipeline.py): Multi-tier consensus voting engine, spatial RapidOCR fusion, GBNF grammar constraints, and typographical casing representative election.
+* [`core/skills/engines/export_engine.py`](../core/skills/engines/export_engine.py): Main RPA execution loop, action dispatcher, recursive `CALL_SKILL` invocation, and simulation `dry_run` mode.
+* [`core/skills/grounder.py`](../core/skills/grounder.py): Set-of-Mark (SoM) visual badge grounding, 28px-aligned 4K quadrant tiling, multi-monitor virtual desktop capture, and Per-Monitor V2 DPI awareness cascade.
+* [`core/skills/text_helpers.py`](../core/skills/text_helpers.py): Win32 Unicode keystrokes, safe 64-bit clipboard paste with prior-content restoration, 80ms yield timing, and `{Var|modifier}` string formatters.
+* [`core/skills/window_manager.py`](../core/skills/window_manager.py): Window activation, maximize, app launch skills, `IsHungAppWindow` freeze recovery, and modal popup handling.
+* [`core/skills/case_router.py`](../core/skills/case_router.py): Case folder batch routing, document type filtering, and atomic `.meta` sidecar execution tracking.
+* [`core/skills/queue.py`](../core/skills/queue.py): Thread-safe background execution queue (pause, resume, cancel, retry).
+* [`core/llm_backends.py`](../core/llm_backends.py): Local `llama-cpp-python` VRAM backend with double-checked reentrant locking.
+* [`routes/api/cases_api.py`](../routes/api/cases_api.py): Case review REST endpoints with path containment guards and exponential backoff retry directory renames.
+* [`routes/api/system_api.py`](../routes/api/system_api.py): Base64 `-EncodedCommand` PowerShell path pickers and system diagnostics.
+* [`static/js/`](../static/js/): Modular frontend controllers (`skills_tab.js`, `skills_steps.js`, `skills_queue.js`, `skills_doctypes.js`, `skills_copilot.js`, `inbox.js`, `cases.js`, `app.js`).
 
 ---
 
@@ -125,11 +125,11 @@ graph TD
 
 | Anti-Pattern | Correct Practice |
 |---|---|
-| Large files (> 800 LOC) | Modularize into SRP submodules (Enforced by [`test_architecture_guard.py`](file:///g:/Meine%20Ablage/Projekte/OrdinFlow/tests/test_architecture_guard.py)) |
+| Large files (> 800 LOC) | Modularize into SRP submodules (Enforced by [`test_architecture_guard.py`](../tests/test_architecture_guard.py)) |
 | Hardcoded German symbols in Python | Strict English symbols, functions, and docstrings |
 | Raw dimension integers in consensus | Symbolic tier keys (`"tier1"`, `"tier2"`, `"tier3"`) |
 | Unchecked ctypes pointer returns | Declare `restype = ctypes.c_void_p` for 64-bit pointers |
-| Dynamic `element.style` in JS | CSS classes and design tokens in [`static/css/app.css`](file:///g:/Meine%20Ablage/Projekte/OrdinFlow/static/css/app.css) |
+| Dynamic `element.style` in JS | CSS classes and design tokens in [`static/css/app.css`](../static/css/app.css) |
 | Polling background loops in tools | Non-blocking execution & reactive wakeup |
 | Orphaned metadata files | Atomic sidecar (`.meta`) routing & deletion |
 
@@ -137,14 +137,23 @@ graph TD
 
 ## 4. Repository Verification Commands & Quality Gate
 
-Always run and pass all gates with 0 errors before presenting results to the user:
-```bash
-python scripts/verify_ci.py
-```
-This executes:
-1. `python -m ruff check .`
-2. `npx pyright core/ routes/`
-3. `python -m pytest -q` (140+ tests)
+* **Intermediate Iteration / Task Completion (Code Changes Only)**:
+  ```bash
+  python -m pytest -q
+  ```
+  - Run ONLY if application source code (`.py`, `.js`) was modified in the task.
+  - Skip completely if only `.md`, documentation, or non-code configuration files were touched.
+  - **Do NOT run Ruff or Pyright during iterative tasks.**
+
+* **Pre-Commit Quality Gate (Triggered Strictly Upon Explicit Commit/Push Request)**:
+  ```bash
+  python scripts/verify_ci.py
+  ```
+  - Executed ONLY when the user explicitly instructs to commit or push (e.g., "bitte committen", "commit und push").
+  - Deterministically runs:
+    1. `python -m ruff check .` (Ruff Linter)
+    2. `npx pyright core/ routes/` (Pyright Static Type Checker)
+    3. `python -m pytest -q` (Full Test Suite, 140+ tests)
 
 ---
 
