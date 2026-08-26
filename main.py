@@ -238,10 +238,10 @@ def main() -> None:
 
     logger.info("[*] Skill Queue Manager active (Single Source of Execution).")
 
-    # 2. Warm up Vision-LLM in background so first file processes instantly
+    # 2. Warm up Extraction Pipeline (Vision-LLM + RapidOCR) in background so first file processes instantly
     try:
         threading.Thread(
-            target=processor.extraction_pipeline.llm_extractor.preload,
+            target=processor.extraction_pipeline.preload,
             daemon=True,
             name="ModelWarmupWorker",
         ).start()

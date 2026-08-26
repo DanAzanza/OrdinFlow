@@ -163,22 +163,17 @@ def clean_extracted_value(val: Any) -> str:
     return s
 
 
-def format_result(res: dict, include_missing: bool = True, mask_pii: bool = True) -> str:
+def format_result(res: dict, include_missing: bool = True) -> str:
     """Formats the result dictionary for clean log output with all extracted fields."""
     if not res:
         return "No data"
     ignore_keys = {"pages", "page_results", "b64_img", "raw_text", "images"}
-    pii_fields = {"patient", "name", "vorname", "nachname", "geburtsdatum", "dob", "diagnose", "iban", "svnr", "address"}
     parts = []
     for k, val in res.items():
         if k in ignore_keys or isinstance(val, (dict, list)):
             continue
         if include_missing or (val and not is_missing_value(val)):
-            display_val = val
-            if mask_pii and k.lower() in pii_fields and val and not is_missing_value(val):
-                s_val = str(val).strip()
-                display_val = s_val[0] + "***" if len(s_val) > 1 else "***"
-            parts.append(f"{k}='{display_val}'")
+            parts.append(f"{k}='{val}'")
     return ", ".join(parts) if parts else "No extracted fields"
 
 

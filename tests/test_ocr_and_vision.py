@@ -327,3 +327,42 @@ def test_llm_extractor_preload_and_unload():
 
     extractor.unload_backend()
     mock_backend.unload.assert_called_once()
+
+
+def test_format_result_no_pii_masking():
+    """Tests that format_result outputs full patient names and values without *** masking."""
+    from core.utils import format_result
+
+    data = {
+        "Titel": "Dr.",
+        "Vorname": "Viktor",
+        "Nachname": "Pannen",
+        "Produkt": "Einlagen",
+        "Document": "Kostenaufstellung",
+        "Datum": "15-04-2026",
+        "Signed": True,
+    }
+    result_str = format_result(data)
+    assert "Vorname='Viktor'" in result_str
+    assert "Nachname='Pannen'" in result_str
+    assert "Dr." in result_str
+    assert "V***" not in result_str
+    assert "P***" not in result_str
+
+
+def test_extraction_pipeline_preload():
+    """Tests that ExtractionPipeline.preload coordinates LLM, OCR, and fitz preloading."""
+    from unittest.mock import MagicMock
+    from core.config import AppConfig
+    from core.extraction_pipeline import ExtractionPipeline
+    from core.image_processing import ImagePreprocessor
+    from core.vision import LLMExtractor
+
+    cfg = AppConfig()
+    mock_llm = MagicMock(spec=LLMExtractor)
+    preprocessor = ImagePreprocessor(cfg)
+    pipeline = ExtractionPipeline(cfg, preprocessor, mock_llm)
+
+    pipeline.preload()
+    mock_llm.preload.assert_called_once()
+

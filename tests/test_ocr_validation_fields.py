@@ -1,6 +1,4 @@
-"""Unit tests for decoupled voting consensus in the extraction pipeline."""
-
-from core.extraction_pipeline import _evaluate_field_consensus
+from core.voting import evaluate_field_consensus as _evaluate_field_consensus
 
 
 def test_evaluate_field_consensus_pure_llm_weights():

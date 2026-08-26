@@ -620,7 +620,7 @@ def test_pure_majority_voting_multipage():
 
 def test_boolean_field_voting_consensus():
     """Tests that boolean votes are weighted correctly across tiers and return a boolean."""
-    from core.extraction_pipeline import _evaluate_field_consensus
+    from core.voting import evaluate_field_consensus as _evaluate_field_consensus
 
     winner, k_score, counts = _evaluate_field_consensus(
         "Signed", [[{"Signed": True}], [{"Signed": False}], [{"Signed": False}]], ["tier1", "tier2", "tier3"]
@@ -633,7 +633,7 @@ def test_boolean_field_voting_consensus():
 
 def test_ocr_validation_dates_and_phrases():
     """Testet das Voting für Datumswerte und mehrzeilige/mehrwortige Namen."""
-    from core.extraction_pipeline import _evaluate_field_consensus
+    from core.voting import evaluate_field_consensus as _evaluate_field_consensus
 
     # Datum
     winner_d, k_score_d, counts_d = _evaluate_field_consensus(
@@ -658,7 +658,7 @@ def test_ocr_validation_dates_and_phrases():
 
 def test_canonical_casing_clustering():
     """Testet, dass bei Gruppenmitgliedern die sauberste Groß-/Kleinschreibung gewählt wird."""
-    from core.extraction_pipeline import _cluster_votes
+    from core.voting import cluster_votes as _cluster_votes
 
     clusters = _cluster_votes([("max mustermann", 1.0), ("Max Mustermann", 1.0)])
     assert len(clusters) == 1
@@ -742,7 +742,8 @@ def test_stage2_target_fields_only():
 
 def test_substring_merging_and_ocr_priority():
     """Tests that partial names are merged with compound names, with longest candidate prevailing."""
-    from core.extraction_pipeline import _are_similar_or_substring, _cluster_votes
+    from core.voting import are_similar_or_substring as _are_similar_or_substring
+    from core.voting import cluster_votes as _cluster_votes
 
     # 1. Test Substring Check
     assert _are_similar_or_substring("Wannink", "Bramkamp-Wannink") is True

@@ -424,8 +424,42 @@ class _LlamaCppBackend(LLMBackend):
             return True
 
     def preload(self) -> bool:
-        """Preloads local VL model into memory ahead of time."""
-        return self._ensure_loaded()
+        """Preloads local VL model and executes a lightweight forward pass to compile graphs."""
+        if not self._ensure_loaded():
+            return False
+
+        # Base64 64x64 solid white PNG to warm up vision projector & KV cache
+        dummy_b64_png = (
+            "iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAIAAAAlC+aJAAAAP0lEQVR4nO3BAQ0AAADCoPdPbQ43"
+            "oAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAeDAzWQAB8yCRZwAAAABJ"
+            "RU5ErkJggg=="
+        )
+        try:
+            payload = {
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": "Warmup",
+                        "images": [dummy_b64_png],
+                    }
+                ],
+                "max_tokens": 1,
+                "temperature": 0.0,
+            }
+            # Executes under _LLM_LOCK inside call_vision_api
+            self.call_vision_api(payload)
+            with _LLM_LOCK:
+                reset_fn = getattr(self._llm, "reset", None)
+                if callable(reset_fn):
+                    try:
+                        reset_fn()
+                    except (AttributeError, RuntimeError, OSError):
+                        pass
+            logger.info("[+] Local VL model inference engine warmed up.")
+            return True
+        except Exception as e:
+            logger.debug("Backend warmup pass skipped or failed: %s", e)
+            return True
 
     def unload(self) -> None:
         """Explicitly unloads local VL model and releases memory/VRAM."""
