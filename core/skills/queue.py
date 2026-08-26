@@ -212,6 +212,9 @@ class SkillQueueManager:
 
     def start_queue(self, auto_triggered: bool = False) -> bool:
         """Starts worker loop processing queued items sequentially."""
+        if self._worker_thread is not None and self._worker_thread.is_alive() and not self.is_running:
+            self._worker_thread.join(timeout=1.5)
+
         with self.lock:
             if self.is_running or (self._worker_thread is not None and self._worker_thread.is_alive()):
                 logger.info("[SkillQueueManager] Queue is already running.")
@@ -288,7 +291,9 @@ class SkillQueueManager:
         with self.lock:
             if not self.is_running and not (self._worker_thread is not None and self._worker_thread.is_alive()):
                 self.is_running = True
+                self._stop_requested = False
                 self._stop_event.clear()
+                self._pause_event.set()
                 self._worker_thread = threading.Thread(
                     target=self._worker_loop,
                     daemon=True,
@@ -310,6 +315,9 @@ class SkillQueueManager:
                 self.active_task.status = TaskStatus.CANCELLED
                 self.active_task.finished_at = time.time()
                 self.active_task = None
+            if not (self._worker_thread is not None and self._worker_thread.is_alive()):
+                self._stop_requested = False
+                self._stop_event.clear()
             self._save_state()
 
         from routes.state import DashboardState
@@ -327,7 +335,9 @@ class SkillQueueManager:
 
     @property
     def is_stopped(self) -> bool:
-        """Returns True if stop was requested."""
+        """Returns True if stop was requested during an active execution."""
+        if not self.is_running and not (self._worker_thread is not None and self._worker_thread.is_alive()):
+            return False
         return self._stop_event.is_set() or self._stop_requested
 
     def _worker_loop(self) -> None:
@@ -422,6 +432,8 @@ class SkillQueueManager:
         finally:
             with self.lock:
                 self.is_running = False
+                self._stop_requested = False
+                self._stop_event.clear()
                 self.active_task = None
                 self._save_state()
             self._worker_lock.release()

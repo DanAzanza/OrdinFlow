@@ -7,6 +7,7 @@ import logging
 import re
 import sys
 import time
+from collections.abc import Mapping
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -215,3 +216,86 @@ def apply_string_modifier(val: str, modifier: str) -> str:
             pass
 
     return val
+
+
+def substitute_placeholders(text: str, context: Mapping[str, Any]) -> str:
+    """Dynamically substitutes placeholders with optional modifiers (e.g. {Nachname|upper})."""
+    if not isinstance(text, str) or "{" not in text:
+        return text
+
+    # Derived dynamic properties from document_fullpath
+    fullpath = str(context.get("document_fullpath", "") or "")
+    derived: dict[str, Any] = {}
+
+    # First copy all context entries, normalizing keys by stripping braces
+    for k, v in context.items():
+        derived[k] = v
+        clean_k = str(k).strip("{} ")
+        if clean_k and clean_k not in derived:
+            derived[clean_k] = v
+
+    # Derive Person / Patient subfields (Nachname, Vorname) if not present
+    person_val = str(derived.get("Person") or derived.get("person") or derived.get("Patient") or derived.get("patient") or "").strip()
+    if person_val and "," in person_val:
+        person_parts = person_val.split(",", 1)
+        derived.setdefault("Nachname", person_parts[0].strip())
+        derived.setdefault("Vorname", person_parts[1].strip())
+    elif person_val and " " in person_val:
+        person_parts = person_val.split(" ", 1)
+        derived.setdefault("Vorname", person_parts[0].strip())
+        derived.setdefault("Nachname", person_parts[1].strip())
+
+    # Derive path-related variables (cross-platform compatible)
+    if fullpath:
+        from pathlib import PurePath, PureWindowsPath
+
+        p = PureWindowsPath(fullpath) if ("\\" in fullpath or ":" in fullpath) else PurePath(fullpath)
+        derived.setdefault("document_filename", p.name)
+        derived.setdefault("filename", p.name)
+        derived.setdefault("document_basename", p.stem)
+        derived.setdefault("basename", p.stem)
+        derived.setdefault("document_extension", p.suffix)
+        derived.setdefault("extension", p.suffix)
+        derived.setdefault("document_parent", str(p.parent))
+        derived.setdefault("case_folder", str(p.parent))
+        derived.setdefault("target_folder", str(p.parent))
+
+    # Derive dynamic datetime variables if not provided
+    now = time.localtime()
+    derived.setdefault("Datum", time.strftime("%Y-%m-%d", now))
+    derived.setdefault("date", time.strftime("%Y-%m-%d", now))
+    derived.setdefault("Jahr", time.strftime("%Y", now))
+    derived.setdefault("year", time.strftime("%Y", now))
+    derived.setdefault("Monat", time.strftime("%m", now))
+    derived.setdefault("month", time.strftime("%m", now))
+    derived.setdefault("Tag", time.strftime("%d", now))
+    derived.setdefault("day", time.strftime("%d", now))
+    derived.setdefault("Zeit", time.strftime("%H-%M-%S", now))
+    derived.setdefault("time", time.strftime("%H-%M-%S", now))
+
+    # Case-insensitive lookup map
+    lower_map = {k.lower(): v for k, v in derived.items() if isinstance(k, str)}
+
+    def replace_match(match: re.Match) -> str:
+        raw_expr = match.group(1).strip()
+        if "|" in raw_expr:
+            parts = raw_expr.split("|", 1)
+            key = parts[0].strip()
+            modifier = parts[1].strip()
+        else:
+            key = raw_expr
+            modifier = ""
+
+        val = derived.get(key)
+        if val is None and key in derived:
+            val = derived[key]
+        if val is None and key.lower() in lower_map:
+            val = lower_map[key.lower()]
+
+        str_val = str(val) if val is not None else ""
+        if modifier:
+            return apply_string_modifier(str_val, modifier)
+        return str_val
+
+    return re.sub(r"\{([^{}]+)\}", replace_match, text)
+

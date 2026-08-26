@@ -76,8 +76,12 @@ def ensure_window_ready(
     exe_path: str = "",
     maximize: bool = False,
     execute_skill_fn: Callable[[str, dict[str, Any]], bool] | None = None,
+    is_cancelled_fn: Callable[[], bool] | None = None,
 ) -> bool:
     """Checks if target window is available; if not, triggers launch skill or executable and maximizes."""
+    if is_cancelled_fn and is_cancelled_fn():
+        return False
+
     screen = SoMGrounder.capture_screen(win_pattern) if win_pattern else None
     if screen is not None:
         if maximize and sys.platform == "win32":
@@ -100,14 +104,17 @@ def ensure_window_ready(
             logger.error("[WindowManager] Failed to launch executable '%s': %s", exe_path, e)
             return False
 
-    # Wait up to 10s for the window to appear
-    for _ in range(20):
-        time.sleep(0.5)
-        screen = SoMGrounder.capture_screen(win_pattern)
-        if screen is not None:
-            if maximize and sys.platform == "win32":
-                maximize_target_window(win_pattern)
-            return True
+    # Wait up to 10s for the window to appear (interruptible in 0.1s slices)
+    for tick in range(100):
+        if is_cancelled_fn and is_cancelled_fn():
+            return False
+        time.sleep(0.1)
+        if (tick + 1) % 5 == 0:
+            screen = SoMGrounder.capture_screen(win_pattern)
+            if screen is not None:
+                if maximize and sys.platform == "win32":
+                    maximize_target_window(win_pattern)
+                return True
 
     return False
 

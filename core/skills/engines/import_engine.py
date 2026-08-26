@@ -144,10 +144,12 @@ class ImportEngine(BaseSkill):
                     )
 
                 processed: list[str] = []
+                stopped_by_user = False
                 for idx, fp in enumerate(unprocessed_files, 1):
                     fname = os.path.basename(fp)
                     if not self._wait_for_queue(reporter, f"Paused before ({idx}/{total}): {fname}"):
                         logger.info("[ImportEngine] Batch execution stopped by user request.")
+                        stopped_by_user = True
                         break
 
                     if not os.path.exists(fp):
@@ -177,6 +179,22 @@ class ImportEngine(BaseSkill):
                         logger.error("[ImportEngine] Error processing file %s: %s", fname, e, exc_info=True)
                     finally:
                         gc.collect()
+
+                if stopped_by_user:
+                    if reporter:
+                        reporter(
+                            TaskProgress(
+                                current=len(processed),
+                                total=total,
+                                message=f"Stopped by user ({len(processed)}/{total} processed).",
+                                percent=round((len(processed) / total) * 100, 1) if total > 0 else 0.0,
+                            )
+                        )
+                    return TaskResult(
+                        success=False,
+                        error="Execution stopped by user.",
+                        data={"processed_files": processed, "count": len(processed), "total_found": total},
+                    )
 
                 if reporter:
                     reporter(

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from abc import ABC, abstractmethod
 from collections.abc import Callable
 from typing import Any
@@ -31,10 +32,10 @@ class BaseSkill(ABC):
             from core.skills.queue import get_skill_queue_manager
 
             qm = get_skill_queue_manager()
-            if not qm.is_running and not qm.is_paused:
-                return True
             if qm.is_stopped:
                 return False
+            if not qm.is_running and not qm.is_paused and not qm._stop_requested:
+                return True
             was_paused = False
             while qm.is_paused and not qm.is_stopped:
                 if not was_paused and reporter:
@@ -44,6 +45,26 @@ class BaseSkill(ABC):
             return not qm.is_stopped
         except Exception:
             return True
+
+    def interruptible_sleep(
+        self,
+        duration_s: float,
+        reporter: Callable[[TaskProgress], None] | None = None,
+        paused_msg: str = "Execution paused...",
+    ) -> bool:
+        """Sleeps in small discrete slices, checking for queue pause/stop every <= 0.1s without clock skew."""
+        if duration_s <= 0:
+            return self.wait_for_queue(reporter, paused_msg)
+
+        remaining = float(duration_s)
+        while remaining > 0:
+            if not self.wait_for_queue(reporter, paused_msg):
+                return False
+            slice_duration = min(0.1, remaining)
+            time.sleep(slice_duration)
+            remaining -= slice_duration
+
+        return self.wait_for_queue(reporter, paused_msg)
 
     @abstractmethod
     def execute(

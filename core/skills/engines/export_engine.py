@@ -5,7 +5,6 @@ from __future__ import annotations
 import ctypes
 import logging
 import os
-import re
 import sys
 import time
 from collections.abc import Callable, Mapping
@@ -21,8 +20,8 @@ from core.skills.case_router import (
     mark_file_skill_executed as _mark_file_skill_executed_fn,
 )
 from core.skills.text_helpers import (
-    apply_string_modifier as _apply_string_modifier,
     paste_text_via_clipboard as _paste_text_via_clipboard,
+    substitute_placeholders as _substitute_placeholders_fn,
     type_unicode_text as _type_unicode_text,
 )
 from core.skills.window_manager import (
@@ -65,6 +64,7 @@ class ExportEngine(BaseSkill):
         self.vision_extractor = vext
         raw_tasks = definition.get("tasks")
         raw_steps = definition.get("steps")
+        raw_actions = definition.get("actions")
 
         actions: list[dict[str, Any]] = []
         if isinstance(raw_tasks, list) and raw_tasks:
@@ -77,6 +77,8 @@ class ExportEngine(BaseSkill):
                                 actions.append(a)
         elif isinstance(raw_steps, list):
             actions = [s for s in raw_steps if isinstance(s, dict)]
+        elif isinstance(raw_actions, list):
+            actions = [a for a in raw_actions if isinstance(a, dict)]
 
         self.steps: list[dict[str, Any]] = actions
         self.actions: list[dict[str, Any]] = actions
@@ -99,84 +101,7 @@ class ExportEngine(BaseSkill):
 
     def _substitute_placeholders(self, text: str, context: Mapping[str, Any]) -> str:
         """Dynamically substitutes placeholders with optional modifiers (e.g. {Nachname|upper})."""
-        if not isinstance(text, str) or "{" not in text:
-            return text
-
-        # Derived dynamic properties from document_fullpath
-        fullpath = str(context.get("document_fullpath", "") or "")
-        derived: dict[str, Any] = {}
-
-        # First copy all context entries, normalizing keys by stripping braces
-        for k, v in context.items():
-            derived[k] = v
-            clean_k = str(k).strip("{} ")
-            if clean_k and clean_k not in derived:
-                derived[clean_k] = v
-
-        # Derive Person / Patient subfields (Nachname, Vorname) if not present
-        person_val = str(derived.get("Person") or derived.get("person") or derived.get("Patient") or derived.get("patient") or "").strip()
-        if person_val and "," in person_val:
-            person_parts = person_val.split(",", 1)
-            derived.setdefault("Nachname", person_parts[0].strip())
-            derived.setdefault("Vorname", person_parts[1].strip())
-        elif person_val and " " in person_val:
-            person_parts = person_val.split(" ", 1)
-            derived.setdefault("Vorname", person_parts[0].strip())
-            derived.setdefault("Nachname", person_parts[1].strip())
-
-        # Derive path-related variables (cross-platform compatible)
-        if fullpath:
-            from pathlib import PurePath, PureWindowsPath
-
-            p = PureWindowsPath(fullpath) if ("\\" in fullpath or ":" in fullpath) else PurePath(fullpath)
-            derived.setdefault("document_filename", p.name)
-            derived.setdefault("filename", p.name)
-            derived.setdefault("document_basename", p.stem)
-            derived.setdefault("basename", p.stem)
-            derived.setdefault("document_extension", p.suffix)
-            derived.setdefault("extension", p.suffix)
-            derived.setdefault("document_parent", str(p.parent))
-            derived.setdefault("case_folder", str(p.parent))
-            derived.setdefault("target_folder", str(p.parent))
-
-        # Derive dynamic datetime variables if not provided
-        now = time.localtime()
-        derived.setdefault("Datum", time.strftime("%Y-%m-%d", now))
-        derived.setdefault("date", time.strftime("%Y-%m-%d", now))
-        derived.setdefault("Jahr", time.strftime("%Y", now))
-        derived.setdefault("year", time.strftime("%Y", now))
-        derived.setdefault("Monat", time.strftime("%m", now))
-        derived.setdefault("month", time.strftime("%m", now))
-        derived.setdefault("Tag", time.strftime("%d", now))
-        derived.setdefault("day", time.strftime("%d", now))
-        derived.setdefault("Zeit", time.strftime("%H-%M-%S", now))
-        derived.setdefault("time", time.strftime("%H-%M-%S", now))
-
-        # Case-insensitive lookup map
-        lower_map = {k.lower(): v for k, v in derived.items() if isinstance(k, str)}
-
-        def replace_match(match: re.Match) -> str:
-            raw_expr = match.group(1).strip()
-            if "|" in raw_expr:
-                parts = raw_expr.split("|", 1)
-                key = parts[0].strip()
-                modifier = parts[1].strip()
-            else:
-                key = raw_expr
-                modifier = ""
-
-            val = derived.get(key)
-            if val is None and key in derived:
-                val = derived[key]
-            if val is None and key.lower() in lower_map:
-                val = lower_map[key.lower()]
-
-            str_val = str(val) if val is not None else ""
-            if modifier:
-                return _apply_string_modifier(str_val, modifier)
-            return str_val
-
-        return re.sub(r"\{([^{}]+)\}", replace_match, text)
+        return _substitute_placeholders_fn(text, context)
 
     def _locate_target(self, locator: dict[str, Any], window_title: str | None = None) -> tuple[int, int] | None:
         """Determines the (x, y) pixel coordinates for a locator with auto-adaptive OCR & VLM fallback."""
@@ -206,6 +131,7 @@ class ExportEngine(BaseSkill):
             exe_path=exe_path or self.executable_path,
             maximize=maximize,
             execute_skill_fn=self.execute_skill,
+            is_cancelled_fn=lambda: not self.wait_for_queue(),
         )
 
     def _check_hung_app_and_recover(self, win_pattern: str, context: Mapping[str, Any]) -> bool:
@@ -313,15 +239,20 @@ class ExportEngine(BaseSkill):
                 retry_delay_s = float(step.get("retry_delay_s", 0.35))
                 coords = None
                 for attempt in range(1, max_retries + 1):
+                    if not self.wait_for_queue(reporter, "Skill paused..."):
+                        return False
                     coords = self._locate_target(locator, win)
                     if coords is not None:
                         break
                     # Attempt auto-dialog resolution if modal is blocking
                     self._handle_known_dialog_popups(win)
                     if attempt < max_retries:
-                        time.sleep(retry_delay_s)
+                        if not self.interruptible_sleep(retry_delay_s, reporter=reporter, paused_msg="Skill paused..."):
+                            return False
 
                 if coords is None:
+                    if not self.wait_for_queue():
+                        return False
                     logger.error("  [!] Target not found for action %s: %s", action_type, locator)
                     self._save_failure_screenshot(step_id, desc, win)
                     return False
@@ -380,14 +311,19 @@ class ExportEngine(BaseSkill):
                 start_t = time.time()
                 found = False
                 while (time.time() - start_t) <= timeout_s:
+                    if not self.wait_for_queue(reporter, "Skill paused..."):
+                        return False
                     coords = self._locate_target(locator, win)
                     if coords is not None:
                         found = True
                         break
                     self._handle_known_dialog_popups(win)
-                    time.sleep(poll_interval_s)
+                    if not self.interruptible_sleep(poll_interval_s, reporter=reporter, paused_msg="Skill paused..."):
+                        return False
 
                 if not found:
+                    if not self.wait_for_queue():
+                        return False
                     logger.warning("[ExportEngine] WAIT_FOR_ELEMENT timed out after %.1fs for %s", timeout_s, locator)
                     on_fail = step.get("on_failure", "stop")
                     if on_fail == "stop":
@@ -402,13 +338,19 @@ class ExportEngine(BaseSkill):
                 retry_delay_s = float(step.get("retry_delay_s", 1.0))
                 coords = None
                 for attempt in range(1, max_retries + 1):
+                    if not self.wait_for_queue(reporter, "Skill paused..."):
+                        return False
                     coords = self._locate_target(locator, win)
                     if coords is not None:
                         break
                     if attempt < max_retries:
-                        time.sleep(retry_delay_s)
-                success = coords is not None
+                        if not self.interruptible_sleep(retry_delay_s, reporter=reporter, paused_msg="Skill paused..."):
+                            return False
 
+                if not self.wait_for_queue():
+                    return False
+
+                success = coords is not None
                 if success:
                     on_succ = step.get("on_success", "continue")
                     if on_succ == "stop_success":
@@ -422,7 +364,8 @@ class ExportEngine(BaseSkill):
                     if on_fail_action == "run_skill" or on_fail == "run_skill":
                         sub_skill = str(step.get("on_failure_skill", ""))
                         if sub_skill:
-                            self.execute_skill(sub_skill, context, depth=depth + 1)
+                            if not self.execute_skill(sub_skill, context, depth=depth + 1):
+                                return False
                     elif on_fail == "stop" and not on_fail_action:
                         return False
                     elif on_fail == "continue" or on_fail_action == "continue":
@@ -487,16 +430,19 @@ class ExportEngine(BaseSkill):
                             elif len(k) == 1:
                                 vk_list.append(ord(k.upper()))
 
-                        for vk in vk_list:
-                            ctypes.windll.user32.keybd_event(vk, 0, 0, 0)
-                        time.sleep(0.05)
-                        for vk in reversed(vk_list):
-                            ctypes.windll.user32.keybd_event(vk, 0, 2, 0)
+                        try:
+                            for vk in vk_list:
+                                ctypes.windll.user32.keybd_event(vk, 0, 0, 0)
+                            time.sleep(0.05)
+                        finally:
+                            for vk in reversed(vk_list):
+                                ctypes.windll.user32.keybd_event(vk, 0, 2, 0)
 
             # 8. SLEEP / DELAY / WAIT
             elif action_type in ("SLEEP", "DELAY", "WAIT"):
                 duration_s = float(step.get("duration_s", step.get("delay_ms", 1000) / 1000.0))
-                time.sleep(duration_s)
+                if not self.interruptible_sleep(duration_s, reporter=reporter, paused_msg="Skill paused..."):
+                    return False
 
             # 9. RUN_SCRIPT / POWERSHELL / EXECUTE_COMMAND (Headless COM / CLI Automation)
             elif action_type in ("RUN_SCRIPT", "POWERSHELL", "EXECUTE_COMMAND", "SCRIPT"):
@@ -510,36 +456,61 @@ class ExportEngine(BaseSkill):
                 if cmd_to_run:
                     try:
                         if shell_type in ("powershell", "ps1", "pwsh") and sys.platform == "win32":
-                            proc = subprocess.run(
-                                [
-                                    "powershell",
-                                    "-NoProfile",
-                                    "-NonInteractive",
-                                    "-ExecutionPolicy",
-                                    "Bypass",
-                                    "-Command",
-                                    cmd_to_run,
-                                ],
-                                capture_output=True,
+                            args = [
+                                "powershell",
+                                "-NoProfile",
+                                "-NonInteractive",
+                                "-ExecutionPolicy",
+                                "Bypass",
+                                "-Command",
+                                cmd_to_run,
+                            ]
+                            proc = subprocess.Popen(
+                                args,
+                                stdout=subprocess.PIPE,
+                                stderr=subprocess.PIPE,
                                 text=True,
-                                timeout=timeout_s,
                             )
                         else:
-                            proc = subprocess.run(
+                            proc = subprocess.Popen(
                                 cmd_to_run,
                                 shell=True,
-                                capture_output=True,
+                                stdout=subprocess.PIPE,
+                                stderr=subprocess.PIPE,
                                 text=True,
-                                timeout=timeout_s,
                             )
-                        if proc.returncode != 0:
-                            logger.error("[ExportEngine] Script failed (code %d): %s", proc.returncode, proc.stderr)
+
+                        start_proc_t = time.time()
+                        returncode = None
+                        while returncode is None:
+                            if not self.wait_for_queue(reporter, "Skill paused..."):
+                                try:
+                                    proc.terminate()
+                                except Exception:
+                                    pass
+                                return False
+                            if (time.time() - start_proc_t) > timeout_s:
+                                try:
+                                    proc.kill()
+                                except Exception:
+                                    pass
+                                logger.error("[ExportEngine] Script timed out after %.1fs", timeout_s)
+                                if step.get("on_failure", "stop") == "stop":
+                                    return False
+                                break
+                            time.sleep(0.05)
+                            returncode = proc.poll()
+
+                        if returncode is not None and returncode != 0:
+                            stderr_out = proc.stderr.read() if proc.stderr else ""
+                            logger.error("[ExportEngine] Script failed (code %d): %s", returncode, stderr_out)
                             if step.get("on_failure", "stop") == "stop":
                                 return False
-                        else:
+                        elif returncode == 0:
+                            stdout_out = proc.stdout.read() if proc.stdout else ""
                             logger.info(
                                 "[ExportEngine] Script executed successfully: %s",
-                                proc.stdout[:200] if proc.stdout else "",
+                                stdout_out[:200] if stdout_out else "",
                             )
                     except Exception as e:
                         logger.error("[ExportEngine] Script execution error: %s", e)
@@ -549,7 +520,8 @@ class ExportEngine(BaseSkill):
             # Optional post-step delay
             delay_ms = int(step.get("delay_ms", 300))
             if delay_ms > 0:
-                time.sleep(delay_ms / 1000.0)
+                if not self.interruptible_sleep(delay_ms / 1000.0, reporter=reporter, paused_msg="Skill paused..."):
+                    return False
 
             act_idx += 1
 
@@ -610,16 +582,22 @@ class ExportEngine(BaseSkill):
 
                 all_ok = True
                 for idx, c in enumerate(pending, 1):
+                    if not self.wait_for_queue(reporter, "Skill paused..."):
+                        logger.info("[*] Batch case execution stopped by queue.")
+                        all_ok = False
+                        break
+
                     c_ctx = dict(c.get("parsed_metadata") or {})
                     c_ctx["folder_name"] = c["folder_name"]
                     c_ctx["folder_path"] = c["folder_path"]
 
                     if not self.execute_skill_for_folder(c["folder_path"], c_ctx, reporter):
                         all_ok = False
+                        break
 
                 return TaskResult(
                     success=all_ok,
-                    data={"total_cases": len(pending), "status": "completed" if all_ok else "partial_failure"},
+                    data={"total_cases": len(pending), "status": "completed" if all_ok else "stopped_or_failed"},
                 )
         except Exception as e:
             logger.error("[ExportEngine] Execution error: %s", e, exc_info=True)
@@ -667,6 +645,10 @@ class ExportEngine(BaseSkill):
 
         all_ok = True
         for f in matching_files:
+            if not self.wait_for_queue(reporter, "Skill paused..."):
+                logger.info("[*] Skill execution stopped by queue.")
+                return False
+
             file_ctx = dict(context or {})
             file_ctx["folder_path"] = folder_path
             file_ctx["matching_files"] = [mf["fullpath"] for mf in matching_files]

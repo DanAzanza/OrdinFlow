@@ -348,3 +348,135 @@ def test_queue_manager_passes_vision_extractor_and_processor(temp_skills_env, mo
         DashboardState.processor = orig_proc
 
 
+def test_queue_stop_active_export_engine_mid_step(temp_skills_env, monkeypatch):
+    _tmp_dir, skills_dir = temp_skills_env
+    skill_mgr = SkillManager(skills_dir=skills_dir)
+    queue_mgr = SkillQueueManager(skill_manager=skill_mgr)
+
+    import core.skills.queue as q_mod
+    monkeypatch.setattr(q_mod, "_SKILL_QUEUE_MANAGER", queue_mgr)
+
+    from core.config import AppConfig
+    from core.skills.engines.export_engine import ExportEngine
+    from routes.state import DashboardState
+
+    cfg = AppConfig(base_dir=_tmp_dir)
+    cases_dir = os.path.join(_tmp_dir, "Cases")
+    case_folder = os.path.join(cases_dir, "Case_001")
+    os.makedirs(case_folder, exist_ok=True)
+    dummy_pdf = os.path.join(case_folder, "Document__2026-08-26.pdf")
+    with open(dummy_pdf, "w") as f:
+        f.write("dummy")
+
+    cfg.target_base_dir = cases_dir
+    DashboardState.config = cfg
+
+    s1 = {
+        "id": "export_sleep",
+        "name": "Export Sleep",
+        "type": "export",
+        "document_types": ["*"],
+        "actions": [
+            {"id": "step_1", "type": "SLEEP", "duration_s": 5.0, "description": "Long sleep"},
+            {"id": "step_2", "type": "SLEEP", "duration_s": 5.0, "description": "Should never reach"},
+        ],
+    }
+    skill_mgr.save_skill(s1)
+
+    engine = ExportEngine(s1, skill_manager=skill_mgr)
+    monkeypatch.setattr(skill_mgr, "get_skill_engine", lambda skill_id, **kw: engine)
+
+    queue_mgr.add_to_queue("export_sleep", context={"folder_path": case_folder})
+    queue_mgr.start_queue()
+
+    # Allow worker thread to start and enter step 1 sleep
+    time.sleep(0.15)
+    assert queue_mgr.is_running is True
+
+    # Stop queue while step 1 is sleeping
+    start_stop_t = time.time()
+    queue_mgr.stop_queue()
+    stop_duration = time.time() - start_stop_t
+
+    # Stop should take effect quickly (well below 5s duration)
+    assert stop_duration < 1.0
+
+    # Wait for thread to finish cleanly
+    for _ in range(20):
+        if not queue_mgr.is_running and not (queue_mgr._worker_thread and queue_mgr._worker_thread.is_alive()):
+            break
+        time.sleep(0.05)
+
+    state = queue_mgr.get_queue_state()
+    assert state["items"][0]["status"] == "cancelled"
+
+
+def test_queue_stop_does_not_poison_standalone_test_run(temp_skills_env, monkeypatch):
+    _tmp_dir, skills_dir = temp_skills_env
+    skill_mgr = SkillManager(skills_dir=skills_dir)
+    queue_mgr = SkillQueueManager(skill_manager=skill_mgr)
+
+    import core.skills.queue as q_mod
+    monkeypatch.setattr(q_mod, "_SKILL_QUEUE_MANAGER", queue_mgr)
+
+    from core.skills.engines.export_engine import ExportEngine
+
+    # Simulate a prior stop
+    queue_mgr.stop_queue()
+
+    s1 = {
+        "id": "standalone_skill",
+        "name": "Standalone Skill",
+        "type": "export",
+        "actions": [
+            {"id": "step_1", "type": "SLEEP", "duration_s": 0.05, "description": "Quick sleep"},
+        ],
+    }
+    skill_mgr.save_skill(s1)
+
+    # Standalone execution (like in Skill Editor Test Run) must succeed
+    engine = ExportEngine(s1, skill_manager=skill_mgr)
+    res = engine.execute_actions(context={}, dry_run=True)
+    assert res is True
+
+
+def test_queue_stop_and_immediate_restart(temp_skills_env, monkeypatch):
+    _tmp_dir, skills_dir = temp_skills_env
+    skill_mgr = SkillManager(skills_dir=skills_dir)
+    queue_mgr = SkillQueueManager(skill_manager=skill_mgr)
+
+    import core.skills.queue as q_mod
+    monkeypatch.setattr(q_mod, "_SKILL_QUEUE_MANAGER", queue_mgr)
+
+    executed = []
+
+    class FastEngine(BaseSkill):
+        def execute(self, task: SkillTask, reporter=None) -> TaskResult:
+            executed.append(task.id)
+            time.sleep(0.05)
+            return TaskResult(success=True)
+
+    monkeypatch.setattr(skill_mgr, "get_skill_engine", lambda skill_id, **kw: FastEngine({"id": skill_id}))
+
+    queue_mgr.add_to_queue("skill_1")
+    queue_mgr.start_queue()
+    time.sleep(0.02)
+    queue_mgr.stop_queue()
+
+    # Immediate fresh start with new task
+    t2 = queue_mgr.add_to_queue("skill_2")
+    restarted = queue_mgr.start_queue()
+    assert restarted is True
+
+    for _ in range(30):
+        if not queue_mgr.is_running:
+            break
+        time.sleep(0.05)
+
+    state = queue_mgr.get_queue_state()
+    # Task 2 should complete successfully
+    task2_state = next(i for i in state["items"] if i["id"] == t2.id)
+    assert task2_state["status"] == "completed"
+
+
+
