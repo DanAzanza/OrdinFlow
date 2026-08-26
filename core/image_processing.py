@@ -48,6 +48,7 @@ def _encode_pil_fallback(
     white_border: int = 0,
     upscale: bool = True,
 ) -> str:
+    """Fallback PIL-based scaler with letterbox padding to multiples of 28."""
     img = pil_image.copy()
     if img.mode != "RGB":
         img = img.convert("RGB")
@@ -63,10 +64,20 @@ def _encode_pil_fallback(
         longest_side = max(w, h)
         target_max = (max_dim // 28) * 28 if max_dim >= 28 else 28
         if (longest_side != target_max or (w % 28 != 0 or h % 28 != 0)) and (longest_side > target_max or upscale):
-            scale = target_max / longest_side
-            new_w = max(28, int(round((w * scale) / 28.0)) * 28)
-            new_h = max(28, int(round((h * scale) / 28.0)) * 28)
-            img = img.resize((new_w, new_h), resample=Image.Resampling.LANCZOS)
+            scale = target_max / float(longest_side)
+            scaled_w = max(1, int(round(w * scale)))
+            scaled_h = max(1, int(round(h * scale)))
+            img = img.resize((scaled_w, scaled_h), resample=Image.Resampling.LANCZOS)
+
+            # Bottom-right letterbox padding to 28px grid
+            pad_w = ((scaled_w + 27) // 28) * 28
+            pad_h = ((scaled_h + 27) // 28) * 28
+            pad_right = pad_w - scaled_w
+            pad_bottom = pad_h - scaled_h
+            if pad_right > 0 or pad_bottom > 0:
+                padded = Image.new("RGB", (pad_w, pad_h), (255, 255, 255))
+                padded.paste(img, (0, 0))
+                img = padded
 
     with io.BytesIO() as buffered:
         img.save(buffered, format="JPEG", quality=_JPEG_QUALITY)
@@ -83,8 +94,9 @@ class ImagePreprocessor:
         self,
         pil_image: Image.Image,
     ) -> Image.Image:
-        """Performs OpenCV-based preprocessing for the AI model (color with contrast prior to cropping). Returns unscaled image."""
-
+        """Performs OpenCV-based preprocessing for the AI model (adaptive background estimation,
+        edge artifact filtering, auto-cropping, and 300 DPI white border). Returns unscaled image.
+        """
         if not HAS_CV2 or cv2 is None:
             return pil_image.copy()
 
@@ -93,28 +105,61 @@ class ImagePreprocessor:
                 pil_image = pil_image.convert("RGB")
             img = np.array(pil_image)
             img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
-
-            # --- Auto-Crop (shadow exclusion via contour analysis) ---
-            gray_temp = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-            blurred_for_crop = cv2.GaussianBlur(gray_temp, (5, 5), 0)
-            inv_crop = cv2.bitwise_not(blurred_for_crop)
-            _, thresh_crop = cv2.threshold(inv_crop, self.config.crop_edge_threshold, 255, cv2.THRESH_BINARY)
-
-            contours, _ = cv2.findContours(thresh_crop, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-
             img_h, img_w = img.shape[:2]
+
+            gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+
+            # 1. Robust Background Estimation (Sample inset margin 15px to 60px inside edge to avoid black scanner bed)
+            if img_h > 120 and img_w > 120:
+                margin_top = gray[15 : min(60, img_h // 4), :]
+                margin_bottom = gray[max(0, img_h - 60) : img_h - 15, :]
+                margin_left = gray[:, 15 : min(60, img_w // 4)]
+                margin_right = gray[:, max(0, img_w - 60) : img_w - 15]
+                margin_samples = np.concatenate([
+                    margin_top.flatten(),
+                    margin_bottom.flatten(),
+                    margin_left.flatten(),
+                    margin_right.flatten(),
+                ])
+                bg_val = int(np.percentile(margin_samples, 85)) if len(margin_samples) > 0 else 255
+            else:
+                bg_val = int(np.median(gray)) if gray.size > 0 else 255
+
+            # 2. Symmetric Absolute Difference & Gaussian Denoising
+            blurred = cv2.GaussianBlur(gray, (5, 5), 0)
+            bg_arr = np.full_like(blurred, bg_val)
+            diff = cv2.absdiff(blurred, bg_arr)
+
+            thresh_val = getattr(self.config, "crop_edge_threshold", 30)
+            _, thresh = cv2.threshold(diff, thresh_val, 255, cv2.THRESH_BINARY)
+
+            # 3. Contour Extraction & Robust Border Artifact Filtering
+            contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
             valid_rects: list[tuple[int, int, int, int]] = []
+
+            # DPI-aware border strip thresholds (ignore thin lines along edge, keep headers)
+            max_edge_strip_w = max(30, int(img_w * 0.025))
+            max_edge_strip_h = max(30, int(img_h * 0.025))
 
             for cnt in contours:
                 x, y, w, h = cv2.boundingRect(cnt)
                 if w < self.config.min_contour_area and h < self.config.min_contour_area:
                     continue
+
                 touches_left = x <= 5
                 touches_top = y <= 5
                 touches_right = (x + w) >= (img_w - 5)
                 touches_bottom = (y + h) >= (img_h - 5)
-                if touches_left or touches_top or touches_right or touches_bottom:
+                touches_edge = touches_left or touches_top or touches_right or touches_bottom
+
+                # Filter thin scanner shadows / roller lines along outer edges
+                is_vert_strip = (touches_left or touches_right) and w <= max_edge_strip_w
+                is_horiz_strip = (touches_top or touches_bottom) and h <= max_edge_strip_h
+                is_corner_dust = touches_edge and w < 25 and h < 25
+
+                if is_vert_strip or is_horiz_strip or is_corner_dust:
                     continue
+
                 valid_rects.append((x, y, w, h))
 
             if valid_rects:
@@ -127,8 +172,14 @@ class ImagePreprocessor:
                 y1 = max(0, y_min - pad)
                 x2 = min(img_w, x_max + pad)
                 y2 = min(img_h, y_max + pad)
-                if x2 > x1 and y2 > y1:
+                if (x2 - x1) > 50 and (y2 - y1) > 50:
                     img = img[y1:y2, x1:x2]
+
+            # 4. Apply White Border ONCE at 300 DPI stage
+            bw = self.config.white_border
+            if bw > 0:
+                val = [255, 255, 255] if len(img.shape) == 3 else 255
+                img = cv2.copyMakeBorder(img, bw, bw, bw, bw, cv2.BORDER_CONSTANT, value=val)
 
             return Image.fromarray(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
 
@@ -144,17 +195,17 @@ class ImagePreprocessor:
         max_dim: int,
         upscale: bool = True,
     ) -> str:
-        """Scales a prepared base image, adds a white border, and encodes it as Base64.
+        """Scales a prepared base image with proportional letterboxing to 28px ViT patch tokens and encodes as Base64.
 
-        If image dimension != max_dim:
         - Downscales with INTER_AREA for crisp sharpness
         - Upscales with INTER_LANCZOS4 to provide distinct ViT token grids and prevent voting collapse
+        - Pads to exact multiples of 28 with bottom-right white letterboxing
         """
         if not HAS_CV2 or cv2 is None:
             return _encode_pil_fallback(
                 pil_image,
                 max_dim=max_dim,
-                white_border=self.config.white_border,
+                white_border=0,
                 upscale=upscale,
             )
 
@@ -164,23 +215,29 @@ class ImagePreprocessor:
             img = np.array(pil_image)
             img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
 
-            # --- White border ---
-            bw = self.config.white_border
-            if bw > 0:
-                img = cv2.copyMakeBorder(img, bw, bw, bw, bw, cv2.BORDER_CONSTANT, value=[255, 255, 255])
-
-            # --- Rescaling (28px patch token alignment for vision transformers) ---
             img_h, img_w = img.shape[:2]
             longest_side = max(img_h, img_w)
             target_max = (max_dim // 28) * 28 if max_dim >= 28 else 28
-            if max_dim > 0 and (longest_side != target_max or (img_w % 28 != 0 or img_h % 28 != 0)):
-                scale = target_max / longest_side
-                new_w = max(28, int(round((img_w * scale) / 28.0)) * 28)
-                new_h = max(28, int(round((img_h * scale) / 28.0)) * 28)
-                if longest_side > target_max:
-                    img = cv2.resize(img, (new_w, new_h), interpolation=cv2.INTER_AREA)
-                elif upscale or (new_w != img_w or new_h != img_h):
-                    img = cv2.resize(img, (new_w, new_h), interpolation=cv2.INTER_LANCZOS4)
+
+            if max_dim > 0 and longest_side > 0 and (longest_side != target_max or (img_w % 28 != 0 or img_h % 28 != 0)):
+                scale = target_max / float(longest_side)
+                scaled_w = max(1, int(round(img_w * scale)))
+                scaled_h = max(1, int(round(img_h * scale)))
+
+                interp = cv2.INTER_AREA if scale < 1.0 else cv2.INTER_LANCZOS4
+                img = cv2.resize(img, (scaled_w, scaled_h), interpolation=interp)
+
+                # Bottom-right letterbox padding to multiple of 28
+                pad_w = ((scaled_w + 27) // 28) * 28
+                pad_h = ((scaled_h + 27) // 28) * 28
+                pad_right = pad_w - scaled_w
+                pad_bottom = pad_h - scaled_h
+
+                if pad_right > 0 or pad_bottom > 0:
+                    val = [255, 255, 255] if len(img.shape) == 3 else 255
+                    img = cv2.copyMakeBorder(
+                        img, 0, pad_bottom, 0, pad_right, cv2.BORDER_CONSTANT, value=val
+                    )
 
             _, buffer = cv2.imencode(".jpg", img, [int(cv2.IMWRITE_JPEG_QUALITY), _JPEG_QUALITY])
             return base64.b64encode(buffer.tobytes()).decode("utf-8")
@@ -189,58 +246,46 @@ class ImagePreprocessor:
             return _encode_pil_fallback(
                 pil_image,
                 max_dim=max_dim,
-                white_border=self.config.white_border,
+                white_border=0,
                 upscale=upscale,
             )
 
-    def extract_single_page_image(self, page: Any, doc: Any) -> Image.Image | None:
-        """Extracts the raw full-page image from a PDF page if it contains exactly one dominant scan image."""
-        try:
-            image_list = page.get_images(full=True)
-            if len(image_list) == 1:
-                drawings = page.get_drawings() if hasattr(page, "get_drawings") else []
-                # If page has non-trivial drawing paths (e.g. vector tables/lines), let it render as vector/hybrid
-                if len(drawings) > 3:
-                    return None
+    def get_prepared_page_image(
+        self,
+        page_dict: dict[str, Any],
+        dimension: int,
+    ) -> str:
+        """Retrieves, crops, and scales a page image on-demand for multi-tier extraction."""
+        # 1. If in-memory cropped image exists, use directly
+        if page_dict.get("prep_img") is not None:
+            return self.scale_and_encode_image(page_dict["prep_img"], dimension)
 
-                # Check coverage: if image is placed on page, verify it covers most of the page (>= 60%)
-                page_w = page.rect.width
-                page_h = page.rect.height
-                page_area = page_w * page_h
-                if page_area > 0 and hasattr(page, "get_image_rects"):
-                    try:
-                        rects = page.get_image_rects(image_list[0][0])
-                        if rects:
-                            img_area = rects[0].width * rects[0].height
-                            if (img_area / page_area) < 0.60:
-                                # Small logo / header image on a digital page -> render full page instead
-                                return None
-                    except Exception as e:
-                        logger.debug("Could not inspect image rects: %s", e)
+        # 2. Re-render on demand if pdf_path is available
+        pdf_path = page_dict.get("pdf_path")
+        idx = page_dict.get("idx", 0)
 
-                xref = image_list[0][0]
-                base_img = doc.extract_image(xref)
-                if base_img and "image" in base_img:
-                    raw_bytes = base_img["image"]
-                    img = Image.open(io.BytesIO(raw_bytes))
-                    if img.mode != "RGB":
-                        img = img.convert("RGB")
-                    rot = getattr(page, "rotation", 0)
-                    if rot != 0:
-                        img = _apply_pdf_rotation(img, rot)
-                    if img.width >= 200 and img.height >= 200:
-                        return img
-        except Exception as ex:
-            logger.debug("Direct image extraction skipped: %s", ex)
-        return None
+        if pdf_path and os.path.isfile(pdf_path) and pdf_path.lower().endswith(".pdf"):
+            if HAS_FITZ and fitz is not None:
+                with fitz.open(pdf_path) as doc:
+                    if 0 <= idx < len(doc):
+                        page = doc[idx]
+                        mat_300 = fitz.Matrix(300 / 72, 300 / 72)
+                        pix = page.get_pixmap(matrix=mat_300, colorspace=fitz.csRGB)
+                        raw_img = Image.frombytes("RGB", (pix.width, pix.height), pix.samples)
+                        del pix
+                        prep_img = self.prepare_base_image(raw_img)
+                        return self.scale_and_encode_image(prep_img, dimension)
+
+        # 3. Fallback to cached base64 if no raw source available
+        return page_dict.get("b64_img", "")
 
     def create_source_images(
         self,
         pdf_path: str,
         return_raw: bool = False,
     ) -> list[Image.Image] | None:
-        """Reads the document and creates prepared base images using the configured contrast settings.
-        Uses PyMuPDF (fitz) for PDFs — with direct scan extraction for single-scan pages.
+        """Reads the document and creates prepared base images using standardized 300 DPI rendering.
+        Uses PyMuPDF (fitz) for PDFs and Pillow for image files.
         """
         _, ext = os.path.splitext(pdf_path.lower())
 
@@ -255,14 +300,10 @@ class ImagePreprocessor:
                     mat_300 = fitz.Matrix(300 / 72, 300 / 72)
                     for i in range(n_pages):
                         page = doc[i]
-                        scan_img = self.extract_single_page_image(page, doc)
-                        if scan_img is not None:
-                            pil_images.append(scan_img)
-                        else:
-                            pix = page.get_pixmap(matrix=mat_300, colorspace=fitz.csRGB)
-                            img = Image.frombytes("RGB", (pix.width, pix.height), pix.samples)
-                            pil_images.append(img)
-                            del pix
+                        pix = page.get_pixmap(matrix=mat_300, colorspace=fitz.csRGB)
+                        img = Image.frombytes("RGB", (pix.width, pix.height), pix.samples)
+                        pil_images.append(img)
+                        del pix
             else:
                 with Image.open(pdf_path) as img:
                     img = ImageOps.exif_transpose(img)

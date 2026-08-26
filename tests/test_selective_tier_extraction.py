@@ -11,6 +11,7 @@ from core.vision import LLMExtractor
 def mock_preprocessor():
     preprocessor = MagicMock()
     preprocessor.scale_and_encode_image.return_value = "base64_encoded_dummy"
+    preprocessor.get_prepared_page_image.return_value = "base64_encoded_dummy"
     return preprocessor
 
 
@@ -59,8 +60,8 @@ def test_run_extraction_tier_skips_pages_without_matching_target_fields(mock_pre
     # Page 1 should be skipped (empty dict), Page 2 should be extracted
     assert results == [{}, {"Signed": True}]
 
-    # scale_and_encode_image must only be called ONCE for Page 2
-    assert mock_preprocessor.scale_and_encode_image.call_count == 1
+    # get_prepared_page_image must only be called ONCE for Page 2
+    assert mock_preprocessor.get_prepared_page_image.call_count == 1
     # extract_data_from_images_with_type must only be called ONCE for Page 2
     assert mock_llm_extractor.extract_data_from_images_with_type.call_count == 1
     mock_llm_extractor.extract_data_from_images_with_type.assert_called_once_with(
@@ -106,7 +107,7 @@ def test_run_extraction_tier_skips_page_when_no_signature_needed(mock_preprocess
 
     # Page 1 extracted, Page 2 skipped
     assert results == [{"Geburtsdatum": "01.01.1980"}, {}]
-    assert mock_preprocessor.scale_and_encode_image.call_count == 1
+    assert mock_preprocessor.get_prepared_page_image.call_count == 1
     assert mock_llm_extractor.extract_data_from_images_with_type.call_count == 1
 
 

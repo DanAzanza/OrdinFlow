@@ -12,10 +12,10 @@ type_v: 8
 max_tokens: 2048
 n_threads: 0
 crop_padding: 5
-white_border: 8
+white_border: 32
 contrast_limit: 1.0
 dashboard_port: 8080
-crop_edge_threshold: 45
+crop_edge_threshold: 30
 min_contour_area: 10
 classify_dimension: 896
 tier1_dimension: 1120

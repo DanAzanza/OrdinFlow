@@ -488,11 +488,7 @@ class ExtractionPipeline:
                     tier_page_results.append({})
                     continue
 
-            img_b64 = (
-                p.get("b64_img")
-                if p.get("prep_img") is None
-                else self.image_preprocessor.scale_and_encode_image(p["prep_img"], dimension)
-            )
+            img_b64 = self.image_preprocessor.get_prepared_page_image(p, dimension)
             ext = self.llm_extractor.extract_data_from_images_with_type(
                 img_b64, p_type, temperature=0.0, target_fields=target_fields
             )

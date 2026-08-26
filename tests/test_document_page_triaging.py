@@ -109,8 +109,8 @@ def test_apply_pdf_rotation():
     assert rot_0.size == (200, 100)
 
 
-def test_direct_scan_image_extraction(tmp_path, test_config):
-    """Creates a synthetic PDF containing a single full-page JPEG scan and verifies direct extraction."""
+def test_standardized_300dpi_rendering(tmp_path, test_config):
+    """Creates a synthetic PDF containing a single full-page scan and verifies standardized 300 DPI rendering."""
     preprocessor = ImagePreprocessor(test_config)
 
     # 1. Create sample JPEG scan
@@ -127,16 +127,16 @@ def test_direct_scan_image_extraction(tmp_path, test_config):
     doc.save(pdf_path)
     doc.close()
 
-    # 3. Test create_source_images extracts the raw scan image
+    # 3. Test create_source_images renders the page cleanly at 300 DPI
     raw_images = preprocessor.create_source_images(pdf_path, return_raw=True)
     assert raw_images is not None
     assert len(raw_images) == 1
-    # Check that it extracted the 1200x1600 scan directly instead of rendering at 595x842
-    assert raw_images[0].size == (1200, 1600)
+    # Check that it renders at standardized 300 DPI (2480x3509 for A4)
+    assert raw_images[0].size == (2480, 3509)
 
 
-def test_direct_scan_image_extraction_with_page_rotation(tmp_path, test_config):
-    """Verifies that PDF page rotation (/Rotate 90) is properly applied to extracted scans."""
+def test_standardized_300dpi_rendering_with_page_rotation(tmp_path, test_config):
+    """Verifies that PDF page rotation (/Rotate 90) is properly rendered at 300 DPI."""
     preprocessor = ImagePreprocessor(test_config)
 
     # Landscape scan (1600x1200) inserted into rotated page
@@ -156,8 +156,8 @@ def test_direct_scan_image_extraction_with_page_rotation(tmp_path, test_config):
     raw_images = preprocessor.create_source_images(pdf_path, return_raw=True)
     assert raw_images is not None
     assert len(raw_images) == 1
-    # After 90° clockwise rotation, size should be 1200x1600 (portrait)
-    assert raw_images[0].size == (1200, 1600)
+    # After 90° rotation, landscape page is rendered as portrait at 300 DPI
+    assert raw_images[0].size == (2480, 3509)
 
 
 def test_standalone_image_loading_with_exif_support(tmp_path, test_config):
@@ -220,8 +220,8 @@ def test_digital_pdf_line_level_spatial_coordinates(tmp_path):
     assert "[pos: y=0.7" in lines[2]
 
 
-def test_small_logo_not_treated_as_full_scan(tmp_path, test_config):
-    """Verifies that a page with a small logo (< 60% page area) is not extracted as a full-page scan."""
+def test_page_with_logo_renders_cleanly_at_300dpi(tmp_path, test_config):
+    """Verifies that a digital PDF page with a small logo and vector text renders cleanly at 300 DPI."""
     preprocessor = ImagePreprocessor(test_config)
 
     logo = Image.new("RGB", (100, 50), color="red")
@@ -236,11 +236,12 @@ def test_small_logo_not_treated_as_full_scan(tmp_path, test_config):
     page.insert_image(fitz.Rect(450, 20, 550, 70), stream=logo_data)
     page.insert_text(fitz.Point(50, 150), "Rechnung Nr. 998877")
     doc.save(pdf_path)
-
-    # extract_single_page_image must return None because logo covers < 60% of page
-    scan_img = preprocessor.extract_single_page_image(page, doc)
     doc.close()
-    assert scan_img is None
+
+    raw_images = preprocessor.create_source_images(pdf_path, return_raw=True)
+    assert raw_images is not None
+    assert len(raw_images) == 1
+    assert raw_images[0].size == (2480, 3509)
 
 
 def test_split_multi_page_pdf_deflates_and_saves(tmp_path, test_config):

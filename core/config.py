@@ -36,12 +36,12 @@ class AppConfig:
 
     # Preprocessing settings
     crop_padding: int = 5
-    white_border: int = 8
+    white_border: int = 32
     contrast_limit: float = 1.0
 
     # Dashboard settings
     dashboard_port: int = 8080
-    crop_edge_threshold: int = 45
+    crop_edge_threshold: int = 30
     min_contour_area: int = 10
 
     classify_dimension: int = 896
