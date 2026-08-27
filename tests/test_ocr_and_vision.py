@@ -380,8 +380,8 @@ def test_build_classification_gbnf_with_german_umlauts_and_symbols():
     ]
     grammar = _build_classification_gbnf(doc_types)
 
-    assert "root ::= opt_ws (" in grammar
-    assert "opt_ws ::= [ \\t\\n\\r]?" in grammar
+    assert "root ::= opt-ws (" in grammar
+    assert "opt-ws ::= [ \\t\\n\\r]?" in grammar
     assert '"Rechnung"' in grammar
     assert '"Datenschutzerklärung"' in grammar
     assert '"Rezept / Verordnung"' in grammar
@@ -397,7 +397,7 @@ def test_build_classification_gbnf_empty_fallback():
     from core.vision import _build_classification_gbnf
 
     grammar = _build_classification_gbnf([])
-    assert "root ::= opt_ws (" in grammar
+    assert "root ::= opt-ws (" in grammar
     assert '"UNKNOWN"' in grammar
     assert '"LEER"' in grammar
     assert '"EMPTY"' in grammar

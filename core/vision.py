@@ -107,19 +107,17 @@ def _build_classification_gbnf(doc_types: list[str]) -> str:
         esc = (
             dt.replace("\\", "\\\\")
             .replace('"', '\\"')
-            .replace("\n", "\\n")
-            .replace("\r", "\\r")
-            .replace("\t", "\\t")
+            .replace("\n", " ")
+            .replace("\r", " ")
+            .replace("\t", " ")
         )
         escaped_tokens.append(f'"{esc}"')
-        # Also allow surrounding quotes if model wraps in quotes
-        escaped_tokens.append(f'\'"\' "{esc}" \'"\'')
-        escaped_tokens.append(f'\'\\\'\' "{esc}" \'\\\'\'')
+        escaped_tokens.append(f'"\\"{esc}\\""')
 
     choices = " | ".join(escaped_tokens)
     return (
-        f"root ::= opt_ws ( {choices} ) opt_ws\n"
-        f"opt_ws ::= [ \\t\\n\\r]?"
+        f"root ::= opt-ws ( {choices} ) opt-ws\n"
+        f"opt-ws ::= [ \\t\\n\\r]?\n"
     )
 
 

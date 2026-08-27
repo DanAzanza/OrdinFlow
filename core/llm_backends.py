@@ -578,7 +578,15 @@ class _LlamaCppBackend(LLMBackend):
                         "schema": json_schema,
                     }
 
-                resp = self._llm.create_chat_completion(**kwargs)  # type: ignore[attr-defined]
+                try:
+                    resp = self._llm.create_chat_completion(**kwargs)  # type: ignore[attr-defined]
+                except Exception as e:
+                    if grammar_obj is not None:
+                        logger.warning("[-] LLM call with grammar failed (%s). Retrying unconstrained...", e)
+                        kwargs.pop("grammar", None)
+                        resp = self._llm.create_chat_completion(**kwargs)  # type: ignore[attr-defined]
+                    else:
+                        raise
 
                 # Handle both streaming and non-streaming responses
                 choices = resp.get("choices") if isinstance(resp, dict) else getattr(resp, "choices", None)
