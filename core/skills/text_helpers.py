@@ -286,6 +286,10 @@ def substitute_placeholders(text: str, context: Mapping[str, Any]) -> str:
             key = raw_expr
             modifier = ""
 
+        # Only substitute if key matches a valid variable name pattern (Unicode \w supports ä, ö, ü, ß)
+        if not re.match(r"^[\w\-]+$", key):
+            return match.group(0)
+
         val = derived.get(key)
         if val is None and key in derived:
             val = derived[key]

@@ -5,13 +5,16 @@
 let currentEditingTasks = [];
 
 function getActionBadgeStyle(actionType) {
-	switch (actionType) {
+	const norm = String(actionType || "").toUpperCase();
+	switch (norm) {
 		case "FOCUS_WINDOW":
 			return { label: "🪟 Focus Window", badgeClass: "action-pill-focus", icon: "🪟" };
 		case "CLICK":
 			return { label: "🎯 Click", badgeClass: "action-pill-click", icon: "🎯" };
 		case "DOUBLE_CLICK":
 			return { label: "🖱️ Double Click", badgeClass: "action-pill-click", icon: "🖱️" };
+		case "RIGHT_CLICK":
+			return { label: "🖱️ Right Click", badgeClass: "action-pill-click", icon: "🖱️" };
 		case "TYPE_TEXT":
 			return { label: "⌨️ Type Text", badgeClass: "action-pill-type", icon: "⌨️" };
 		case "TYPE_FILE_PATH":
@@ -22,8 +25,49 @@ function getActionBadgeStyle(actionType) {
 			return { label: "⏳ Wait For Element", badgeClass: "action-pill-wait", icon: "⏳" };
 		case "CALL_SKILL":
 			return { label: "⚡ Call Sub-Skill", badgeClass: "action-pill-skill", icon: "⚡" };
+		case "POWERSHELL":
+		case "RUN_SCRIPT":
+		case "EXECUTE_COMMAND":
+		case "SCRIPT":
+			return { label: "⚡ PowerShell / Script", badgeClass: "action-pill-skill", icon: "⚡" };
+		case "HOTKEY":
+		case "PRESS_KEY":
+			return { label: "⌨️ Hotkey / Key", badgeClass: "action-pill-type", icon: "⌨️" };
+		case "SLEEP":
+		case "DELAY":
+		case "WAIT":
+			return { label: "⏱️ Delay", badgeClass: "action-pill-wait", icon: "⏱️" };
 		default:
-			return { label: actionType || "Action", badgeClass: "action-pill-focus", icon: "⚙️" };
+			return { label: norm || "Action", badgeClass: "action-pill-focus", icon: "⚙️" };
+	}
+}
+
+function toggleActionEdit(taskIdx, actIdx) {
+	if (taskIdx >= 0 && taskIdx < currentEditingTasks.length) {
+		const actions = currentEditingTasks[taskIdx].actions || [];
+		if (actIdx >= 0 && actIdx < actions.length) {
+			actions[actIdx]._editing = !actions[actIdx]._editing;
+			renderEditorSteps();
+		}
+	}
+}
+
+function updateActionProperty(taskIdx, actIdx, prop, val) {
+	if (taskIdx >= 0 && taskIdx < currentEditingTasks.length) {
+		const actions = currentEditingTasks[taskIdx].actions || [];
+		if (actIdx >= 0 && actIdx < actions.length) {
+			const act = actions[actIdx];
+			if (prop.startsWith("locator.")) {
+				const sub = prop.split(".")[1];
+				if (!act.locator) act.locator = { type: "auto" };
+				act.locator[sub] = val;
+			} else {
+				act[prop] = val;
+			}
+			if (currentEditingSkill) {
+				currentEditingSkill.tasks = currentEditingTasks;
+			}
+		}
 	}
 }
 
@@ -333,7 +377,7 @@ function renderEditorSteps() {
 										const availableVars = showVariableChips ? getAvailableSkillVariables() : [];
 
 										return `
-										<div class="action-row-item" id="actionItem_${act.id || actIdx}">
+										<div class="action-row-item ${act._editing ? 'action-row-editing' : ''}" id="actionItem_${act.id || actIdx}">
 											<div class="action-item-left">
 												<span class="action-type-pill ${badgeStyle.badgeClass || "action-pill-focus"}">
 													${badgeStyle.label || act.action_type}
@@ -350,6 +394,7 @@ function renderEditorSteps() {
 												</div>
 											</div>
 											<div class="action-item-right">
+												<button type="button" class="btn btn-icon btn-sm" onclick="toggleActionEdit(${taskIdx}, ${actIdx})" title="${act._editing ? 'Close edit drawer' : 'Edit action parameters'}">${act._editing ? '✖️ Done' : '✏️ Edit'}</button>
 												${(act.action_type === "CLICK" || act.action_type === "DOUBLE_CLICK" || act.action_type === "RIGHT_CLICK" || act.action_type === "WAIT_FOR_ELEMENT" || act.action_type === "VERIFY_SCREEN") ? `<button type="button" class="btn btn-icon btn-sm btn-pick-element" onclick="pickElementForAction(${taskIdx}, ${actIdx})" title="🎯 Pick element on screen live">🎯 Pick</button>` : ""}
 												${act.action_type === "TYPE_TEXT" && isSensitive ? `<button type="button" class="btn btn-icon btn-sm" onclick="toggleActionReveal(${taskIdx}, ${actIdx})" title="${act._revealed ? 'Hide sensitive text' : 'Reveal sensitive text'}">${act._revealed ? '🙈' : '👁️'}</button>` : ""}
 												${act.action_type === "TYPE_TEXT" ? `<button type="button" class="btn btn-icon btn-sm" onclick="toggleActionSecret(${taskIdx}, ${actIdx})" title="${act.is_secret ? 'Remove secret flag' : 'Mark as secret/credential'}">${act.is_secret ? '🔒' : '🔓'}</button>` : ""}
@@ -358,13 +403,83 @@ function renderEditorSteps() {
 												<button type="button" class="btn btn-icon btn-sm btn-danger-icon" onclick="removeEditorAction(${taskIdx}, ${actIdx})" title="Remove action">🗑️</button>
 											</div>
 										</div>
+										${act._editing ? `
+										<div class="action-inline-editor-card" style="background: rgba(15, 23, 42, 0.65); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; padding: 12px; margin: 6px 0 12px 12px; display: grid; gap: 8px;">
+											<div style="display: grid; grid-template-columns: 140px 1fr; gap: 8px; align-items: center;">
+												<label style="font-size: 0.8rem; color: #94a3b8; font-weight: 600;">Action Type:</label>
+												<select class="form-select form-select-sm" style="background: #0f172a; color: #f8fafc; border: 1px solid rgba(255,255,255,0.15); border-radius: 4px; padding: 4px 8px;" onchange="updateActionProperty(${taskIdx}, ${actIdx}, 'action_type', this.value); renderEditorSteps();">
+													<option value="CLICK" ${act.action_type === "CLICK" ? "selected" : ""}>🎯 Click Element</option>
+													<option value="DOUBLE_CLICK" ${act.action_type === "DOUBLE_CLICK" ? "selected" : ""}>🖱️ Double Click</option>
+													<option value="RIGHT_CLICK" ${act.action_type === "RIGHT_CLICK" ? "selected" : ""}>🖱️ Right Click</option>
+													<option value="TYPE_TEXT" ${act.action_type === "TYPE_TEXT" ? "selected" : ""}>⌨️ Type Text</option>
+													<option value="TYPE_FILE_PATH" ${act.action_type === "TYPE_FILE_PATH" ? "selected" : ""}>📄 Type File Path</option>
+													<option value="POWERSHELL" ${act.action_type === "POWERSHELL" || act.action_type === "RUN_SCRIPT" ? "selected" : ""}>⚡ PowerShell / Script</option>
+													<option value="DELAY" ${act.action_type === "DELAY" || act.action_type === "SLEEP" ? "selected" : ""}>⏱️ Delay / Pause</option>
+													<option value="FOCUS_WINDOW" ${act.action_type === "FOCUS_WINDOW" ? "selected" : ""}>🪟 Focus Window</option>
+													<option value="WAIT_FOR_ELEMENT" ${act.action_type === "WAIT_FOR_ELEMENT" ? "selected" : ""}>⏳ Wait For Element</option>
+													<option value="CALL_SKILL" ${act.action_type === "CALL_SKILL" ? "selected" : ""}>⚡ Call Sub-Skill</option>
+												</select>
+											</div>
+											<div style="display: grid; grid-template-columns: 140px 1fr; gap: 8px; align-items: center;">
+												<label style="font-size: 0.8rem; color: #94a3b8; font-weight: 600;">Description:</label>
+												<input type="text" class="form-control form-control-sm" style="background: #0f172a; color: #f8fafc; border: 1px solid rgba(255,255,255,0.15); border-radius: 4px; padding: 4px 8px;" value="${escapeHtml(act.description || "")}" placeholder="Description of this step" onchange="updateActionProperty(${taskIdx}, ${actIdx}, 'description', this.value)" />
+											</div>
+											${(act.action_type === "POWERSHELL" || act.action_type === "RUN_SCRIPT" || act.action_type === "EXECUTE_COMMAND") ? `
+											<div style="display: grid; grid-template-columns: 140px 1fr; gap: 8px;">
+												<label style="font-size: 0.8rem; color: #94a3b8; font-weight: 600;">Command / Script:</label>
+												<textarea class="form-control form-control-sm" rows="5" style="background: #0f172a; color: #38bdf8; font-family: monospace; border: 1px solid rgba(255,255,255,0.15); border-radius: 4px; padding: 6px;" onchange="updateActionProperty(${taskIdx}, ${actIdx}, 'command', this.value)">${escapeHtml(act.command || act.script || "")}</textarea>
+											</div>
+											` : ""}
+											${act.action_type === "TYPE_TEXT" ? `
+											<div style="display: grid; grid-template-columns: 140px 1fr; gap: 8px; align-items: center;">
+												<label style="font-size: 0.8rem; color: #94a3b8; font-weight: 600;">Text to Type:</label>
+												<input type="text" class="form-control form-control-sm" style="background: #0f172a; color: #f8fafc; border: 1px solid rgba(255,255,255,0.15); border-radius: 4px; padding: 4px 8px;" value="${escapeHtml(act.text || "")}" placeholder="Text or variable (e.g. {Nachname})" onchange="updateActionProperty(${taskIdx}, ${actIdx}, 'text', this.value)" />
+											</div>
+											` : ""}
+											${act.action_type === "TYPE_FILE_PATH" ? `
+											<div style="display: grid; grid-template-columns: 140px 1fr; gap: 8px; align-items: center;">
+												<label style="font-size: 0.8rem; color: #94a3b8; font-weight: 600;">File Path:</label>
+												<input type="text" class="form-control form-control-sm" style="background: #0f172a; color: #f8fafc; border: 1px solid rgba(255,255,255,0.15); border-radius: 4px; padding: 4px 8px;" value="${escapeHtml(act.file_path || "{document_fullpath}")}" placeholder="{document_fullpath}" onchange="updateActionProperty(${taskIdx}, ${actIdx}, 'file_path', this.value)" />
+											</div>
+											` : ""}
+											${(act.action_type === "DELAY" || act.action_type === "SLEEP" || act.action_type === "WAIT") ? `
+											<div style="display: grid; grid-template-columns: 140px 1fr; gap: 8px; align-items: center;">
+												<label style="font-size: 0.8rem; color: #94a3b8; font-weight: 600;">Delay (ms):</label>
+												<input type="number" class="form-control form-control-sm" style="background: #0f172a; color: #f8fafc; border: 1px solid rgba(255,255,255,0.15); border-radius: 4px; padding: 4px 8px;" value="${act.delay_ms !== undefined ? act.delay_ms : (act.duration_s !== undefined ? act.duration_s * 1000 : 500)}" placeholder="500" onchange="updateActionProperty(${taskIdx}, ${actIdx}, 'delay_ms', isNaN(parseInt(this.value)) ? 0 : parseInt(this.value))" />
+											</div>
+											` : ""}
+											${act.action_type === "FOCUS_WINDOW" ? `
+											<div style="display: grid; grid-template-columns: 140px 1fr; gap: 8px; align-items: center;">
+												<label style="font-size: 0.8rem; color: #94a3b8; font-weight: 600;">Window Title:</label>
+												<input type="text" class="form-control form-control-sm" style="background: #0f172a; color: #f8fafc; border: 1px solid rgba(255,255,255,0.15); border-radius: 4px; padding: 4px 8px;" value="${escapeHtml(act.window_title || "")}" placeholder="CorelDRAW*" onchange="updateActionProperty(${taskIdx}, ${actIdx}, 'window_title', this.value)" />
+											</div>
+											` : ""}
+											${(act.action_type === "CLICK" || act.action_type === "DOUBLE_CLICK" || act.action_type === "RIGHT_CLICK" || act.action_type === "WAIT_FOR_ELEMENT") ? `
+											<div style="display: grid; grid-template-columns: 140px 1fr; gap: 8px; align-items: center;">
+												<label style="font-size: 0.8rem; color: #94a3b8; font-weight: 600;">Locator Target:</label>
+												<input type="text" class="form-control form-control-sm" style="background: #0f172a; color: #f8fafc; border: 1px solid rgba(255,255,255,0.15); border-radius: 4px; padding: 4px 8px;" value="${escapeHtml(act.locator?.prompt || act.locator?.value || "")}" placeholder="Button name or OCR text" onchange="updateActionProperty(${taskIdx}, ${actIdx}, 'locator.prompt', this.value)" />
+											</div>
+											` : ""}
+										</div>
+										` : ""}
 									`;
 									})
 									.join("")
 					}
+					<div style="margin-top: 8px; display: flex; gap: 8px;">
+						<button type="button" class="btn btn-sm btn-secondary" style="font-size: 0.78rem; padding: 4px 10px;" onclick="addEditorAction(${taskIdx})">
+							➕ Add Action to Task ${taskIdx + 1}
+						</button>
+					</div>
 				</div>
 			</div>
 		`;
 		})
-		.join("");
+		.join("") + `
+		<div style="margin-top: 14px; display: flex; justify-content: flex-start;">
+			<button type="button" class="btn btn-sm btn-outline-primary" style="font-size: 0.82rem; padding: 6px 14px; font-weight: 600;" onclick="addEditorTask('Task ' + (currentEditingTasks.length + 1))">
+				➕ Add New Task
+			</button>
+		</div>
+	`;
 }

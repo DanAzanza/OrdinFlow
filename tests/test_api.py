@@ -491,9 +491,29 @@ def test_api_skills_test_run(client):
     assert data["total_actions"] == 1
     assert "duration_seconds" in data
 
-    # Invalid input
+    # Invalid input: no skill
     res_bad = client.post("/api/skills/test_run", json={})
     assert res_bad.status_code == 400
+
+    # Skill requiring document_fullpath but none provided -> must fail fast with 400
+    doc_req_skill = {
+        "name": "Doc Required Skill",
+        "tasks": [
+            {
+                "id": "t1",
+                "actions": [
+                    {
+                        "id": "act_ps",
+                        "action_type": "POWERSHELL",
+                        "command": "Write-Output '{document_fullpath}'",
+                    }
+                ],
+            }
+        ],
+    }
+    res_missing_doc = client.post("/api/skills/test_run", json={"skill": doc_req_skill, "context": {}})
+    assert res_missing_doc.status_code == 400
+    assert "document_fullpath" in res_missing_doc.get_json()["error"]
 
 
 def test_api_skills_pick_element(client, monkeypatch):

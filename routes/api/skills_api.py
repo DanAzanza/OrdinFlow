@@ -308,7 +308,9 @@ def skill_to_yaml():
     data = request.json or {}
     skill_data = data.get("skill") or data
     try:
-        yaml_str = yaml.safe_dump(skill_data, allow_unicode=True, sort_keys=False)
+        from core.skills.manager import _SkillYamlDumper
+
+        yaml_str = yaml.dump(skill_data, Dumper=_SkillYamlDumper, allow_unicode=True, sort_keys=False)
         return jsonify({"status": "ok", "yaml": yaml_str})
     except Exception as e:
         return jsonify({"error": str(e)}), 400
@@ -537,12 +539,29 @@ def test_run_skill():
     if not isinstance(test_context, dict):
         test_context = {}
 
-    test_context.setdefault("document_fullpath", "C:\\OrdinFlowTest\\Cases\\Test_Patient_2026\\Fußscan.pdf")
-    test_context.setdefault("Nachname", "Mustermann")
-    test_context.setdefault("Vorname", "Max")
-    test_context.setdefault("Datum", time.strftime("%Y-%m-%d"))
-    test_context.setdefault("Fallnummer", "F-2026-001")
-    test_context.setdefault("category", "Fußscan")
+    doc_path = str(test_context.get("document_fullpath", "") or "").strip()
+    if doc_path and not os.path.exists(doc_path):
+        return jsonify({"error": f"Provided document path does not exist: {doc_path}"}), 400
+
+    # If the skill definition requires a source document but none was provided
+    requires_doc = False
+    all_actions: list[dict[str, Any]] = []
+    for task in skill_def.get("tasks", []):
+        if isinstance(task, dict):
+            all_actions.extend(task.get("actions", []))
+    for act in skill_def.get("steps", []) + skill_def.get("actions", []):
+        if isinstance(act, dict):
+            all_actions.append(act)
+
+    for act in all_actions:
+        act_type = str(act.get("action_type") or act.get("type", "")).upper()
+        cmd = str(act.get("command", "") or act.get("script", "") or act.get("file_path", ""))
+        if act_type == "TYPE_FILE_PATH" or "{document_fullpath}" in cmd:
+            requires_doc = True
+            break
+
+    if requires_doc and not doc_path:
+        return jsonify({"error": "This skill requires a valid document ('document_fullpath') in context. Execution aborted without mock data."}), 400
 
     mgr = _get_skill_manager()
     vext = DashboardState.processor.llm_extractor if DashboardState.processor else None

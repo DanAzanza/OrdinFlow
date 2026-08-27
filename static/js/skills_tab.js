@@ -696,30 +696,24 @@ async function testRunCurrentSkill() {
 		btn.innerHTML = `<span>⏳</span> Running...`;
 	}
 
-	toast("▶️ Starting test execution of skill with test data...", "info");
+	toast("▶️ Initiating skill execution validation...", "info");
 
 	try {
 		const res = await api("/api/skills/test_run", {
 			method: "POST",
 			body: JSON.stringify({
 				skill: payload,
-				context: {
-					document_fullpath: "C:\\OrdinFlowTest\\Cases\\Test_Patient_2026\\Fußscan.pdf",
-					Nachname: "Mustermann",
-					Vorname: "Max",
-					Datum: new Date().toISOString().split("T")[0],
-					Fallnummer: "F-2026-TEST",
-				},
+				context: {},
 			}),
 		});
 
 		if (res && res.success) {
 			toast(`✅ Test run completed successfully in ${res.duration_seconds}s (${res.total_actions} actions)!`, "success");
 		} else {
-			toast(`⚠️ Test run finished with issues (${res.error || "Check target application window"})`, "error");
+			toast(`⚠️ Execution aborted: ${res?.error || "Check required variables or target application"}`, "error");
 		}
 	} catch (e) {
-		toast("Test run error: " + e.message, "error");
+		toast("Execution aborted: " + e.message, "error");
 	} finally {
 		if (btn) {
 			btn.disabled = false;

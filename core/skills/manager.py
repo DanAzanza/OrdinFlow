@@ -20,6 +20,20 @@ from core.utils import sanitize_safe_path
 logger = logging.getLogger(__name__)
 
 
+class _SkillYamlDumper(yaml.SafeDumper):
+    pass
+
+
+def _multiline_str_representer(dumper: yaml.SafeDumper, data: str) -> yaml.ScalarNode:
+    clean = data.replace("\r\n", "\n")
+    if "\n" in clean:
+        return dumper.represent_scalar("tag:yaml.org,2002:str", clean, style="|")
+    return dumper.represent_scalar("tag:yaml.org,2002:str", clean)
+
+
+yaml.add_representer(str, _multiline_str_representer, Dumper=_SkillYamlDumper)
+
+
 INVALID_NAME_CHARS: set[str] = set(r':/\*?"<>|')
 
 
@@ -218,7 +232,7 @@ class SkillManager:
         os.makedirs(self.skills_dir, exist_ok=True)
         filepath = os.path.join(self.skills_dir, f"{clean_filename}.yaml")
         with open(filepath, "w", encoding="utf-8") as f:
-            yaml.safe_dump(skill_data, f, allow_unicode=True, sort_keys=False)
+            yaml.dump(skill_data, f, Dumper=_SkillYamlDumper, allow_unicode=True, sort_keys=False)
 
         with self._lock:
             try:

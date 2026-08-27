@@ -277,6 +277,11 @@ class ExportEngine(BaseSkill):
             elif action_type == "TYPE_TEXT":
                 raw_text = str(step.get("text", ""))
                 text_to_type = self._substitute_placeholders(raw_text, context)
+                # Fail-fast check: If raw text contains dynamic variable placeholders but resolves to empty string
+                if "{" in raw_text and not text_to_type.strip():
+                    logger.error("  [!] TYPE_TEXT aborted: Placeholder in %r resolved to empty string.", raw_text)
+                    return False
+
                 press_enter = bool(step.get("press_enter", False))
                 is_secret = bool(step.get("is_secret", False)) or is_sensitive_credential_text(raw_text, step.get("description", ""))
                 if is_secret:
@@ -284,17 +289,26 @@ class ExportEngine(BaseSkill):
                 with input_shield():
                     _type_unicode_text(text_to_type, press_enter=press_enter)
 
-            # 4. TYPE_FILE_PATH (Instant Clipboard Paste + Security Gate)
+            # 4. TYPE_FILE_PATH (Instant Clipboard Paste + Security Gate + Fail-Fast Validation)
             elif action_type == "TYPE_FILE_PATH":
-                raw_path = str(step.get("file_path", context.get("document_fullpath", "")))
-                sub_path = self._substitute_placeholders(raw_path, context)
+                raw_path = str(step.get("file_path", context.get("document_fullpath", "") or ""))
+                sub_path = self._substitute_placeholders(raw_path, context).strip()
+                if not sub_path:
+                    logger.error("  [!] TYPE_FILE_PATH aborted: Target file path is empty or unresolved.")
+                    return False
+
                 is_safe, clean_path = sanitize_safe_path(sub_path)
-                if not is_safe:
-                    logger.error("[Security] Aborted TYPE_FILE_PATH due to directory traversal pattern: %r", sub_path)
+                if not is_safe or not clean_path.strip():
+                    logger.error("[Security] Aborted TYPE_FILE_PATH due to invalid/unsafe path: %r", sub_path)
                     self._save_failure_screenshot(step_id, f"Security Block: {sub_path}", self.target_window)
                     return False
 
                 final_path = os.path.abspath(clean_path)
+                if not os.path.exists(final_path):
+                    logger.error("  [!] TYPE_FILE_PATH aborted: Target file does not exist on disk: %s", final_path)
+                    self._save_failure_screenshot(step_id, f"Missing File: {final_path}", self.target_window)
+                    return False
+
                 if self.rdp_prefix and final_path.startswith("C:"):
                     final_path = self.rdp_prefix + final_path[2:]
 
@@ -449,6 +463,15 @@ class ExportEngine(BaseSkill):
                 import subprocess
 
                 raw_cmd = str(step.get("command", "") or step.get("script", "") or step.get("code", ""))
+                if "{document_fullpath}" in raw_cmd:
+                    doc_fp = str(context.get("document_fullpath", "") or "").strip()
+                    if not doc_fp or not os.path.exists(doc_fp):
+                        logger.error(
+                            "  [!] SCRIPT aborted: Required variable 'document_fullpath' is missing or points to non-existent file: %r",
+                            doc_fp,
+                        )
+                        return False
+
                 cmd_to_run = self._substitute_placeholders(raw_cmd, context)
                 timeout_s = float(step.get("timeout_s", 60.0))
                 shell_type = str(step.get("shell", "powershell")).lower()
@@ -470,6 +493,8 @@ class ExportEngine(BaseSkill):
                                 stdout=subprocess.PIPE,
                                 stderr=subprocess.PIPE,
                                 text=True,
+                                encoding="utf-8",
+                                errors="replace",
                             )
                         else:
                             proc = subprocess.Popen(
@@ -478,6 +503,8 @@ class ExportEngine(BaseSkill):
                                 stdout=subprocess.PIPE,
                                 stderr=subprocess.PIPE,
                                 text=True,
+                                encoding="utf-8",
+                                errors="replace",
                             )
 
                         start_proc_t = time.time()

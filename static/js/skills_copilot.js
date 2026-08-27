@@ -156,6 +156,9 @@ async function sendSkillCopilotMessage() {
 			}
 
 			renderEditorSteps();
+			if (typeof syncYamlFromVisual === "function") {
+				syncYamlFromVisual();
+			}
 
 			// Append assistant reply
 			const replyText = res.reply || "I have updated the skill according to your instruction.";

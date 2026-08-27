@@ -865,8 +865,11 @@ def test_export_engine_delay_action_execution():
     assert success is True
 
 
-def test_export_engine_script_execution():
+def test_export_engine_script_execution(tmp_path):
     from core.skills.engines.export_engine import ExportEngine
+
+    sample_doc = tmp_path / "Test__Doc.pdf"
+    sample_doc.write_text("dummy content", encoding="utf-8")
 
     skill_def = {
         "name": "Script Test Skill",
@@ -886,8 +889,84 @@ def test_export_engine_script_execution():
         ]
     }
     engine = ExportEngine(skill_def)
-    success = engine.execute_actions(context={"document_fullpath": "C:/Cases/Test__Doc.pdf"})
+    success = engine.execute_actions(context={"document_fullpath": str(sample_doc)})
     assert success is True
+
+
+def test_export_engine_fail_fast_missing_document_in_script():
+    from core.skills.engines.export_engine import ExportEngine
+
+    skill_def = {
+        "name": "Script With Document Requirement",
+        "tasks": [
+            {
+                "id": "t1",
+                "title": "Script Task",
+                "actions": [
+                    {
+                        "id": "act_ps",
+                        "action_type": "POWERSHELL",
+                        "command": "Write-Output '{document_fullpath}'",
+                    }
+                ],
+            }
+        ],
+    }
+    engine = ExportEngine(skill_def)
+    # Empty context without document_fullpath -> must fail fast and return False
+    assert engine.execute_actions(context={}) is False
+    # Non-existent file -> must fail fast and return False
+    assert engine.execute_actions(context={"document_fullpath": "C:/NonExistentPath/File.pdf"}) is False
+
+
+def test_export_engine_fail_fast_type_file_path():
+    from core.skills.engines.export_engine import ExportEngine
+
+    skill_def = {
+        "name": "Type File Path Skill",
+        "tasks": [
+            {
+                "id": "t1",
+                "title": "File Path Task",
+                "actions": [
+                    {
+                        "id": "act_fp",
+                        "action_type": "TYPE_FILE_PATH",
+                        "file_path": "{document_fullpath}",
+                    }
+                ],
+            }
+        ],
+    }
+    engine = ExportEngine(skill_def)
+    # Empty context -> must fail fast
+    assert engine.execute_actions(context={}) is False
+    # Non-existent file -> must fail fast
+    assert engine.execute_actions(context={"document_fullpath": "C:/NonExistent/Doc.pdf"}) is False
+
+
+def test_export_engine_fail_fast_unresolved_type_text():
+    from core.skills.engines.export_engine import ExportEngine
+
+    skill_def = {
+        "name": "Type Text Skill",
+        "tasks": [
+            {
+                "id": "t1",
+                "title": "Type Text Task",
+                "actions": [
+                    {
+                        "id": "act_tt",
+                        "action_type": "TYPE_TEXT",
+                        "text": "{Nachname}",
+                    }
+                ],
+            }
+        ],
+    }
+    engine = ExportEngine(skill_def)
+    # Empty context with required placeholder -> must fail fast
+    assert engine.execute_actions(context={}) is False
 
 
 

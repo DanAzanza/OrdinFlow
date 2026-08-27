@@ -221,23 +221,13 @@ class LLMExtractor:
                 if cleaned and (cleaned in dt.lower() or dt.lower() in cleaned):
                     return {"Document": dt}
 
-        fallback = next(
-            (k for k, v in doc_types.items() if (v.get("classification_desc") or "").strip()),
-            None,
-        )
-        if not fallback and doc_types:
-            fallback = next(iter(doc_types))
-        return {"Document": fallback if fallback else "UNKNOWN"}
+        # No valid match found -> UNKNOWN for human triage
+        return {"Document": "UNKNOWN"}
 
     def find_doc_type_config(self, doc_type: str) -> tuple[str, dict]:
         """Returns the document configuration for the given type. Case-insensitive."""
-        if not isinstance(doc_type, str):
-            fallback_key = next(iter(self._get_effective_document_types()), "UNKNOWN")
-            logger.warning(
-                f"[!] find_doc_type_config: Invalid doc_type {type(doc_type).__name__} "
-                f'(value={doc_type!r}). Falling back to "{fallback_key}".'
-            )
-            doc_type = fallback_key
+        if not isinstance(doc_type, str) or not doc_type.strip():
+            return "UNKNOWN", {}
         doc_types = self._get_effective_document_types()
         # 1. Try exact match first (fast path)
         if doc_type in doc_types:
