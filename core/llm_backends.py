@@ -546,11 +546,11 @@ class _LlamaCppBackend(LLMBackend):
                     repeat_val = options_dict.get("repeat_penalty", 1.0)
                 repeat_penalty = float(repeat_val) if isinstance(repeat_val, (int, float)) else 1.0
 
-                raw_max = payload.get("max_tokens") or options_dict.get("max_tokens") or getattr(self.config, "max_tokens", 1024) or 1024
+                raw_max = payload.get("max_tokens") or options_dict.get("max_tokens") or getattr(self.config, "max_tokens", 512) or 512
                 try:
                     max_tok = int(raw_max)  # type: ignore[arg-type]
                 except (ValueError, TypeError):
-                    max_tok = 1024
+                    max_tok = 512
 
                 grammar_str = payload.get("grammar")
                 grammar_obj = None
@@ -661,11 +661,11 @@ class _ServerBackend(LLMBackend):
             temp_val = options_dict.get("temperature", 0.0)
         temperature = float(temp_val) if isinstance(temp_val, (int, float)) else 0.0
 
-        raw_max = payload.get("max_tokens") or options_dict.get("max_tokens") or getattr(self.config, "max_tokens", 1024) or 1024
+        raw_max = payload.get("max_tokens") or options_dict.get("max_tokens") or getattr(self.config, "max_tokens", 512) or 512
         try:
             max_tok = int(raw_max)  # type: ignore[arg-type]
         except (ValueError, TypeError):
-            max_tok = 1024
+            max_tok = 512
 
         grammar_str = payload.get("grammar")
         extra_kwargs: dict[str, Any] = {}
