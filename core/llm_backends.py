@@ -552,6 +552,16 @@ class _LlamaCppBackend(LLMBackend):
                 except (ValueError, TypeError):
                     max_tok = 2048
 
+                grammar_str = payload.get("grammar")
+                grammar_obj = None
+                if grammar_str and isinstance(grammar_str, str):
+                    try:
+                        from llama_cpp import LlamaGrammar  # type: ignore[import-untyped]
+
+                        grammar_obj = LlamaGrammar.from_string(grammar_str, verbose=False)
+                    except Exception as e:
+                        logger.warning("[-] Failed to compile LlamaGrammar (%s). Falling back unconstrained.", e)
+
                 json_schema = payload.get("json_schema")
                 kwargs: dict[str, object] = {
                     "messages": messages,
@@ -560,7 +570,9 @@ class _LlamaCppBackend(LLMBackend):
                     "repeat_penalty": repeat_penalty,
                     "max_tokens": max_tok,
                 }
-                if json_schema and isinstance(json_schema, dict):
+                if grammar_obj is not None:
+                    kwargs["grammar"] = grammar_obj
+                elif json_schema and isinstance(json_schema, dict):
                     kwargs["response_format"] = {
                         "type": "json_object",
                         "schema": json_schema,
@@ -655,15 +667,34 @@ class _ServerBackend(LLMBackend):
         except (ValueError, TypeError):
             max_tok = 2048
 
+        grammar_str = payload.get("grammar")
+        extra_kwargs: dict[str, Any] = {}
+        if grammar_str and isinstance(grammar_str, str):
+            extra_kwargs["extra_body"] = {"grammar": grammar_str}
+
         try:
             resp = self._client.chat.completions.create(  # type: ignore[attr-defined]
                 model=getattr(self.config, "server_model", "local-model"),
                 messages=msgs,
                 temperature=temperature,
                 max_tokens=max_tok,
+                **extra_kwargs,
             )
             return (resp.choices[0].message.content or "").strip()  # type: ignore[union-attr, attr-defined]
-        except (AttributeError, RuntimeError, ValueError, TypeError) as e:
+        except (AttributeError, RuntimeError, ValueError, TypeError, Exception) as e:
+            if extra_kwargs and ("grammar" in str(e).lower() or "400" in str(e)):
+                logger.warning("[-] Remote server rejected GBNF grammar (%s). Retrying unconstrained...", e)
+                try:
+                    resp = self._client.chat.completions.create(  # type: ignore[attr-defined]
+                        model=getattr(self.config, "server_model", "local-model"),
+                        messages=msgs,
+                        temperature=temperature,
+                        max_tokens=max_tok,
+                    )
+                    return (resp.choices[0].message.content or "").strip()  # type: ignore[union-attr, attr-defined]
+                except Exception as retry_err:
+                    logger.warning("[-] Server unconstrained retry call failed: %s", retry_err)
+                    return ""
             logger.warning("[-] Server call failed: %s", e)
             return ""
 

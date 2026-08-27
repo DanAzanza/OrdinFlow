@@ -366,3 +366,66 @@ def test_extraction_pipeline_preload():
     pipeline.preload()
     mock_llm.preload.assert_called_once()
 
+
+def test_build_classification_gbnf_with_german_umlauts_and_symbols():
+    """Tests that _build_classification_gbnf generates valid GBNF syntax with umlauts and symbols."""
+    from core.vision import _build_classification_gbnf
+
+    doc_types = [
+        "Rechnung",
+        "Datenschutzerklärung",
+        "Rezept / Verordnung",
+        'Kostenaufstellung "Privat"',
+        "Überweisungsträger",
+    ]
+    grammar = _build_classification_gbnf(doc_types)
+
+    assert "root ::= opt_ws (" in grammar
+    assert "opt_ws ::= [ \\t\\n\\r]?" in grammar
+    assert '"Rechnung"' in grammar
+    assert '"Datenschutzerklärung"' in grammar
+    assert '"Rezept / Verordnung"' in grammar
+    assert '"Kostenaufstellung \\"Privat\\""' in grammar
+    assert '"Überweisungsträger"' in grammar
+    assert '"UNKNOWN"' in grammar
+    assert '"LEER"' in grammar
+    assert '"EMPTY"' in grammar
+
+
+def test_build_classification_gbnf_empty_fallback():
+    """Tests that _build_classification_gbnf with empty list produces valid fallback grammar."""
+    from core.vision import _build_classification_gbnf
+
+    grammar = _build_classification_gbnf([])
+    assert "root ::= opt_ws (" in grammar
+    assert '"UNKNOWN"' in grammar
+    assert '"LEER"' in grammar
+    assert '"EMPTY"' in grammar
+
+
+def test_classify_image_passes_grammar_and_max_tokens_16():
+    """Tests that classify_image injects grammar and max_tokens=16 into vision API payload."""
+    from unittest.mock import MagicMock
+    from core.config import AppConfig
+    from core.vision import LLMExtractor
+
+    cfg = AppConfig()
+    cfg.document_types = {
+        "Arztbrief": {},
+        "Rechnung": {},
+    }
+    extractor = LLMExtractor(cfg)
+    extractor.call_vision_api = MagicMock(return_value="Rechnung")
+
+    res = extractor.classify_image("base64_dummy_image_data")
+
+    assert res == {"Document": "Rechnung"}
+    extractor.call_vision_api.assert_called_once()
+    payload = extractor.call_vision_api.call_args[0][0]
+    assert payload.get("max_tokens") == 16
+    assert payload.get("temperature") == 0.0
+    assert "grammar" in payload
+    assert '"Rechnung"' in payload["grammar"]
+    assert '"Arztbrief"' in payload["grammar"]
+    assert '"UNKNOWN"' in payload["grammar"]
+

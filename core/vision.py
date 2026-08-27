@@ -88,6 +88,41 @@ def _repair_and_parse_json(raw_text: str) -> dict[str, Any]:
     return harvested
 
 
+def _build_classification_gbnf(doc_types: list[str]) -> str:
+    """Builds a strict, single-category GBNF grammar for document classification."""
+    standard_fallbacks = ["UNKNOWN", "LEER", "EMPTY"]
+    all_types: list[str] = []
+    seen: set[str] = set()
+    for dt in list(doc_types) + standard_fallbacks:
+        clean = dt.strip()
+        if clean and clean not in seen:
+            seen.add(clean)
+            all_types.append(clean)
+
+    if not all_types:
+        all_types = standard_fallbacks
+
+    escaped_tokens: list[str] = []
+    for dt in all_types:
+        esc = (
+            dt.replace("\\", "\\\\")
+            .replace('"', '\\"')
+            .replace("\n", "\\n")
+            .replace("\r", "\\r")
+            .replace("\t", "\\t")
+        )
+        escaped_tokens.append(f'"{esc}"')
+        # Also allow surrounding quotes if model wraps in quotes
+        escaped_tokens.append(f'\'"\' "{esc}" \'"\'')
+        escaped_tokens.append(f'\'\\\'\' "{esc}" \'\\\'\'')
+
+    choices = " | ".join(escaped_tokens)
+    return (
+        f"root ::= opt_ws ( {choices} ) opt_ws\n"
+        f"opt_ws ::= [ \\t\\n\\r]?"
+    )
+
+
 class LLMExtractor:
     """Encapsulates communication with the LLM backend (direct llama.cpp or server + Instructor/Pydantic).
 
@@ -189,7 +224,7 @@ class LLMExtractor:
             return None
 
     def classify_image(self, b64_image: str) -> dict[str, Any]:
-        """Classifies an image using the configured LLM backend."""
+        """Classifies an image using the configured LLM backend and dynamic GBNF grammar."""
         doc_types = self._get_effective_document_types()
         type_descriptions = []
         for dt, info in doc_types.items():
@@ -204,9 +239,12 @@ class LLMExtractor:
             f"Options:\n{type_str}\n\n"
             "Reply ONLY with the exact category name - no JSON, no explanation."
         )
+        grammar_str = _build_classification_gbnf(list(doc_types.keys()))
         payload = {
             "messages": [{"role": "user", "content": prompt, "images": [b64_image]}],
-            "max_tokens": 128,
+            "max_tokens": 16,
+            "temperature": 0.0,
+            "grammar": grammar_str,
         }
 
         raw_resp = self.call_vision_api(payload)
