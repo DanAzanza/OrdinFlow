@@ -121,6 +121,26 @@ def _build_classification_gbnf(doc_types: list[str]) -> str:
     )
 
 
+def _clean_description_text(raw_text: str) -> str:
+    """Strips <think> tags, markdown code fences, and normalizes whitespace."""
+    if not raw_text or not isinstance(raw_text, str):
+        return ""
+    # Strip thinking blocks
+    cleaned = re.sub(r"<think>.*?</think>", "", raw_text, flags=re.DOTALL)
+    # Strip markdown code blocks / quotes
+    cleaned = re.sub(r"```[a-zA-Z]*\n?", "", cleaned)
+    cleaned = cleaned.replace("```", "").strip()
+    # Strip conversational prefixes
+    cleaned = re.sub(
+        r"^(hier ist die beschreibung|hier ist|das dokument zeigt|beschreibung)\s*:\s*",
+        "",
+        cleaned,
+        flags=re.IGNORECASE,
+    )
+    # Normalize whitespace to single line
+    return re.sub(r"\s+", " ", cleaned).strip()
+
+
 class LLMExtractor:
     """Encapsulates communication with the LLM backend (direct llama.cpp or server + Instructor/Pydantic).
 
@@ -133,6 +153,34 @@ class LLMExtractor:
         self.config = config
         self._backend: LLMBackend = get_backend(config)  # Backend is lazily initialized
         self._doc_types_cache: dict | None = None
+
+    def describe_image(self, b64_image: str, max_tokens: int = 64) -> str:
+        """Generates a concise 1-2 sentence description of an unknown document image in German."""
+        if not b64_image or not isinstance(b64_image, str) or len(b64_image.strip()) < 100:
+            return ""
+
+        system_prompt = (
+            "Du bist ein präziser Assistent für Dokumenten-Triage. "
+            "Antworte ausschließlich auf Deutsch in 1-2 kurzen, sachlichen Sätzen."
+        )
+        user_prompt = (
+            "Beschreibe den visuellen Typ und groben Inhalt dieses unbekannten Dokuments "
+            "(z.B. handschriftliche Notiz, Zeichnung/Skizze, Formular, Urkunde, Foto, Flyer)."
+        )
+        payload = {
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt, "images": [b64_image]},
+            ],
+            "max_tokens": max_tokens,
+            "temperature": 0.0,
+        }
+        try:
+            raw_resp = self.call_vision_api(payload)
+            return _clean_description_text(raw_resp)
+        except Exception as e:
+            logger.warning("[-] describe_image failed: %s", e)
+            return ""
 
     def preload(self) -> None:
         """Preloads LLM backend weights into memory ahead of time."""

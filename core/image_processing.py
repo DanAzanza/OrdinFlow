@@ -98,9 +98,13 @@ class ImagePreprocessor:
         edge artifact filtering, auto-cropping, and 300 DPI white border). Returns unscaled image.
         """
         if not HAS_CV2 or cv2 is None:
+            if isinstance(pil_image, np.ndarray):
+                return Image.fromarray(pil_image)
             return pil_image.copy()
 
         try:
+            if isinstance(pil_image, np.ndarray):
+                pil_image = Image.fromarray(pil_image)
             if pil_image.mode != "RGB":
                 pil_image = pil_image.convert("RGB")
             img = np.array(pil_image)

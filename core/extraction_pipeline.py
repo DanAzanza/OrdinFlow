@@ -184,6 +184,13 @@ class ExtractionPipeline:
         logger.info(f"[+] Page {idx + 1} classification: {doc_type}")
 
         matched_name, matched_info = self.llm_extractor.find_doc_type_config(doc_type)
+
+        vision_description = ""
+        if matched_name.upper() == "UNKNOWN" and idx == 0:
+            vision_description = self.llm_extractor.describe_image(b64_img)
+            if vision_description:
+                logger.info(f"[+] Page {idx + 1} unknown document description: '{vision_description}'")
+
         if matched_name.upper() in {"UNKNOWN", "EMPTY"}:
             matched_info = {}
 
@@ -201,6 +208,7 @@ class ExtractionPipeline:
             "spatial_text": spatial_text,
             "ocr_text": ocr_text,
             "pdf_path": pdf_path,
+            "vision_description": vision_description,
         }
 
     def run_extraction_tier(
@@ -337,12 +345,16 @@ class ExtractionPipeline:
             logging.info(
                 f"[+] Document '{d_type}' (pages {page_nums}): No extraction fields configured and no signature required. Skipping KI requests."
             )
-            return {
+            desc = next((p.get("vision_description") for p in document_pages if p.get("vision_description")), "")
+            res: dict[str, Any] = {
                 "Document": d_type,
                 "pages": page_nums,
                 "Signed": False,
                 "_confidence": {},
             }
+            if desc:
+                res["vision_description"] = desc
+            return res
 
         t1_dim = getattr(self.config, "tier1_dimension", 1260)
         t2_dim = getattr(self.config, "tier2_dimension", 1512)
@@ -391,6 +403,9 @@ class ExtractionPipeline:
                 group_final["Signed"] = any(
                     _to_bool_value(res.get("Signed", False)) for res in t1_vision_results if isinstance(res, dict)
                 )
+            desc = next((p.get("vision_description") for p in document_pages if p.get("vision_description")), "")
+            if desc and "vision_description" not in group_final:
+                group_final["vision_description"] = desc
             group_final["pages"] = page_nums
             group_final["_confidence"] = confidences
             return group_final
@@ -469,6 +484,10 @@ class ExtractionPipeline:
                 for res in res_list
                 if isinstance(res, dict)
             )
+
+        desc = next((p.get("vision_description") for p in document_pages if p.get("vision_description")), "")
+        if desc and "vision_description" not in group_final:
+            group_final["vision_description"] = desc
 
         group_final["pages"] = page_nums
         group_final["_confidence"] = confidences

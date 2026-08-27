@@ -429,3 +429,112 @@ def test_classify_image_passes_grammar_and_max_tokens_16():
     assert '"Arztbrief"' in payload["grammar"]
     assert '"UNKNOWN"' in payload["grammar"]
 
+
+def test_clean_description_text():
+    """Tests that _clean_description_text strips thinking tags, markdown, and prefixes."""
+    from core.vision import _clean_description_text
+
+    raw = (
+        "<think>The image shows a drawing with pencil lines.</think>\n"
+        "```markdown\n"
+        "Hier ist die Beschreibung: Handschriftliche Notiz mit Bleistiftskizze einer Fußsohle.\n"
+        "```"
+    )
+    cleaned = _clean_description_text(raw)
+    assert "<think>" not in cleaned
+    assert "```" not in cleaned
+    assert "Hier ist die Beschreibung:" not in cleaned
+    assert cleaned == "Handschriftliche Notiz mit Bleistiftskizze einer Fußsohle."
+
+
+def test_describe_image_success():
+    """Tests that describe_image generates clean German description with max_tokens=64."""
+    from unittest.mock import MagicMock
+    from core.config import AppConfig
+    from core.vision import LLMExtractor
+
+    extractor = LLMExtractor(AppConfig())
+    extractor.call_vision_api = MagicMock(return_value="Ein Scan eines Rezepts mit handschriftlicher Notiz.")
+
+    dummy_b64 = "A" * 150
+    desc = extractor.describe_image(dummy_b64, max_tokens=64)
+
+    assert desc == "Ein Scan eines Rezepts mit handschriftlicher Notiz."
+    extractor.call_vision_api.assert_called_once()
+    payload = extractor.call_vision_api.call_args[0][0]
+    assert payload["max_tokens"] == 64
+    assert payload["temperature"] == 0.0
+    assert len(payload["messages"]) == 2
+    assert "system" == payload["messages"][0]["role"]
+    assert "Deutsch" in payload["messages"][0]["content"]
+
+
+def test_describe_image_empty_input_returns_empty():
+    """Tests that describe_image with empty or invalid image returns empty string immediately."""
+    from unittest.mock import MagicMock
+    from core.config import AppConfig
+    from core.vision import LLMExtractor
+
+    extractor = LLMExtractor(AppConfig())
+    extractor.call_vision_api = MagicMock()
+
+    assert extractor.describe_image("") == ""
+    assert extractor.describe_image("   ") == ""
+    assert extractor.describe_image("short") == ""
+    extractor.call_vision_api.assert_not_called()
+
+
+def test_classify_single_page_triggers_describe_image_on_unknown():
+    """Tests that classify_single_page queries description only when document is UNKNOWN on page 1."""
+    import numpy as np
+    from unittest.mock import MagicMock
+    from core.config import AppConfig
+    from core.extraction_pipeline import ExtractionPipeline
+    from core.image_processing import ImagePreprocessor
+    from core.vision import LLMExtractor
+
+    cfg = AppConfig()
+    cfg.document_types = {"Rechnung": {}}
+    mock_llm = MagicMock(spec=LLMExtractor)
+    mock_llm.classify_image.return_value = {"Document": "UNKNOWN"}
+    mock_llm.find_doc_type_config.return_value = ("UNKNOWN", {})
+    mock_llm.describe_image.return_value = "Skizze einer orthopädischen Einlage."
+
+    pipeline = ExtractionPipeline(cfg, ImagePreprocessor(cfg), mock_llm)
+    dummy_img = np.ones((100, 100, 3), dtype=np.uint8) * 255
+
+    res = pipeline.classify_single_page(dummy_img, idx=0)
+
+    assert res["doc_type"] == "UNKNOWN"
+    assert res["matched_name"] == "UNKNOWN"
+    assert res["vision_description"] == "Skizze einer orthopädischen Einlage."
+    mock_llm.describe_image.assert_called_once()
+
+
+def test_classify_single_page_skips_describe_image_on_known_doctype():
+    """Tests that classify_single_page skips describe_image for recognized document types."""
+    import numpy as np
+    from unittest.mock import MagicMock
+    from core.config import AppConfig
+    from core.extraction_pipeline import ExtractionPipeline
+    from core.image_processing import ImagePreprocessor
+    from core.vision import LLMExtractor
+
+    cfg = AppConfig()
+    cfg.document_types = {"Rechnung": {}}
+    mock_llm = MagicMock(spec=LLMExtractor)
+    mock_llm.classify_image.return_value = {"Document": "Rechnung"}
+    mock_llm.find_doc_type_config.return_value = ("Rechnung", {"extraction_fields": {}})
+    mock_llm.describe_image = MagicMock()
+
+    pipeline = ExtractionPipeline(cfg, ImagePreprocessor(cfg), mock_llm)
+    dummy_img = np.ones((100, 100, 3), dtype=np.uint8) * 255
+
+    res = pipeline.classify_single_page(dummy_img, idx=0)
+
+    assert res["doc_type"] == "Rechnung"
+    assert res["matched_name"] == "Rechnung"
+    assert res["vision_description"] == ""
+    mock_llm.describe_image.assert_not_called()
+
+
