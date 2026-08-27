@@ -31,7 +31,7 @@ class AppConfig:
     n_ctx: int = 4096
     type_k: int = 8  # GGML_TYPE_Q8_0
     type_v: int = 8  # GGML_TYPE_Q8_0
-    max_tokens: int = 2048
+    max_tokens: int = 1024
     n_threads: int = 0
 
     # Preprocessing settings
