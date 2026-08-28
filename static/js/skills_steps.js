@@ -40,6 +40,12 @@ function getActionBadgeStyle(actionType) {
 		case "BRANCH":
 		case "IF_CONDITION":
 			return { label: "🔀 Branch (IF/ELSE)", badgeClass: "action-pill-verify", icon: "🔀" };
+		case "FOR_EACH_DOCUMENT":
+			return { label: "🔁 For Each Doc", badgeClass: "action-pill-path", icon: "🔁" };
+		case "FOR_EACH":
+			return { label: "🔄 For Each Item", badgeClass: "action-pill-skill", icon: "🔄" };
+		case "WHILE_LOOP":
+			return { label: "⏳ While Loop", badgeClass: "action-pill-wait", icon: "⏳" };
 		case "EXTRACT_UI_TEXT":
 			return { label: "📥 Extract UI Text", badgeClass: "action-pill-path", icon: "📥" };
 		case "VALIDATE_UI_STATE":
@@ -422,7 +428,10 @@ function renderEditorSteps() {
 													<option value="RIGHT_CLICK" ${act.action_type === "RIGHT_CLICK" ? "selected" : ""}>🖱️ Right Click</option>
 													<option value="TYPE_TEXT" ${act.action_type === "TYPE_TEXT" ? "selected" : ""}>⌨️ Type Text</option>
 													<option value="TYPE_FILE_PATH" ${act.action_type === "TYPE_FILE_PATH" ? "selected" : ""}>📄 Type File Path</option>
+													<option value="FOR_EACH_DOCUMENT" ${act.action_type === "FOR_EACH_DOCUMENT" ? "selected" : ""}>🔁 For Each Document (Loop Case Docs)</option>
 													<option value="BRANCH" ${act.action_type === "BRANCH" || act.action_type === "IF_CONDITION" ? "selected" : ""}>🔀 Branch (IF / ELSE)</option>
+													<option value="FOR_EACH" ${act.action_type === "FOR_EACH" ? "selected" : ""}>🔄 For Each Item (List Loop)</option>
+													<option value="WHILE_LOOP" ${act.action_type === "WHILE_LOOP" ? "selected" : ""}>⏳ While Condition (Polling Loop)</option>
 													<option value="EXTRACT_UI_TEXT" ${act.action_type === "EXTRACT_UI_TEXT" ? "selected" : ""}>📥 Extract UI Text</option>
 													<option value="VALIDATE_UI_STATE" ${act.action_type === "VALIDATE_UI_STATE" ? "selected" : ""}>🔍 Validate UI State</option>
 													<option value="SET_VARIABLE" ${act.action_type === "SET_VARIABLE" ? "selected" : ""}>💾 Set Variable</option>
@@ -437,10 +446,30 @@ function renderEditorSteps() {
 												<label style="font-size: 0.8rem; color: #94a3b8; font-weight: 600;">Description:</label>
 												<input type="text" class="form-control form-control-sm" style="background: #0f172a; color: #f8fafc; border: 1px solid rgba(255,255,255,0.15); border-radius: 4px; padding: 4px 8px;" value="${escapeHtml(act.description || "")}" placeholder="Description of this step" onchange="updateActionProperty(${taskIdx}, ${actIdx}, 'description', this.value)" />
 											</div>
-											${(act.action_type === "BRANCH" || act.action_type === "IF_CONDITION" || act.action_type === "VALIDATE_UI_STATE") ? `
+											${act.action_type === "FOR_EACH_DOCUMENT" ? `
+											<div style="display: grid; grid-template-columns: 140px 1fr; gap: 8px; align-items: center;">
+												<label style="font-size: 0.8rem; color: #38bdf8; font-weight: 600;">Document Types:</label>
+												<input type="text" class="form-control form-control-sm" style="background: #0f172a; color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.3); border-radius: 4px; padding: 4px 8px;" value="${escapeHtml(Array.isArray(act.document_types) ? act.document_types.join(', ') : (act.document_types || '*'))}" placeholder="Fußscan, Rezept, *" onchange="updateActionProperty(${taskIdx}, ${actIdx}, 'document_types', this.value.split(',').map(s => s.trim()).filter(Boolean))" />
+											</div>
+											<div style="display: grid; grid-template-columns: 140px 1fr; gap: 8px; align-items: center;">
+												<label style="font-size: 0.8rem; color: #94a3b8; font-weight: 600;">On Item Error:</label>
+												<select class="form-select form-select-sm" style="background: #0f172a; color: #f8fafc; border: 1px solid rgba(255,255,255,0.15); border-radius: 4px; padding: 4px 8px;" onchange="updateActionProperty(${taskIdx}, ${actIdx}, 'on_item_error', this.value)">
+													<option value="ABORT" ${(!act.on_item_error || act.on_item_error === 'ABORT') ? "selected" : ""}>🛑 Abort Loop</option>
+													<option value="CONTINUE" ${act.on_item_error === 'CONTINUE' ? "selected" : ""}>⏭️ Skip & Continue Next Doc</option>
+													<option value="RETRY" ${act.on_item_error === 'RETRY' ? "selected" : ""}>🔄 Retry Once</option>
+												</select>
+											</div>
+											` : ""}
+											${(act.action_type === "BRANCH" || act.action_type === "IF_CONDITION" || act.action_type === "VALIDATE_UI_STATE" || act.action_type === "WHILE_LOOP") ? `
 											<div style="display: grid; grid-template-columns: 140px 1fr; gap: 8px; align-items: center;">
 												<label style="font-size: 0.8rem; color: #38bdf8; font-weight: 600;">Condition Expr:</label>
 												<input type="text" class="form-control form-control-sm" style="background: #0f172a; color: #38bdf8; font-family: monospace; border: 1px solid rgba(56, 189, 248, 0.3); border-radius: 4px; padding: 4px 8px;" value="${escapeHtml(typeof act.condition === 'string' ? act.condition : (act.condition?.expr || JSON.stringify(act.condition || '')))}" placeholder="{category} == 'Fußscan'" onchange="updateActionProperty(${taskIdx}, ${actIdx}, 'condition', this.value)" />
+											</div>
+											` : ""}
+											${act.action_type === "WHILE_LOOP" ? `
+											<div style="display: grid; grid-template-columns: 140px 1fr; gap: 8px; align-items: center;">
+												<label style="font-size: 0.8rem; color: #94a3b8; font-weight: 600;">Max Iterations:</label>
+												<input type="number" class="form-control form-control-sm" style="background: #0f172a; color: #f8fafc; border: 1px solid rgba(255,255,255,0.15); border-radius: 4px; padding: 4px 8px;" value="${act.max_iterations || 20}" placeholder="20" onchange="updateActionProperty(${taskIdx}, ${actIdx}, 'max_iterations', parseInt(this.value) || 20)" />
 											</div>
 											` : ""}
 											${act.action_type === "EXTRACT_UI_TEXT" ? `

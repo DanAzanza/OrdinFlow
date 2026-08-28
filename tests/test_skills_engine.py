@@ -595,9 +595,9 @@ def test_sensitive_credential_detection_and_masking():
 
 
 def test_export_engine_clipboard_paste():
-    from core.skills.engines.export_engine import _paste_text_via_clipboard
+    from core.skills.text_helpers import paste_text_via_clipboard
     # Test clipboard paste helper
-    res = _paste_text_via_clipboard("C:\\Test\\Output.pdf", press_enter=False)
+    res = paste_text_via_clipboard("C:\\Test\\Output.pdf", press_enter=False)
     assert isinstance(res, bool)
 
 
@@ -980,19 +980,34 @@ def test_substitute_placeholders_desktop_and_userprofile():
     assert "Fußscan.cdr" in res
 
 
-def test_coreldraw_gui_workflow_skill_structure():
+def test_gui_workflow_skill_structure(temp_skills_dir):
     from core.skills.manager import SkillManager
 
-    sm = SkillManager()
-    skill = sm.get_skill("CorelDRAW PDF zu CDR GUI Workflow")
-    assert skill is not None
-    assert skill.get("type") == "export"
-    assert skill.get("target_window") == "CorelDRAW*"
-    assert len(skill.get("tasks", [])) == 3
-    # Check that it uses native GUI action types (HOTKEY, TYPE_FILE_PATH, TYPE_TEXT, FOCUS_WINDOW, DELAY)
+    sm = SkillManager(skills_dir=temp_skills_dir)
+    skill_data = {
+        "name": "Generic GUI Workflow Skill",
+        "type": "export",
+        "target_window": "TargetApp*",
+        "tasks": [
+            {
+                "id": "t1",
+                "actions": [
+                    {"id": "a1", "action_type": "FOCUS_WINDOW", "window_title": "TargetApp*"},
+                    {"id": "a2", "action_type": "HOTKEY", "keys": ["ctrl", "o"]},
+                    {"id": "a3", "action_type": "TYPE_FILE_PATH", "file_path": "{document_fullpath}"},
+                    {"id": "a4", "action_type": "TYPE_TEXT", "text": "sample"},
+                ],
+            }
+        ],
+    }
+    sm.save_skill(skill_data)
+    loaded = sm.get_skill("Generic GUI Workflow Skill")
+    assert loaded is not None
+    assert loaded.get("type") == "export"
+    assert loaded.get("target_window") == "TargetApp*"
     all_action_types = [
         act.get("action_type")
-        for task in skill.get("tasks", [])
+        for task in loaded.get("tasks", [])
         for act in task.get("actions", [])
     ]
     assert "FOCUS_WINDOW" in all_action_types

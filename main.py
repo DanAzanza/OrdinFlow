@@ -181,7 +181,22 @@ def _cleanup_stale_instance(port: int) -> None:
             logger.error("[!] Error killing process on port %s: %s", port, e)
 
 
+def _init_windows_dpi_awareness() -> None:
+    """Configures Per-Monitor V2 DPI awareness on Windows to prevent coordinate drift."""
+    if sys.platform == "win32":
+        try:
+            import ctypes
+            ctypes.windll.user32.SetProcessDpiAwarenessContext(ctypes.c_void_p(-4))
+        except Exception:
+            try:
+                import ctypes
+                ctypes.windll.shcore.SetProcessDpiAwareness(2)
+            except Exception:
+                pass
+
+
 def main() -> None:
+    _init_windows_dpi_awareness()
     args = parse_args()
     setup_logging()
 

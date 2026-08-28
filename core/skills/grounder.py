@@ -5,6 +5,7 @@ import logging
 import re
 import sys
 import time
+from collections.abc import Mapping
 from typing import Any, cast
 
 from PIL import Image, ImageDraw, ImageFont, ImageGrab
@@ -57,7 +58,7 @@ class SoMGrounder:
 
     @staticmethod
     def locate_target(
-        locator: dict[str, Any],
+        locator: Mapping[str, Any],
         window_title: str | None = None,
         vision_extractor: Any = None,
     ) -> tuple[int, int] | None:

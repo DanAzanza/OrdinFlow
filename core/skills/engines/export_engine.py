@@ -2,11 +2,9 @@
 
 from __future__ import annotations
 
-import ctypes
 import logging
 import os
 import sys
-import time
 from collections.abc import Callable, Mapping
 from typing import Any
 
@@ -15,15 +13,27 @@ from core.skills.grounder import SoMGrounder
 from core.skills.models import SkillTask, TaskProgress, TaskResult
 from core.skills.shield import input_shield
 from core.skills.case_router import (
+    extract_all_skill_document_types as _extract_all_skill_document_types_fn,
     filter_matching_files as _filter_matching_files_fn,
     find_pending_cases as _find_pending_cases_fn,
     mark_file_skill_executed as _mark_file_skill_executed_fn,
 )
+from core.skills.loop_runner import (
+    execute_for_each_collection,
+    execute_for_each_document,
+    execute_while_loop,
+    has_for_each_document,
+)
+from core.skills.action_executor import (
+    execute_focus_window,
+    execute_mouse_click,
+    execute_type_file_path,
+    execute_type_text,
+    execute_wait_for_element,
+)
 from core.skills.text_helpers import (
-    paste_text_via_clipboard as _paste_text_via_clipboard,
     send_hotkey as _send_hotkey,
     substitute_placeholders as _substitute_placeholders_fn,
-    type_unicode_text as _type_unicode_text,
 )
 from core.skills.window_manager import (
     check_hung_app_and_recover,
@@ -36,7 +46,6 @@ from core.skills.condition_evaluator import evaluate_condition
 from core.skills.error_handler import handle_action_error
 from core.skills.script_runner import execute_script_step
 from core.skills.uia_locator import UIALocator
-from core.utils import is_sensitive_credential_text, sanitize_safe_path
 
 logger = logging.getLogger(__name__)
 
@@ -108,7 +117,7 @@ class ExportEngine(BaseSkill):
         """Dynamically substitutes placeholders with optional modifiers (e.g. {Nachname|upper})."""
         return _substitute_placeholders_fn(text, context)
 
-    def _locate_target(self, locator: dict[str, Any], window_title: str | None = None) -> tuple[int, int] | None:
+    def _locate_target(self, locator: Mapping[str, Any], window_title: str | None = None) -> tuple[int, int] | None:
         """Determines the (x, y) pixel coordinates for a locator with auto-adaptive OCR & VLM fallback."""
         return SoMGrounder.locate_target(locator, window_title=window_title, vision_extractor=self.vision_extractor)
 
@@ -217,144 +226,77 @@ class ExportEngine(BaseSkill):
 
             # 1. FOCUS_WINDOW
             if action_type == "FOCUS_WINDOW":
-                win_pattern = self._substitute_placeholders(step.get("window_title", self.target_window or ""), context)
-                launch_skill = str(step.get("launch_skill_id") or self.launch_skill_id or "")
-                exe_path = str(step.get("executable_path") or self.executable_path or "")
-                maximize = bool(step.get("maximize_window", self.maximize_window))
-
-                ready = self._ensure_window_ready(
-                    win_pattern=win_pattern,
+                ready = execute_focus_window(
+                    step=step,
                     context=context,
-                    launch_skill_id=launch_skill,
-                    exe_path=exe_path,
-                    maximize=maximize,
+                    default_target_window=self.target_window,
+                    launch_skill_id=self.launch_skill_id,
+                    executable_path=self.executable_path,
+                    default_maximize=self.maximize_window,
+                    substitute_fn=self._substitute_placeholders,
+                    execute_skill_fn=self.execute_skill,
+                    is_cancelled_fn=lambda: not self.wait_for_queue(),
                 )
-                if not ready and win_pattern:
-                    logger.warning(
-                        "[ExportEngine] Window '%s' could not be found or launched in step '%s'.",
-                        win_pattern,
-                        step_id,
-                    )
+                if not ready and step.get("window_title"):
+                    logger.warning("[ExportEngine] Window '%s' could not be readied in step '%s'.", step.get("window_title"), step_id)
 
             # 2. CLICK / DOUBLE_CLICK / RIGHT_CLICK
             elif action_type in ("CLICK", "DOUBLE_CLICK", "RIGHT_CLICK"):
-                locator = step.get("locator", {})
-                win = self._substitute_placeholders(step.get("window_title", self.target_window or ""), context)
-                max_retries = max(int(step.get("max_retries", 3)), 1)
-                retry_delay_s = float(step.get("retry_delay_s", 0.35))
-                coords = None
-                for attempt in range(1, max_retries + 1):
-                    if not self.wait_for_queue(reporter, "Skill paused..."):
-                        return False
-                    coords = self._locate_target(locator, win)
-                    if coords is not None:
-                        break
-                    # Attempt auto-dialog resolution if modal is blocking
-                    self._handle_known_dialog_popups(win)
-                    if attempt < max_retries:
-                        if not self.interruptible_sleep(retry_delay_s, reporter=reporter, paused_msg="Skill paused..."):
-                            return False
-
-                if coords is None:
-                    if not self.wait_for_queue():
-                        return False
-                    logger.error("  [!] Target not found for action %s: %s", action_type, locator)
-                    self._save_failure_screenshot(step_id, desc, win)
+                if not execute_mouse_click(
+                    step=step,
+                    step_id=step_id,
+                    action_type=action_type,
+                    context=context,
+                    target_window=self.target_window,
+                    substitute_fn=self._substitute_placeholders,
+                    locate_fn=self._locate_target,
+                    wait_for_queue_fn=lambda: self.wait_for_queue(reporter, "Skill paused..."),
+                    sleep_fn=lambda s: self.interruptible_sleep(s, reporter=reporter, paused_msg="Skill paused..."),
+                ):
                     return False
-
-                with input_shield():
-                    if sys.platform == "win32":
-                        ctypes.windll.user32.SetCursorPos(coords[0], coords[1])
-                        if action_type == "CLICK":
-                            ctypes.windll.user32.mouse_event(0x0002, 0, 0, 0, 0)
-                            ctypes.windll.user32.mouse_event(0x0004, 0, 0, 0, 0)
-                        elif action_type == "DOUBLE_CLICK":
-                            ctypes.windll.user32.mouse_event(0x0002, 0, 0, 0, 0)
-                            ctypes.windll.user32.mouse_event(0x0004, 0, 0, 0, 0)
-                            time.sleep(0.05)
-                            ctypes.windll.user32.mouse_event(0x0002, 0, 0, 0, 0)
-                            ctypes.windll.user32.mouse_event(0x0004, 0, 0, 0, 0)
-                        elif action_type == "RIGHT_CLICK":
-                            ctypes.windll.user32.mouse_event(0x0008, 0, 0, 0, 0)
-                            ctypes.windll.user32.mouse_event(0x0010, 0, 0, 0, 0)
 
             # 3. TYPE_TEXT / PASTE_CLIPBOARD
             elif action_type in ("TYPE_TEXT", "PASTE_CLIPBOARD"):
-                raw_text = str(step.get("text", "") or step.get("content", ""))
-                text_to_type = self._substitute_placeholders(raw_text, context)
-                # Fail-fast check: If raw text contains dynamic variable placeholders but resolves to empty string
-                if "{" in raw_text and not text_to_type.strip():
-                    logger.error("  [!] %s aborted: Placeholder in %r resolved to empty string.", action_type, raw_text)
+                if not execute_type_text(
+                    step=step,
+                    step_id=step_id,
+                    action_type=action_type,
+                    context=context,
+                    substitute_fn=self._substitute_placeholders,
+                ):
                     return False
-
-                press_enter = bool(step.get("press_enter", False))
-                use_clipboard = bool(
-                    step.get("use_clipboard", False)
-                    or action_type == "PASTE_CLIPBOARD"
-                    or ("\\" in text_to_type or "/" in text_to_type or len(text_to_type) > 15)
-                )
-                is_secret = bool(step.get("is_secret", False)) or is_sensitive_credential_text(raw_text, step.get("description", ""))
-                if is_secret:
-                    logger.info("  [Action %s] %s: [PROTECTED SENSITIVE CREDENTIAL MASKED]", step_id, action_type)
-                with input_shield():
-                    if use_clipboard and sys.platform == "win32":
-                        _paste_text_via_clipboard(text_to_type, press_enter=press_enter)
-                    else:
-                        _type_unicode_text(text_to_type, press_enter=press_enter)
 
             # 4. TYPE_FILE_PATH (Instant Clipboard Paste + Security Gate + Fail-Fast Validation)
             elif action_type == "TYPE_FILE_PATH":
-                raw_path = str(step.get("file_path", context.get("document_fullpath", "") or ""))
-                sub_path = self._substitute_placeholders(raw_path, context).strip()
-                if not sub_path:
-                    logger.error("  [!] TYPE_FILE_PATH aborted: Target file path is empty or unresolved.")
+                if not execute_type_file_path(
+                    step=step,
+                    step_id=step_id,
+                    context=context,
+                    target_window=self.target_window,
+                    rdp_prefix=self.rdp_prefix,
+                    substitute_fn=self._substitute_placeholders,
+                ):
                     return False
-
-                is_safe, clean_path = sanitize_safe_path(sub_path)
-                if not is_safe or not clean_path.strip():
-                    logger.error("[Security] Aborted TYPE_FILE_PATH due to invalid/unsafe path: %r", sub_path)
-                    self._save_failure_screenshot(step_id, f"Security Block: {sub_path}", self.target_window)
-                    return False
-
-                final_path = os.path.abspath(clean_path)
-                if not os.path.exists(final_path):
-                    logger.error("  [!] TYPE_FILE_PATH aborted: Target file does not exist on disk: %s", final_path)
-                    self._save_failure_screenshot(step_id, f"Missing File: {final_path}", self.target_window)
-                    return False
-
-                if self.rdp_prefix and final_path.startswith("C:"):
-                    final_path = self.rdp_prefix + final_path[2:]
-
-                press_enter = bool(step.get("press_enter", True))
-                with input_shield():
-                    _paste_text_via_clipboard(final_path, press_enter=press_enter)
 
             # 5. WAIT_FOR_ELEMENT (Dynamic Waiting / Smart Polling)
             elif action_type == "WAIT_FOR_ELEMENT":
-                locator = step.get("locator", {})
-                win = self._substitute_placeholders(step.get("window_title", self.target_window or ""), context)
-                timeout_s = float(step.get("timeout_s", step.get("duration_s", 5.0)))
-                poll_interval_s = float(step.get("poll_interval_s", 0.25))
-                start_t = time.time()
-                found = False
-                while (time.time() - start_t) <= timeout_s:
-                    if not self.wait_for_queue(reporter, "Skill paused..."):
-                        return False
-                    coords = self._locate_target(locator, win)
-                    if coords is not None:
-                        found = True
-                        break
-                    self._handle_known_dialog_popups(win)
-                    if not self.interruptible_sleep(poll_interval_s, reporter=reporter, paused_msg="Skill paused..."):
-                        return False
-
+                found = execute_wait_for_element(
+                    step=step,
+                    context=context,
+                    target_window=self.target_window,
+                    substitute_fn=self._substitute_placeholders,
+                    locate_fn=self._locate_target,
+                    wait_for_queue_fn=lambda: self.wait_for_queue(reporter, "Skill paused..."),
+                    sleep_fn=lambda s: self.interruptible_sleep(s, reporter=reporter, paused_msg="Skill paused..."),
+                )
                 if not found:
                     if not self.wait_for_queue():
                         return False
-                    logger.warning("[ExportEngine] WAIT_FOR_ELEMENT timed out after %.1fs for %s", timeout_s, locator)
+                    logger.warning("[ExportEngine] WAIT_FOR_ELEMENT timed out for %s", step.get("locator"))
                     on_fail = step.get("on_failure", "stop")
                     if on_fail == "stop":
-                        self._save_failure_screenshot(step_id, f"Wait Timeout: {locator}", win)
+                        win = self._substitute_placeholders(step.get("window_title", self.target_window or ""), context)
+                        self._save_failure_screenshot(step_id, f"Wait Timeout: {step.get('locator')}", win)
                         return False
 
             # 6. VERIFY_SCREEN (Conditional Branching)
@@ -448,24 +390,53 @@ class ExportEngine(BaseSkill):
 
                 branch_actions = step.get("then_actions", []) if is_true else step.get("else_actions", [])
                 if branch_actions:
-                    sub_engine = ExportEngine({
-                        "id": f"{self.id}__branch",
-                        "name": f"{self.name} (Branch)",
-                        "tasks": [{"id": "sub_branch", "actions": branch_actions}],
-                        "target_window": self.target_window,
-                        "executable_path": self.executable_path,
-                    })
-                    sub_success = sub_engine.execute_actions(
-                        context=context,
-                        reporter=reporter,
-                        depth=depth + 1,
-                        dry_run=dry_run,
-                    )
-                    if not sub_success:
+                    if not self._execute_nested_actions(branch_actions, context, depth + 1, dry_run, reporter):
                         logger.error("  [!] Branch execution in %s failed.", step_id)
                         return False
 
-            # 9. EXTRACT_UI_TEXT (Extract Text from UI Element / Label into Context Variable)
+            # 9. FOR_EACH_DOCUMENT (Case-Centric Document Loop)
+            elif action_type == "FOR_EACH_DOCUMENT":
+                if not execute_for_each_document(
+                    step=step,
+                    skill_id=self.id,
+                    context=context,
+                    sub_executor_fn=lambda acts, ctx, d: self._execute_nested_actions(acts, ctx, d, dry_run, reporter),
+                    depth=depth,
+                    dry_run=dry_run,
+                    reporter=reporter,
+                    wait_for_queue_fn=self.wait_for_queue,
+                ):
+                    logger.error("  [!] FOR_EACH_DOCUMENT loop in %s failed or aborted.", step_id)
+                    return False
+
+            # 10. FOR_EACH (Generic Collection Iteration)
+            elif action_type == "FOR_EACH":
+                if not execute_for_each_collection(
+                    step=step,
+                    context=context,
+                    sub_executor_fn=lambda acts, ctx, d: self._execute_nested_actions(acts, ctx, d, dry_run, reporter),
+                    depth=depth,
+                    reporter=reporter,
+                    wait_for_queue_fn=self.wait_for_queue,
+                ):
+                    return False
+
+            # 11. WHILE_LOOP (Guarded Polling Loop)
+            elif action_type == "WHILE_LOOP":
+                win = self._substitute_placeholders(step.get("window_title", self.target_window or ""), context)
+                if not execute_while_loop(
+                    step=step,
+                    context=context,
+                    sub_executor_fn=lambda acts, ctx, d: self._execute_nested_actions(acts, ctx, d, dry_run, reporter),
+                    window_checker=lambda w: SoMGrounder.capture_screen(w) is not None,
+                    element_checker=lambda loc, w: UIALocator.is_element_visible(loc, w) or (self._locate_target(loc, w) is not None),
+                    depth=depth,
+                    reporter=reporter,
+                    wait_for_queue_fn=self.wait_for_queue,
+                ):
+                    return False
+
+            # 12. EXTRACT_UI_TEXT (Extract Text from UI Element / Label into Context Variable)
             elif action_type == "EXTRACT_UI_TEXT":
                 locator = step.get("locator", {})
                 win = self._substitute_placeholders(step.get("window_title", self.target_window or ""), context)
@@ -485,7 +456,7 @@ class ExportEngine(BaseSkill):
                 context[var_name] = extracted_text.strip()
                 logger.info("  [Action %s] EXTRACT_UI_TEXT: Stored %r -> {%s}", step_id, extracted_text[:100], var_name)
 
-            # 10. VALIDATE_UI_STATE (Validate UI / Context Assertions)
+            # 13. VALIDATE_UI_STATE (Validate UI / Context Assertions)
             elif action_type == "VALIDATE_UI_STATE":
                 cond = step.get("condition") or step
                 win = self._substitute_placeholders(step.get("window_title", self.target_window or ""), context)
@@ -507,7 +478,7 @@ class ExportEngine(BaseSkill):
                     ):
                         return False
 
-            # 11. SET_VARIABLE (Dynamically Mutate / Assign Context Variables)
+            # 14. SET_VARIABLE (Dynamically Mutate / Assign Context Variables)
             elif action_type == "SET_VARIABLE":
                 var_name = str(step.get("variable") or step.get("var") or step.get("name") or "").strip().strip("{}")
                 raw_val = str(step.get("value") or step.get("val") or "")
@@ -601,12 +572,40 @@ class ExportEngine(BaseSkill):
             logger.error("[ExportEngine] Execution error: %s", e, exc_info=True)
             return TaskResult(success=False, error=str(e))
 
+    def _execute_nested_actions(
+        self,
+        actions: list[dict[str, Any]],
+        context: dict[str, Any],
+        depth: int,
+        dry_run: bool,
+        reporter: Callable[[TaskProgress], None] | None,
+    ) -> bool:
+        """Executes a nested sub-list of actions within the same target window context."""
+        sub_engine = ExportEngine({
+            "id": f"{self.id}__nested",
+            "name": f"{self.name} (Nested)",
+            "tasks": [{"id": "sub_nested", "actions": actions}],
+            "target_window": self.target_window,
+            "executable_path": self.executable_path,
+        })
+        return sub_engine.execute_actions(
+            context=context,
+            reporter=reporter,
+            depth=depth,
+            dry_run=dry_run,
+        )
+
+    def get_target_document_types(self) -> list[str]:
+        """Returns all aggregated document types targeted by this skill, including nested loops."""
+        return _extract_all_skill_document_types_fn(self.definition)
+
     def filter_matching_files(self, folder_path: str, allowed_types: list[str] | None = None) -> list[dict[str, Any]]:
         """Filters PDF files in a case folder according to the skill's allowed document types and loads metadata."""
         from routes.state import DashboardState
 
         delimiter = DashboardState.config.folder_delimiter if DashboardState.config else "__"
-        return _filter_matching_files_fn(folder_path, allowed_types, delimiter=delimiter)
+        types_to_use = allowed_types or self.get_target_document_types()
+        return _filter_matching_files_fn(folder_path, types_to_use, delimiter=delimiter)
 
     def find_pending_cases(self, target_base_dir: str) -> list[dict[str, Any]]:
         """Finds all approved case folders with unprocessed files."""
@@ -622,7 +621,7 @@ class ExportEngine(BaseSkill):
         elif self.skill_manager and hasattr(self.skill_manager, "config") and self.skill_manager.config:
             folder_struct = getattr(self.skill_manager.config, "folder_structure", None)
 
-        allowed_types = self.definition.get("document_types", ["*"])
+        allowed_types = self.get_target_document_types()
         return _find_pending_cases_fn(
             target_base_dir, self.id, allowed_types, folder_structure=folder_struct, delimiter=delimiter
         )
@@ -633,14 +632,31 @@ class ExportEngine(BaseSkill):
         context: dict[str, Any] | None = None,
         reporter: Callable[[TaskProgress], None] | None = None,
     ) -> bool:
-        """Executes the export steps for all unprocessed matching files in an approved folder and marks each as executed."""
-        allowed_types = self.definition.get("document_types", ["*"])
+        """Executes the export steps for an approved folder in case-centric or legacy file-centric mode."""
+        allowed_types = self.get_target_document_types()
         all_matching = self.filter_matching_files(folder_path, allowed_types)
         matching_files = [f for f in all_matching if self.id not in f.get("executed_skills", [])]
 
         if not matching_files:
             return True
 
+        # CASE-CENTRIC MODE: If skill contains FOR_EACH_DOCUMENT, execute skill ONCE for folder
+        if has_for_each_document(self.definition):
+            case_ctx = dict(context or {})
+            case_ctx["folder_path"] = folder_path
+            case_ctx["matching_files"] = [mf["fullpath"] for mf in matching_files]
+            if matching_files:
+                first_meta = matching_files[0].get("meta", {})
+                for k, v in first_meta.items():
+                    if k not in case_ctx:
+                        case_ctx[k] = v
+                case_ctx.setdefault("document_fullpath", matching_files[0]["fullpath"])
+                case_ctx.setdefault("filename", matching_files[0]["filename"])
+                case_ctx.setdefault("document_type", matching_files[0]["document_type"])
+
+            return self.execute_steps(case_ctx, reporter=reporter)
+
+        # LEGACY FILE-CENTRIC MODE: Run all steps per matching file
         all_ok = True
         for f in matching_files:
             if not self.wait_for_queue(reporter, "Skill paused..."):

@@ -145,8 +145,60 @@ def find_pending_cases(
     return pending_cases
 
 
+def extract_all_skill_document_types(skill_def: dict[str, Any]) -> list[str]:
+    """Recursively extracts all document types from top-level and nested FOR_EACH_DOCUMENT actions."""
+    if not isinstance(skill_def, dict):
+        return ["*"]
+
+    collected: list[str] = []
+    top_types = skill_def.get("document_types") or skill_def.get("suggested_document_types") or []
+    if isinstance(top_types, list):
+        collected.extend([str(t).strip() for t in top_types if str(t).strip()])
+    elif isinstance(top_types, str) and top_types.strip():
+        collected.append(top_types.strip())
+
+    def _walk_actions(actions: list[dict[str, Any]]) -> None:
+        for act in actions:
+            if not isinstance(act, dict):
+                continue
+            act_type = str(act.get("action_type") or act.get("type", "")).upper()
+            if act_type == "FOR_EACH_DOCUMENT":
+                inner_types = act.get("document_types") or act.get("allowed_types") or []
+                if isinstance(inner_types, list):
+                    collected.extend([str(t).strip() for t in inner_types if str(t).strip()])
+                elif isinstance(inner_types, str) and inner_types.strip():
+                    collected.append(inner_types.strip())
+                if isinstance(act.get("actions"), list):
+                    _walk_actions(act["actions"])
+            elif act_type in ("BRANCH", "IF_CONDITION"):
+                if isinstance(act.get("then_actions"), list):
+                    _walk_actions(act["then_actions"])
+                if isinstance(act.get("else_actions"), list):
+                    _walk_actions(act["else_actions"])
+            elif act_type in ("FOR_EACH", "WHILE_LOOP"):
+                if isinstance(act.get("actions"), list):
+                    _walk_actions(act["actions"])
+
+    for task in skill_def.get("tasks", []):
+        if isinstance(task, dict) and isinstance(task.get("actions"), list):
+            _walk_actions(task["actions"])
+
+    for step in skill_def.get("steps", []) + skill_def.get("actions", []):
+        if isinstance(step, dict):
+            _walk_actions([step])
+
+    unique_types: list[str] = []
+    for t in collected:
+        if t not in unique_types:
+            unique_types.append(t)
+
+    if not unique_types or "*" in unique_types or "ALL" in [t.upper() for t in unique_types]:
+        return ["*"]
+    return unique_types
+
+
 def mark_file_skill_executed(filepath: str, skill_id: str) -> bool:
-    """Updates the .meta sidecar file with the executed skill ID and timestamp."""
+    """Updates the .meta sidecar file with the executed skill ID and timestamp using atomic file replacement."""
     meta_path = filepath + ".meta"
     data: dict[str, Any] = {}
     if os.path.exists(meta_path):
@@ -169,11 +221,26 @@ def mark_file_skill_executed(filepath: str, skill_id: str) -> bool:
     history[skill_id] = time.time()
     data["skill_execution_history"] = history
 
-    try:
-        with open(meta_path, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
-        logger.info("[CaseRouter] Marked '%s' as executed by '%s'", filepath, skill_id)
-        return True
-    except OSError as e:
-        logger.error("[CaseRouter] Failed writing metadata to %s: %s", meta_path, e)
-        return False
+    tmp_path = f"{meta_path}.tmp_{os.getpid()}_{int(time.time() * 1000)}"
+    last_err: Exception | None = None
+
+    for attempt in range(5):
+        try:
+            with open(tmp_path, "w", encoding="utf-8") as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
+            os.replace(tmp_path, meta_path)
+            logger.info("[CaseRouter] Marked '%s' as executed by '%s'", filepath, skill_id)
+            return True
+        except OSError as e:
+            last_err = e
+            time.sleep(0.05 * (attempt + 1))
+
+    # Clean up orphaned tmp file if present
+    if os.path.exists(tmp_path):
+        try:
+            os.remove(tmp_path)
+        except OSError:
+            pass
+
+    logger.error("[CaseRouter] Failed writing metadata to %s after 5 attempts: %s", meta_path, last_err)
+    return False
