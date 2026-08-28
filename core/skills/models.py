@@ -33,9 +33,17 @@ class SkillActionDict(TypedDict, total=False):
     timeout_s: float
     poll_interval_s: float
     launch_skill_id: str
-    executable_path: str
     maximize_window: bool
     recover_hung_process: bool
+    condition: dict[str, Any] | str | bool
+    then_actions: list[SkillActionDict | dict[str, Any]]
+    else_actions: list[SkillActionDict | dict[str, Any]]
+    on_error: dict[str, Any] | str
+    extract_to_var: str
+    provider: str
+    variable: str
+    expected: Any
+    pattern: str
 
 
 class SkillTaskBlockDict(TypedDict, total=False):

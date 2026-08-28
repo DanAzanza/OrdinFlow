@@ -969,6 +969,186 @@ def test_export_engine_fail_fast_unresolved_type_text():
     assert engine.execute_actions(context={}) is False
 
 
+def test_substitute_placeholders_desktop_and_userprofile():
+    import os
+    from core.skills.text_helpers import substitute_placeholders
+
+    res = substitute_placeholders("{desktop}\\{basename}.cdr", {"document_fullpath": r"C:\Cases\Test\Fußscan.pdf"})
+    user_prof = os.environ.get("USERPROFILE", "") or os.path.expanduser("~")
+    expected_desktop = os.path.join(user_prof, "Desktop")
+    assert expected_desktop in res
+    assert "Fußscan.cdr" in res
+
+
+def test_coreldraw_gui_workflow_skill_structure():
+    from core.skills.manager import SkillManager
+
+    sm = SkillManager()
+    skill = sm.get_skill("CorelDRAW PDF zu CDR GUI Workflow")
+    assert skill is not None
+    assert skill.get("type") == "export"
+    assert skill.get("target_window") == "CorelDRAW*"
+    assert len(skill.get("tasks", [])) == 3
+    # Check that it uses native GUI action types (HOTKEY, TYPE_FILE_PATH, TYPE_TEXT, FOCUS_WINDOW, DELAY)
+    all_action_types = [
+        act.get("action_type")
+        for task in skill.get("tasks", [])
+        for act in task.get("actions", [])
+    ]
+    assert "FOCUS_WINDOW" in all_action_types
+    assert "HOTKEY" in all_action_types
+    assert "TYPE_FILE_PATH" in all_action_types
+    assert "TYPE_TEXT" in all_action_types
+    assert "POWERSHELL" not in all_action_types
+
+
+def test_export_engine_branch_then_execution():
+    from core.skills.engines.export_engine import ExportEngine
+
+    skill_def = {
+        "name": "Branch Test Skill",
+        "tasks": [
+            {
+                "id": "t1",
+                "actions": [
+                    {
+                        "id": "b1",
+                        "action_type": "BRANCH",
+                        "condition": {"type": "VARIABLE_MATCHES", "variable": "category", "expected": "Fußscan"},
+                        "then_actions": [
+                            {
+                                "id": "set_then",
+                                "action_type": "SET_VARIABLE",
+                                "variable": "branch_taken",
+                                "value": "THEN_BRANCH",
+                            }
+                        ],
+                        "else_actions": [
+                            {
+                                "id": "set_else",
+                                "action_type": "SET_VARIABLE",
+                                "variable": "branch_taken",
+                                "value": "ELSE_BRANCH",
+                            }
+                        ],
+                    }
+                ],
+            }
+        ],
+    }
+    engine = ExportEngine(skill_def)
+    context = {"category": "Fußscan"}
+    assert engine.execute_actions(context=context) is True
+    assert context.get("branch_taken") == "THEN_BRANCH"
+
+
+def test_export_engine_branch_else_execution():
+    from core.skills.engines.export_engine import ExportEngine
+
+    skill_def = {
+        "name": "Branch Else Test",
+        "tasks": [
+            {
+                "id": "t1",
+                "actions": [
+                    {
+                        "id": "b1",
+                        "action_type": "BRANCH",
+                        "condition": {"type": "VARIABLE_MATCHES", "variable": "category", "expected": "Fußscan"},
+                        "then_actions": [
+                            {
+                                "id": "set_then",
+                                "action_type": "SET_VARIABLE",
+                                "variable": "branch_taken",
+                                "value": "THEN_BRANCH",
+                            }
+                        ],
+                        "else_actions": [
+                            {
+                                "id": "set_else",
+                                "action_type": "SET_VARIABLE",
+                                "variable": "branch_taken",
+                                "value": "ELSE_BRANCH",
+                            }
+                        ],
+                    }
+                ],
+            }
+        ],
+    }
+    engine = ExportEngine(skill_def)
+    context = {"category": "Rezept"}
+    assert engine.execute_actions(context=context) is True
+    assert context.get("branch_taken") == "ELSE_BRANCH"
+
+
+def test_export_engine_extract_ui_text_and_set_variable():
+    from unittest.mock import patch
+    from core.skills.engines.export_engine import ExportEngine
+
+    skill_def = {
+        "name": "Extraction Test",
+        "tasks": [
+            {
+                "id": "t1",
+                "actions": [
+                    {
+                        "id": "ext1",
+                        "action_type": "EXTRACT_UI_TEXT",
+                        "locator": {"automation_id": "txt_patient_id"},
+                        "extract_to_var": "live_patient_id",
+                    },
+                    {
+                        "id": "val1",
+                        "action_type": "VALIDATE_UI_STATE",
+                        "condition": {
+                            "type": "VARIABLE_MATCHES",
+                            "variable": "live_patient_id",
+                            "expected": "P-98765",
+                        },
+                    },
+                ],
+            }
+        ],
+    }
+    engine = ExportEngine(skill_def)
+    context = {}
+    with patch("core.skills.uia_locator.UIALocator.is_available", return_value=True):
+        with patch("core.skills.uia_locator.UIALocator.get_element_text", return_value="P-98765"):
+            assert engine.execute_actions(context=context) is True
+            assert context.get("live_patient_id") == "P-98765"
+
+
+def test_export_engine_validate_ui_state_on_error_continue():
+    from core.skills.engines.export_engine import ExportEngine
+
+    skill_def = {
+        "name": "Validation Error Test",
+        "tasks": [
+            {
+                "id": "t1",
+                "actions": [
+                    {
+                        "id": "val_fail",
+                        "action_type": "VALIDATE_UI_STATE",
+                        "condition": {
+                            "type": "VARIABLE_MATCHES",
+                            "variable": "category",
+                            "expected": "Arztbrief",
+                        },
+                        "on_error": "CONTINUE",
+                    }
+                ],
+            }
+        ],
+    }
+    engine = ExportEngine(skill_def)
+    context = {"category": "Fußscan"}
+    # With on_error: CONTINUE, execution should not abort
+    assert engine.execute_actions(context=context) is True
+
+
+
 
 
 

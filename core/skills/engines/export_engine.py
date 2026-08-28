@@ -21,6 +21,7 @@ from core.skills.case_router import (
 )
 from core.skills.text_helpers import (
     paste_text_via_clipboard as _paste_text_via_clipboard,
+    send_hotkey as _send_hotkey,
     substitute_placeholders as _substitute_placeholders_fn,
     type_unicode_text as _type_unicode_text,
 )
@@ -31,6 +32,10 @@ from core.skills.window_manager import (
     maximize_target_window,
     save_failure_screenshot as _save_failure_screenshot_fn,
 )
+from core.skills.condition_evaluator import evaluate_condition
+from core.skills.error_handler import handle_action_error
+from core.skills.script_runner import execute_script_step
+from core.skills.uia_locator import UIALocator
 from core.utils import is_sensitive_credential_text, sanitize_safe_path
 
 logger = logging.getLogger(__name__)
@@ -273,21 +278,29 @@ class ExportEngine(BaseSkill):
                             ctypes.windll.user32.mouse_event(0x0008, 0, 0, 0, 0)
                             ctypes.windll.user32.mouse_event(0x0010, 0, 0, 0, 0)
 
-            # 3. TYPE_TEXT
-            elif action_type == "TYPE_TEXT":
-                raw_text = str(step.get("text", ""))
+            # 3. TYPE_TEXT / PASTE_CLIPBOARD
+            elif action_type in ("TYPE_TEXT", "PASTE_CLIPBOARD"):
+                raw_text = str(step.get("text", "") or step.get("content", ""))
                 text_to_type = self._substitute_placeholders(raw_text, context)
                 # Fail-fast check: If raw text contains dynamic variable placeholders but resolves to empty string
                 if "{" in raw_text and not text_to_type.strip():
-                    logger.error("  [!] TYPE_TEXT aborted: Placeholder in %r resolved to empty string.", raw_text)
+                    logger.error("  [!] %s aborted: Placeholder in %r resolved to empty string.", action_type, raw_text)
                     return False
 
                 press_enter = bool(step.get("press_enter", False))
+                use_clipboard = bool(
+                    step.get("use_clipboard", False)
+                    or action_type == "PASTE_CLIPBOARD"
+                    or ("\\" in text_to_type or "/" in text_to_type or len(text_to_type) > 15)
+                )
                 is_secret = bool(step.get("is_secret", False)) or is_sensitive_credential_text(raw_text, step.get("description", ""))
                 if is_secret:
-                    logger.info("  [Action %s] TYPE_TEXT: [PROTECTED SENSITIVE CREDENTIAL MASKED]", step_id)
+                    logger.info("  [Action %s] %s: [PROTECTED SENSITIVE CREDENTIAL MASKED]", step_id, action_type)
                 with input_shield():
-                    _type_unicode_text(text_to_type, press_enter=press_enter)
+                    if use_clipboard and sys.platform == "win32":
+                        _paste_text_via_clipboard(text_to_type, press_enter=press_enter)
+                    else:
+                        _type_unicode_text(text_to_type, press_enter=press_enter)
 
             # 4. TYPE_FILE_PATH (Instant Clipboard Paste + Security Gate + Fail-Fast Validation)
             elif action_type == "TYPE_FILE_PATH":
@@ -398,59 +411,9 @@ class ExportEngine(BaseSkill):
             # 7. HOTKEY
             elif action_type == "HOTKEY":
                 keys = step.get("keys", [])
-                if isinstance(keys, str):
-                    keys = [k.strip() for k in keys.split("+")]
                 if keys and sys.platform == "win32":
                     with input_shield():
-                        _vk_map: dict[str, int] = {
-                            "ctrl": 0x11,
-                            "control": 0x11,
-                            "alt": 0x12,
-                            "shift": 0x10,
-                            "win": 0x5B,
-                            "cmd": 0x5B,
-                            "super": 0x5B,
-                            "enter": 0x0D,
-                            "return": 0x0D,
-                            "tab": 0x09,
-                            "esc": 0x1B,
-                            "escape": 0x1B,
-                            "space": 0x20,
-                            "backspace": 0x08,
-                            "delete": 0x2E,
-                            "del": 0x2E,
-                            "left": 0x25,
-                            "up": 0x26,
-                            "right": 0x27,
-                            "down": 0x28,
-                            "f1": 0x70,
-                            "f2": 0x71,
-                            "f3": 0x72,
-                            "f4": 0x73,
-                            "f5": 0x74,
-                            "f6": 0x75,
-                            "f7": 0x76,
-                            "f8": 0x77,
-                            "f9": 0x78,
-                            "f10": 0x79,
-                            "f11": 0x7A,
-                            "f12": 0x7B,
-                        }
-                        vk_list: list[int] = []
-                        for k in keys:
-                            k_lower = k.lower()
-                            if k_lower in _vk_map:
-                                vk_list.append(_vk_map[k_lower])
-                            elif len(k) == 1:
-                                vk_list.append(ord(k.upper()))
-
-                        try:
-                            for vk in vk_list:
-                                ctypes.windll.user32.keybd_event(vk, 0, 0, 0)
-                            time.sleep(0.05)
-                        finally:
-                            for vk in reversed(vk_list):
-                                ctypes.windll.user32.keybd_event(vk, 0, 2, 0)
+                        _send_hotkey(keys)
 
             # 8. SLEEP / DELAY / WAIT
             elif action_type in ("SLEEP", "DELAY", "WAIT"):
@@ -460,89 +423,97 @@ class ExportEngine(BaseSkill):
 
             # 9. RUN_SCRIPT / POWERSHELL / EXECUTE_COMMAND (Headless COM / CLI Automation)
             elif action_type in ("RUN_SCRIPT", "POWERSHELL", "EXECUTE_COMMAND", "SCRIPT"):
-                import subprocess
+                ok = execute_script_step(
+                    step=step,
+                    context=context,
+                    substitute_fn=self._substitute_placeholders,
+                    wait_for_queue_fn=self.wait_for_queue,
+                    reporter=reporter,
+                )
+                if not ok and step.get("on_failure", "stop") == "stop":
+                    return False
 
-                raw_cmd = str(step.get("command", "") or step.get("script", "") or step.get("code", ""))
-                if "{document_fullpath}" in raw_cmd:
-                    doc_fp = str(context.get("document_fullpath", "") or "").strip()
-                    if not doc_fp or not os.path.exists(doc_fp):
-                        logger.error(
-                            "  [!] SCRIPT aborted: Required variable 'document_fullpath' is missing or points to non-existent file: %r",
-                            doc_fp,
-                        )
+            # 8. BRANCH / IF_CONDITION (Declarative Conditional Branching)
+            elif action_type in ("BRANCH", "IF_CONDITION"):
+                cond = step.get("condition")
+                win = self._substitute_placeholders(step.get("window_title", self.target_window or ""), context)
+
+                is_true = evaluate_condition(
+                    condition=cond,
+                    context=context,
+                    window_checker=lambda w: SoMGrounder.capture_screen(w) is not None,
+                    element_checker=lambda loc, w: UIALocator.is_element_visible(loc, w) or (self._locate_target(loc, w) is not None),
+                )
+                logger.info("  [Condition %s] Result: %s", step_id, is_true)
+
+                branch_actions = step.get("then_actions", []) if is_true else step.get("else_actions", [])
+                if branch_actions:
+                    sub_engine = ExportEngine({
+                        "id": f"{self.id}__branch",
+                        "name": f"{self.name} (Branch)",
+                        "tasks": [{"id": "sub_branch", "actions": branch_actions}],
+                        "target_window": self.target_window,
+                        "executable_path": self.executable_path,
+                    })
+                    sub_success = sub_engine.execute_actions(
+                        context=context,
+                        reporter=reporter,
+                        depth=depth + 1,
+                        dry_run=dry_run,
+                    )
+                    if not sub_success:
+                        logger.error("  [!] Branch execution in %s failed.", step_id)
                         return False
 
-                cmd_to_run = self._substitute_placeholders(raw_cmd, context)
-                timeout_s = float(step.get("timeout_s", 60.0))
-                shell_type = str(step.get("shell", "powershell")).lower()
+            # 9. EXTRACT_UI_TEXT (Extract Text from UI Element / Label into Context Variable)
+            elif action_type == "EXTRACT_UI_TEXT":
+                locator = step.get("locator", {})
+                win = self._substitute_placeholders(step.get("window_title", self.target_window or ""), context)
+                var_name = str(step.get("extract_to_var") or step.get("variable") or step.get("var") or "extracted_ui_text").strip().strip("{}")
+                provider = str(step.get("provider", "auto")).lower()
+                extracted_text = ""
 
-                if cmd_to_run:
-                    try:
-                        if shell_type in ("powershell", "ps1", "pwsh") and sys.platform == "win32":
-                            args = [
-                                "powershell",
-                                "-NoProfile",
-                                "-NonInteractive",
-                                "-ExecutionPolicy",
-                                "Bypass",
-                                "-Command",
-                                cmd_to_run,
-                            ]
-                            proc = subprocess.Popen(
-                                args,
-                                stdout=subprocess.PIPE,
-                                stderr=subprocess.PIPE,
-                                text=True,
-                                encoding="utf-8",
-                                errors="replace",
-                            )
-                        else:
-                            proc = subprocess.Popen(
-                                cmd_to_run,
-                                shell=True,
-                                stdout=subprocess.PIPE,
-                                stderr=subprocess.PIPE,
-                                text=True,
-                                encoding="utf-8",
-                                errors="replace",
-                            )
+                # Try native UIA first if available and not explicitly forced to vision
+                if provider in ("uia", "auto") and UIALocator.is_available() and locator:
+                    extracted_text = UIALocator.get_element_text(locator, win)
 
-                        start_proc_t = time.time()
-                        returncode = None
-                        while returncode is None:
-                            if not self.wait_for_queue(reporter, "Skill paused..."):
-                                try:
-                                    proc.terminate()
-                                except Exception:
-                                    pass
-                                return False
-                            if (time.time() - start_proc_t) > timeout_s:
-                                try:
-                                    proc.kill()
-                                except Exception:
-                                    pass
-                                logger.error("[ExportEngine] Script timed out after %.1fs", timeout_s)
-                                if step.get("on_failure", "stop") == "stop":
-                                    return False
-                                break
-                            time.sleep(0.05)
-                            returncode = proc.poll()
+                # Fallback to OCR text if UIA returned empty or provider is vision
+                if not extracted_text and provider in ("vision", "auto", "ocr"):
+                    if locator.get("text"):
+                        extracted_text = str(locator.get("text", ""))
 
-                        if returncode is not None and returncode != 0:
-                            stderr_out = proc.stderr.read() if proc.stderr else ""
-                            logger.error("[ExportEngine] Script failed (code %d): %s", returncode, stderr_out)
-                            if step.get("on_failure", "stop") == "stop":
-                                return False
-                        elif returncode == 0:
-                            stdout_out = proc.stdout.read() if proc.stdout else ""
-                            logger.info(
-                                "[ExportEngine] Script executed successfully: %s",
-                                stdout_out[:200] if stdout_out else "",
-                            )
-                    except Exception as e:
-                        logger.error("[ExportEngine] Script execution error: %s", e)
-                        if step.get("on_failure", "stop") == "stop":
-                            return False
+                context[var_name] = extracted_text.strip()
+                logger.info("  [Action %s] EXTRACT_UI_TEXT: Stored %r -> {%s}", step_id, extracted_text[:100], var_name)
+
+            # 10. VALIDATE_UI_STATE (Validate UI / Context Assertions)
+            elif action_type == "VALIDATE_UI_STATE":
+                cond = step.get("condition") or step
+                win = self._substitute_placeholders(step.get("window_title", self.target_window or ""), context)
+                is_valid = evaluate_condition(
+                    condition=cond,
+                    context=context,
+                    window_checker=lambda w: SoMGrounder.capture_screen(w) is not None,
+                    element_checker=lambda loc, w: UIALocator.is_element_visible(loc, w) or (self._locate_target(loc, w) is not None),
+                )
+                if not is_valid:
+                    err_msg = f"UI State Validation failed in step {step_id}: {cond}"
+                    logger.error("  [!] %s", err_msg)
+                    if not handle_action_error(
+                        step=step,
+                        step_id=step_id,
+                        error_msg=err_msg,
+                        context=context,
+                        save_screenshot_fn=lambda sid, msg: self._save_failure_screenshot(sid, msg, win),
+                    ):
+                        return False
+
+            # 11. SET_VARIABLE (Dynamically Mutate / Assign Context Variables)
+            elif action_type == "SET_VARIABLE":
+                var_name = str(step.get("variable") or step.get("var") or step.get("name") or "").strip().strip("{}")
+                raw_val = str(step.get("value") or step.get("val") or "")
+                if var_name:
+                    context[var_name] = self._substitute_placeholders(raw_val, context)
+                    logger.info("  [Action %s] SET_VARIABLE: {%s} = %r", step_id, var_name, context[var_name])
 
             # Optional post-step delay
             delay_ms = int(step.get("delay_ms", 300))
@@ -711,10 +682,8 @@ class ExportEngine(BaseSkill):
         depth: int = 0,
         dry_run: bool = False,
     ) -> bool:
-        """Executes a skill by ID using the appropriate engine."""
-        if depth > 5:
-            return False
-        if not self.skill_manager:
+        """Executes a skill by ID within the current engine instance context."""
+        if depth > 5 or not self.skill_manager:
             return False
         skill_def = self.skill_manager.get_skill(skill_id)
         if not skill_def or not skill_def.get("enabled", True):
@@ -735,11 +704,9 @@ class ExportEngine(BaseSkill):
             if isinstance(raw_tasks, list) and raw_tasks:
                 for t in raw_tasks:
                     if isinstance(t, dict):
-                        t_actions = t.get("actions", [])
-                        if isinstance(t_actions, list):
-                            for a in t_actions:
-                                if isinstance(a, dict):
-                                    actions.append(a)
+                        for a in t.get("actions", []):
+                            if isinstance(a, dict):
+                                actions.append(a)
             elif isinstance(raw_steps, list):
                 actions = [s for s in raw_steps if isinstance(s, dict)]
             self.steps = actions

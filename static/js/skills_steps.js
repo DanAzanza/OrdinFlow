@@ -37,6 +37,15 @@ function getActionBadgeStyle(actionType) {
 		case "DELAY":
 		case "WAIT":
 			return { label: "⏱️ Delay", badgeClass: "action-pill-wait", icon: "⏱️" };
+		case "BRANCH":
+		case "IF_CONDITION":
+			return { label: "🔀 Branch (IF/ELSE)", badgeClass: "action-pill-verify", icon: "🔀" };
+		case "EXTRACT_UI_TEXT":
+			return { label: "📥 Extract UI Text", badgeClass: "action-pill-path", icon: "📥" };
+		case "VALIDATE_UI_STATE":
+			return { label: "🔍 Validate UI State", badgeClass: "action-pill-verify", icon: "🔍" };
+		case "SET_VARIABLE":
+			return { label: "💾 Set Variable", badgeClass: "action-pill-type", icon: "💾" };
 		default:
 			return { label: norm || "Action", badgeClass: "action-pill-focus", icon: "⚙️" };
 	}
@@ -413,6 +422,10 @@ function renderEditorSteps() {
 													<option value="RIGHT_CLICK" ${act.action_type === "RIGHT_CLICK" ? "selected" : ""}>🖱️ Right Click</option>
 													<option value="TYPE_TEXT" ${act.action_type === "TYPE_TEXT" ? "selected" : ""}>⌨️ Type Text</option>
 													<option value="TYPE_FILE_PATH" ${act.action_type === "TYPE_FILE_PATH" ? "selected" : ""}>📄 Type File Path</option>
+													<option value="BRANCH" ${act.action_type === "BRANCH" || act.action_type === "IF_CONDITION" ? "selected" : ""}>🔀 Branch (IF / ELSE)</option>
+													<option value="EXTRACT_UI_TEXT" ${act.action_type === "EXTRACT_UI_TEXT" ? "selected" : ""}>📥 Extract UI Text</option>
+													<option value="VALIDATE_UI_STATE" ${act.action_type === "VALIDATE_UI_STATE" ? "selected" : ""}>🔍 Validate UI State</option>
+													<option value="SET_VARIABLE" ${act.action_type === "SET_VARIABLE" ? "selected" : ""}>💾 Set Variable</option>
 													<option value="POWERSHELL" ${act.action_type === "POWERSHELL" || act.action_type === "RUN_SCRIPT" ? "selected" : ""}>⚡ PowerShell / Script</option>
 													<option value="DELAY" ${act.action_type === "DELAY" || act.action_type === "SLEEP" ? "selected" : ""}>⏱️ Delay / Pause</option>
 													<option value="FOCUS_WINDOW" ${act.action_type === "FOCUS_WINDOW" ? "selected" : ""}>🪟 Focus Window</option>
@@ -424,6 +437,36 @@ function renderEditorSteps() {
 												<label style="font-size: 0.8rem; color: #94a3b8; font-weight: 600;">Description:</label>
 												<input type="text" class="form-control form-control-sm" style="background: #0f172a; color: #f8fafc; border: 1px solid rgba(255,255,255,0.15); border-radius: 4px; padding: 4px 8px;" value="${escapeHtml(act.description || "")}" placeholder="Description of this step" onchange="updateActionProperty(${taskIdx}, ${actIdx}, 'description', this.value)" />
 											</div>
+											${(act.action_type === "BRANCH" || act.action_type === "IF_CONDITION" || act.action_type === "VALIDATE_UI_STATE") ? `
+											<div style="display: grid; grid-template-columns: 140px 1fr; gap: 8px; align-items: center;">
+												<label style="font-size: 0.8rem; color: #38bdf8; font-weight: 600;">Condition Expr:</label>
+												<input type="text" class="form-control form-control-sm" style="background: #0f172a; color: #38bdf8; font-family: monospace; border: 1px solid rgba(56, 189, 248, 0.3); border-radius: 4px; padding: 4px 8px;" value="${escapeHtml(typeof act.condition === 'string' ? act.condition : (act.condition?.expr || JSON.stringify(act.condition || '')))}" placeholder="{category} == 'Fußscan'" onchange="updateActionProperty(${taskIdx}, ${actIdx}, 'condition', this.value)" />
+											</div>
+											` : ""}
+											${act.action_type === "EXTRACT_UI_TEXT" ? `
+											<div style="display: grid; grid-template-columns: 140px 1fr; gap: 8px; align-items: center;">
+												<label style="font-size: 0.8rem; color: #94a3b8; font-weight: 600;">Save Variable:</label>
+												<input type="text" class="form-control form-control-sm" style="background: #0f172a; color: #f8fafc; border: 1px solid rgba(255,255,255,0.15); border-radius: 4px; padding: 4px 8px;" value="${escapeHtml(act.extract_to_var || act.variable || "ui_extracted_var")}" placeholder="ui_patient_id" onchange="updateActionProperty(${taskIdx}, ${actIdx}, 'extract_to_var', this.value)" />
+											</div>
+											<div style="display: grid; grid-template-columns: 140px 1fr; gap: 8px; align-items: center;">
+												<label style="font-size: 0.8rem; color: #94a3b8; font-weight: 600;">Provider:</label>
+												<select class="form-select form-select-sm" style="background: #0f172a; color: #f8fafc; border: 1px solid rgba(255,255,255,0.15); border-radius: 4px; padding: 4px 8px;" onchange="updateActionProperty(${taskIdx}, ${actIdx}, 'provider', this.value)">
+													<option value="auto" ${(!act.provider || act.provider === 'auto') ? "selected" : ""}>🤖 Auto (UIA -> Vision Fallback)</option>
+													<option value="uia" ${act.provider === 'uia' ? "selected" : ""}>⚡ UIA (Native Windows Control)</option>
+													<option value="vision" ${act.provider === 'vision' ? "selected" : ""}>👁️ Vision (RDP / OCR Pixel)</option>
+												</select>
+											</div>
+											` : ""}
+											${act.action_type === "SET_VARIABLE" ? `
+											<div style="display: grid; grid-template-columns: 140px 1fr; gap: 8px; align-items: center;">
+												<label style="font-size: 0.8rem; color: #94a3b8; font-weight: 600;">Variable Name:</label>
+												<input type="text" class="form-control form-control-sm" style="background: #0f172a; color: #f8fafc; border: 1px solid rgba(255,255,255,0.15); border-radius: 4px; padding: 4px 8px;" value="${escapeHtml(act.variable || "")}" placeholder="my_var" onchange="updateActionProperty(${taskIdx}, ${actIdx}, 'variable', this.value)" />
+											</div>
+											<div style="display: grid; grid-template-columns: 140px 1fr; gap: 8px; align-items: center;">
+												<label style="font-size: 0.8rem; color: #94a3b8; font-weight: 600;">Value / Formula:</label>
+												<input type="text" class="form-control form-control-sm" style="background: #0f172a; color: #f8fafc; border: 1px solid rgba(255,255,255,0.15); border-radius: 4px; padding: 4px 8px;" value="${escapeHtml(act.value || "")}" placeholder="Custom value or {other_var}" onchange="updateActionProperty(${taskIdx}, ${actIdx}, 'value', this.value)" />
+											</div>
+											` : ""}
 											${(act.action_type === "POWERSHELL" || act.action_type === "RUN_SCRIPT" || act.action_type === "EXECUTE_COMMAND") ? `
 											<div style="display: grid; grid-template-columns: 140px 1fr; gap: 8px;">
 												<label style="font-size: 0.8rem; color: #94a3b8; font-weight: 600;">Command / Script:</label>
@@ -454,12 +497,20 @@ function renderEditorSteps() {
 												<input type="text" class="form-control form-control-sm" style="background: #0f172a; color: #f8fafc; border: 1px solid rgba(255,255,255,0.15); border-radius: 4px; padding: 4px 8px;" value="${escapeHtml(act.window_title || "")}" placeholder="CorelDRAW*" onchange="updateActionProperty(${taskIdx}, ${actIdx}, 'window_title', this.value)" />
 											</div>
 											` : ""}
-											${(act.action_type === "CLICK" || act.action_type === "DOUBLE_CLICK" || act.action_type === "RIGHT_CLICK" || act.action_type === "WAIT_FOR_ELEMENT") ? `
+											${(act.action_type === "CLICK" || act.action_type === "DOUBLE_CLICK" || act.action_type === "RIGHT_CLICK" || act.action_type === "WAIT_FOR_ELEMENT" || act.action_type === "EXTRACT_UI_TEXT") ? `
 											<div style="display: grid; grid-template-columns: 140px 1fr; gap: 8px; align-items: center;">
 												<label style="font-size: 0.8rem; color: #94a3b8; font-weight: 600;">Locator Target:</label>
-												<input type="text" class="form-control form-control-sm" style="background: #0f172a; color: #f8fafc; border: 1px solid rgba(255,255,255,0.15); border-radius: 4px; padding: 4px 8px;" value="${escapeHtml(act.locator?.prompt || act.locator?.value || "")}" placeholder="Button name or OCR text" onchange="updateActionProperty(${taskIdx}, ${actIdx}, 'locator.prompt', this.value)" />
+												<input type="text" class="form-control form-control-sm" style="background: #0f172a; color: #f8fafc; border: 1px solid rgba(255,255,255,0.15); border-radius: 4px; padding: 4px 8px;" value="${escapeHtml(act.locator?.prompt || act.locator?.value || act.locator?.automation_id || "")}" placeholder="Button name, automation_id, or OCR text" onchange="updateActionProperty(${taskIdx}, ${actIdx}, 'locator.prompt', this.value)" />
 											</div>
 											` : ""}
+											<div style="display: grid; grid-template-columns: 140px 1fr; gap: 8px; align-items: center; border-top: 1px dashed rgba(255,255,255,0.1); padding-top: 6px;">
+												<label style="font-size: 0.8rem; color: #f59e0b; font-weight: 600;">On Error:</label>
+												<select class="form-select form-select-sm" style="background: #0f172a; color: #f8fafc; border: 1px solid rgba(255,255,255,0.15); border-radius: 4px; padding: 4px 8px;" onchange="updateActionProperty(${taskIdx}, ${actIdx}, 'on_error', this.value)">
+													<option value="ABORT" ${(!act.on_error || act.on_error === 'ABORT') ? "selected" : ""}>🛑 Abort & Stop Workflow</option>
+													<option value="CONTINUE" ${act.on_error === 'CONTINUE' ? "selected" : ""}>⏭️ Ignore & Continue</option>
+													<option value="RETRY" ${act.on_error === 'RETRY' ? "selected" : ""}>🔄 Retry Step (up to 3x)</option>
+												</select>
+											</div>
 										</div>
 										` : ""}
 									`;

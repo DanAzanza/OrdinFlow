@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import ctypes
 import logging
+import os
 import re
 import sys
 import time
@@ -272,6 +273,14 @@ def substitute_placeholders(text: str, context: Mapping[str, Any]) -> str:
     derived.setdefault("day", time.strftime("%d", now))
     derived.setdefault("Zeit", time.strftime("%H-%M-%S", now))
     derived.setdefault("time", time.strftime("%H-%M-%S", now))
+    # Derive user environment and standard folder paths
+    user_prof = os.environ.get("USERPROFILE", "") or os.path.expanduser("~")
+    if user_prof:
+        derived.setdefault("userprofile", user_prof)
+        derived.setdefault("USERPROFILE", user_prof)
+        desktop_dir = os.path.join(user_prof, "Desktop")
+        derived.setdefault("desktop", desktop_dir)
+        derived.setdefault("Desktop", desktop_dir)
 
     # Case-insensitive lookup map
     lower_map = {k.lower(): v for k, v in derived.items() if isinstance(k, str)}
@@ -302,4 +311,72 @@ def substitute_placeholders(text: str, context: Mapping[str, Any]) -> str:
         return str_val
 
     return re.sub(r"\{([^{}]+)\}", replace_match, text)
+
+
+_VK_MAP: dict[str, int] = {
+    "ctrl": 0x11,
+    "control": 0x11,
+    "alt": 0x12,
+    "shift": 0x10,
+    "win": 0x5B,
+    "cmd": 0x5B,
+    "super": 0x5B,
+    "enter": 0x0D,
+    "return": 0x0D,
+    "tab": 0x09,
+    "esc": 0x1B,
+    "escape": 0x1B,
+    "space": 0x20,
+    "backspace": 0x08,
+    "delete": 0x2E,
+    "del": 0x2E,
+    "left": 0x25,
+    "up": 0x26,
+    "right": 0x27,
+    "down": 0x28,
+    "f1": 0x70,
+    "f2": 0x71,
+    "f3": 0x72,
+    "f4": 0x73,
+    "f5": 0x74,
+    "f6": 0x75,
+    "f7": 0x76,
+    "f8": 0x77,
+    "f9": 0x78,
+    "f10": 0x79,
+    "f11": 0x7A,
+    "f12": 0x7B,
+}
+
+
+def send_hotkey(keys: list[str] | str) -> None:
+    """Sends a sequence of keyboard keys or a hotkey combination on Windows."""
+    if sys.platform != "win32":
+        return
+    if isinstance(keys, str):
+        key_list = [k.strip() for k in keys.split("+")]
+    else:
+        key_list = list(keys)
+
+    if not key_list:
+        return
+
+    vk_list: list[int] = []
+    for k in key_list:
+        k_lower = k.lower()
+        if k_lower in _VK_MAP:
+            vk_list.append(_VK_MAP[k_lower])
+        elif len(k) == 1:
+            vk_list.append(ord(k.upper()))
+
+    keybd_event = ctypes.windll.user32.keybd_event
+    KEYEVENTF_KEYUP = 0x0002
+    try:
+        for vk in vk_list:
+            keybd_event(vk, 0, 0, 0)
+        time.sleep(0.05)
+    finally:
+        for vk in reversed(vk_list):
+            keybd_event(vk, 0, KEYEVENTF_KEYUP, 0)
+
 

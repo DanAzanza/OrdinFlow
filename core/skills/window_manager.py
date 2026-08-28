@@ -13,6 +13,7 @@ from core.skills.grounder import SoMGrounder
 
 import os
 import re
+import subprocess
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -63,7 +64,19 @@ def maximize_target_window(win_pattern: str) -> None:
         cb = ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.c_void_p, ctypes.c_void_p)(enum_proc)
         ctypes.windll.user32.EnumWindows(cb, 0)
         if found_hwnd:
-            ctypes.windll.user32.ShowWindow(found_hwnd[0], 3)  # SW_MAXIMIZE
+            hwnd = found_hwnd[0]
+            user32 = ctypes.windll.user32
+            kernel32 = ctypes.windll.kernel32
+            current_tid = kernel32.GetCurrentThreadId()
+            target_tid = user32.GetWindowThreadProcessId(hwnd, None)
+            if current_tid != target_tid:
+                user32.AttachThreadInput(current_tid, target_tid, True)
+            user32.ShowWindow(hwnd, 3)  # SW_MAXIMIZE
+            user32.SetForegroundWindow(hwnd)
+            user32.BringWindowToTop(hwnd)
+            user32.SetFocus(hwnd)
+            if current_tid != target_tid:
+                user32.AttachThreadInput(current_tid, target_tid, False)
             time.sleep(0.2)
     except Exception as e:
         logger.debug("[WindowManager] Maximize window error: %s", e)
@@ -97,9 +110,10 @@ def ensure_window_ready(
     elif exe_path:
         logger.info("[WindowManager] Window '%s' not found. Launching executable: '%s'", win_pattern, exe_path)
         try:
-            import subprocess
-
-            subprocess.Popen(str(exe_path), shell=True)
+            if os.path.exists(str(exe_path)):
+                subprocess.Popen([str(exe_path)])
+            else:
+                subprocess.Popen(f'"{exe_path}"', shell=True)
         except Exception as e:
             logger.error("[WindowManager] Failed to launch executable '%s': %s", exe_path, e)
             return False

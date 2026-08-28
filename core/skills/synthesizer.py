@@ -105,7 +105,10 @@ class SkillSynthesizer:
             "}"
         )
 
-        res = llm_extractor.call_vision_api_json({"messages": [{"role": "user", "content": prompt}]})
+        res = llm_extractor.call_vision_api_json({
+            "messages": [{"role": "user", "content": prompt}],
+            "max_tokens": 1536,
+        })
         if isinstance(res, dict) and "tasks" in res:
             return res
         return None
@@ -309,6 +312,19 @@ class SkillSynthesizer:
                     "You are OrdinFlow AI Copilot, an expert assistant for robotic process automation (RPA) and medical workflow engineering.\n"
                     "You engage in natural, helpful, friendly conversations with the user in their language (German or English).\n"
                     "You can answer questions about the skill, explain what you can do, or update the skill according to instructions.\n\n"
+                    "SUPPORTED RPA ACTION TYPES & SCHEMA:\n"
+                    "- FOCUS_WINDOW: {'action_type': 'FOCUS_WINDOW', 'window_title': 'App*', 'maximize_window': true}\n"
+                    "- CLICK / DOUBLE_CLICK / RIGHT_CLICK: {'action_type': 'CLICK', 'locator': {'type': 'auto', 'prompt': 'Save'}, 'provider': 'auto'|'uia'|'vision'}\n"
+                    "- HOTKEY: {'action_type': 'HOTKEY', 'keys': ['ctrl', 's']}\n"
+                    "- TYPE_TEXT: {'action_type': 'TYPE_TEXT', 'text': '{Nachname}', 'press_enter': true}\n"
+                    "- TYPE_FILE_PATH: {'action_type': 'TYPE_FILE_PATH', 'file_path': '{document_fullpath}', 'press_enter': true}\n"
+                    "- BRANCH / IF_CONDITION: {'action_type': 'BRANCH', 'condition': \"{category} == 'Fußscan'\", 'then_actions': [...], 'else_actions': [...]}\n"
+                    "- EXTRACT_UI_TEXT: {'action_type': 'EXTRACT_UI_TEXT', 'extract_to_var': 'ui_var_name', 'provider': 'uia'|'vision', 'locator': {...}}\n"
+                    "- VALIDATE_UI_STATE: {'action_type': 'VALIDATE_UI_STATE', 'condition': \"{ui_var} == '{expected}'\", 'on_error': 'ABORT'|'RETRY'|'CONTINUE'}\n"
+                    "- SET_VARIABLE: {'action_type': 'SET_VARIABLE', 'variable': 'var_name', 'value': 'value_or_{other_var}'}\n"
+                    "- POWERSHELL / RUN_SCRIPT: {'action_type': 'POWERSHELL', 'command': '...', 'timeout_s': 60}\n"
+                    "- DELAY: {'action_type': 'DELAY', 'delay_ms': 500}\n"
+                    "- Any action supports optional 'on_error': 'ABORT' | 'CONTINUE' | 'RETRY'.\n\n"
                     "CRITICAL OUTPUT FORMAT RULES:\n"
                     "Respond with a valid JSON object containing EXACTLY two top-level keys:\n"
                     "1. 'reply': A string with your conversational response to the user in their language. Answer questions directly, explain capabilities, or describe what was changed.\n"
@@ -332,7 +348,10 @@ class SkillSynthesizer:
                 )
                 messages.append({"role": "user", "content": context_prompt})
 
-                res = llm_extractor.call_vision_api_json({"messages": messages})
+                res = llm_extractor.call_vision_api_json({
+                    "messages": messages,
+                    "max_tokens": 1536,
+                })
                 if isinstance(res, dict):
                     if "skill" in res and isinstance(res["skill"], dict):
                         skill_res = res["skill"]

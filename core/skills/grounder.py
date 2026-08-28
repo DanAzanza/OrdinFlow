@@ -183,7 +183,18 @@ class SoMGrounder:
                         hwnd = found[0]
 
                 if hwnd:
-                    ctypes.windll.user32.SetForegroundWindow(hwnd)  # type: ignore[union-attr]
+                    user32 = ctypes.windll.user32  # type: ignore[union-attr]
+                    kernel32 = ctypes.windll.kernel32  # type: ignore[union-attr]
+                    current_tid = kernel32.GetCurrentThreadId()
+                    target_tid = user32.GetWindowThreadProcessId(hwnd, None)
+                    if current_tid != target_tid:
+                        user32.AttachThreadInput(current_tid, target_tid, True)
+                    user32.ShowWindow(hwnd, 9)  # SW_RESTORE
+                    user32.SetForegroundWindow(hwnd)
+                    user32.BringWindowToTop(hwnd)
+                    user32.SetFocus(hwnd)
+                    if current_tid != target_tid:
+                        user32.AttachThreadInput(current_tid, target_tid, False)
                     time.sleep(0.2)
             except OSError as e:
                 logger.warning("[SoMGrounder] Error focusing window '%s': %s", window_title, e)
