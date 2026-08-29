@@ -2,19 +2,17 @@
 
 from __future__ import annotations
 
-import ctypes
 import logging
-import sys
-import time
-from collections.abc import Callable, Mapping
-from typing import Any
-
-from core.skills.grounder import SoMGrounder
-
 import os
 import re
 import subprocess
+import sys
+import time
+from collections.abc import Callable, Mapping
 from pathlib import Path
+from typing import Any
+
+from core.skills.grounder import SoMGrounder
 
 logger = logging.getLogger(__name__)
 
@@ -22,6 +20,108 @@ try:
     import numpy as np
 except ImportError:
     np = None  # type: ignore[assignment]
+
+if sys.platform == "win32":
+    import ctypes
+    from ctypes import wintypes
+
+    user32 = getattr(ctypes.windll, "user32", None)
+    kernel32 = getattr(ctypes.windll, "kernel32", None)
+
+    if user32:
+        user32.GetForegroundWindow.restype = wintypes.HWND
+        user32.GetWindowTextLengthW.argtypes = [wintypes.HWND]
+        user32.GetWindowTextLengthW.restype = ctypes.c_int
+        user32.GetWindowTextW.argtypes = [wintypes.HWND, wintypes.LPWSTR, ctypes.c_int]
+        user32.GetWindowTextW.restype = ctypes.c_int
+        user32.IsWindowVisible.argtypes = [wintypes.HWND]
+        user32.IsWindowVisible.restype = wintypes.BOOL
+        user32.EnumWindows.argtypes = [ctypes.c_void_p, wintypes.LPARAM]
+        user32.EnumWindows.restype = wintypes.BOOL
+        user32.ShowWindow.argtypes = [wintypes.HWND, ctypes.c_int]
+        user32.ShowWindow.restype = wintypes.BOOL
+        user32.SetForegroundWindow.argtypes = [wintypes.HWND]
+        user32.SetForegroundWindow.restype = wintypes.BOOL
+        user32.BringWindowToTop.argtypes = [wintypes.HWND]
+        user32.BringWindowToTop.restype = wintypes.BOOL
+        user32.SetFocus.argtypes = [wintypes.HWND]
+        user32.SetFocus.restype = wintypes.HWND
+        user32.GetWindowThreadProcessId.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.DWORD)]
+        user32.GetWindowThreadProcessId.restype = wintypes.DWORD
+        user32.AttachThreadInput.argtypes = [wintypes.DWORD, wintypes.DWORD, wintypes.BOOL]
+        user32.AttachThreadInput.restype = wintypes.BOOL
+        user32.IsHungAppWindow.argtypes = [wintypes.HWND]
+        user32.IsHungAppWindow.restype = wintypes.BOOL
+        user32.SetCursorPos.argtypes = [ctypes.c_int, ctypes.c_int]
+        user32.SetCursorPos.restype = wintypes.BOOL
+
+
+def find_window_hwnd(title_pattern: str, require_visible: bool = True) -> int | None:
+    """Finds an HWND by window title substring or pattern on Windows."""
+    if sys.platform != "win32" or not title_pattern:
+        return None
+    try:
+        clean_pat = title_pattern.lower().replace("*", "").strip()
+        found: list[int] = []
+
+        def enum_proc(h_val: int, _lparam: int) -> bool:
+            if require_visible and not ctypes.windll.user32.IsWindowVisible(h_val):
+                return True
+            length = ctypes.windll.user32.GetWindowTextLengthW(h_val)
+            if length > 0:
+                buff = ctypes.create_unicode_buffer(length + 1)
+                ctypes.windll.user32.GetWindowTextW(h_val, buff, length + 1)
+                title = buff.value.strip()
+                if clean_pat in title.lower():
+                    found.append(h_val)
+                    return False
+            return True
+
+        wnd_enum_proc = ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.c_void_p, ctypes.c_void_p)(enum_proc)
+        ctypes.windll.user32.EnumWindows(wnd_enum_proc, 0)
+        return found[0] if found else None
+    except Exception as e:
+        logger.debug("[WindowManager] find_window_hwnd error: %s", e)
+        return None
+
+
+def activate_window(hwnd: int, show_cmd: int = 9) -> bool:
+    """Brings the target window to foreground and attaches thread input."""
+    if sys.platform != "win32" or not hwnd:
+        return False
+    try:
+        u32 = ctypes.windll.user32
+        k32 = ctypes.windll.kernel32
+        current_tid = k32.GetCurrentThreadId()
+        target_tid = u32.GetWindowThreadProcessId(hwnd, None)
+        if current_tid != target_tid:
+            u32.AttachThreadInput(current_tid, target_tid, True)
+        u32.ShowWindow(hwnd, show_cmd)
+        u32.SetForegroundWindow(hwnd)
+        u32.BringWindowToTop(hwnd)
+        u32.SetFocus(hwnd)
+        if current_tid != target_tid:
+            u32.AttachThreadInput(current_tid, target_tid, False)
+        return True
+    except Exception as e:
+        logger.debug("[WindowManager] activate_window error: %s", e)
+        return False
+
+
+def get_active_window_title() -> str:
+    """Returns the window title of the currently active foreground window on Windows."""
+    if sys.platform == "win32":
+        try:
+            hwnd = ctypes.windll.user32.GetForegroundWindow()
+            if hwnd:
+                length = ctypes.windll.user32.GetWindowTextLengthW(hwnd)
+                if length > 0:
+                    buff = ctypes.create_unicode_buffer(length + 1)
+                    ctypes.windll.user32.GetWindowTextW(hwnd, buff, length + 1)
+                    return buff.value
+        except (AttributeError, OSError, RuntimeError, ValueError):
+            pass
+    return "Remote Desktop*"
 
 
 def save_failure_screenshot(step_id: str, desc: str = "", window_title: str | None = None) -> str | None:
@@ -49,37 +149,10 @@ def maximize_target_window(win_pattern: str) -> None:
     """Maximizes the target window via Win32 ShowWindow(SW_MAXIMIZE = 3)."""
     if sys.platform != "win32" or not win_pattern:
         return
-    try:
-        found_hwnd: list[int] = []
-
-        def enum_proc(h: int, _lparam: int) -> bool:
-            length = ctypes.windll.user32.GetWindowTextLengthW(h)
-            if length > 0:
-                buff = ctypes.create_unicode_buffer(length + 1)
-                ctypes.windll.user32.GetWindowTextW(h, buff, length + 1)
-                if win_pattern.lower().replace("*", "") in buff.value.lower():
-                    found_hwnd.append(h)
-            return True
-
-        cb = ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.c_void_p, ctypes.c_void_p)(enum_proc)
-        ctypes.windll.user32.EnumWindows(cb, 0)
-        if found_hwnd:
-            hwnd = found_hwnd[0]
-            user32 = ctypes.windll.user32
-            kernel32 = ctypes.windll.kernel32
-            current_tid = kernel32.GetCurrentThreadId()
-            target_tid = user32.GetWindowThreadProcessId(hwnd, None)
-            if current_tid != target_tid:
-                user32.AttachThreadInput(current_tid, target_tid, True)
-            user32.ShowWindow(hwnd, 3)  # SW_MAXIMIZE
-            user32.SetForegroundWindow(hwnd)
-            user32.BringWindowToTop(hwnd)
-            user32.SetFocus(hwnd)
-            if current_tid != target_tid:
-                user32.AttachThreadInput(current_tid, target_tid, False)
-            time.sleep(0.2)
-    except Exception as e:
-        logger.debug("[WindowManager] Maximize window error: %s", e)
+    hwnd = find_window_hwnd(win_pattern)
+    if hwnd:
+        activate_window(hwnd, show_cmd=3)  # SW_MAXIMIZE
+        time.sleep(0.2)
 
 
 def ensure_window_ready(
@@ -143,29 +216,14 @@ def check_hung_app_and_recover(
     if sys.platform != "win32" or not win_pattern or not recover_enabled:
         return False
     try:
-        found_hwnd: list[int] = []
-
-        def enum_proc(h: int, _lparam: int) -> bool:
-            length = ctypes.windll.user32.GetWindowTextLengthW(h)
-            if length > 0:
-                buff = ctypes.create_unicode_buffer(length + 1)
-                ctypes.windll.user32.GetWindowTextW(h, buff, length + 1)
-                if win_pattern.lower().replace("*", "") in buff.value.lower():
-                    found_hwnd.append(h)
-            return True
-
-        cb = ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.c_void_p, ctypes.c_void_p)(enum_proc)
-        ctypes.windll.user32.EnumWindows(cb, 0)
-        if found_hwnd:
-            hwnd = found_hwnd[0]
+        hwnd = find_window_hwnd(win_pattern, require_visible=False)
+        if hwnd:
             is_hung = bool(ctypes.windll.user32.IsHungAppWindow(hwnd))
             if is_hung:
                 logger.warning("[WindowManager] Detected hung/unresponsive window '%s' (HWND %s). Terminating process...", win_pattern, hwnd)
                 pid = ctypes.c_ulong()
                 ctypes.windll.user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
                 if pid.value:
-                    import subprocess
-
                     subprocess.run(["taskkill", "/F", "/PID", str(pid.value)], check=False, capture_output=True)
                     time.sleep(1.0)
                     if ensure_ready_fn:
@@ -178,18 +236,15 @@ def check_hung_app_and_recover(
 def handle_known_dialog_popups(window_title: str | None = None) -> bool:
     """Inspects whether an unexpected overwrite/confirmation modal popup is blocking the flow and resolves it."""
     try:
-        from core.extraction_pipeline import _get_rapid_ocr
+        from core.image_processing import run_rapid_ocr
 
-        engine = _get_rapid_ocr()
-        if not engine:
-            return False
         screen = SoMGrounder.capture_screen(window_title)
         if not screen:
             return False
         img_np = np.array(screen) if np is not None else None
         if img_np is None:
             return False
-        res, _ = engine(img_np)
+        res = run_rapid_ocr(img_np)
         if not res:
             return False
 
@@ -209,10 +264,9 @@ def handle_known_dialog_popups(window_title: str | None = None) -> bool:
 
         if popup_detected and confirm_btn_coords and sys.platform == "win32":
             logger.info("[WindowManager] Detected blocking dialog popup. Auto-clicking confirmation at %s", confirm_btn_coords)
-            ctypes.windll.user32.SetCursorPos(confirm_btn_coords[0], confirm_btn_coords[1])
-            time.sleep(0.05)
-            ctypes.windll.user32.mouse_event(0x0002, 0, 0, 0, 0)
-            ctypes.windll.user32.mouse_event(0x0004, 0, 0, 0, 0)
+            from core.skills.action_executor import send_native_click
+
+            send_native_click(confirm_btn_coords[0], confirm_btn_coords[1])
             time.sleep(0.3)
             return True
     except Exception as e:

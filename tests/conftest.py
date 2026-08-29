@@ -70,6 +70,7 @@ def test_sandbox():
     skills_api_mod._SKILL_MANAGER = None
     cases_api_mod._SKILL_MANAGER = None
     DashboardState.config = None
+    DashboardState.processor = None
 
     shutil.rmtree(tmp_dir, ignore_errors=True)
 
@@ -95,3 +96,35 @@ def processor(test_sandbox):
 
     _, config, _ = test_sandbox
     return DocumentProcessor(config)
+
+
+@pytest.fixture
+def create_test_pdf():
+    """Factory fixture to create real/minimal valid multi-page PDF files."""
+
+    def _creator(filepath: str, num_pages: int = 1, text: str = "Test Page") -> str:
+        import fitz
+
+        doc = fitz.open()
+        for i in range(num_pages):
+            page = doc.new_page(width=595, height=842)
+            page.insert_text((50, 50), f"{text} (Page {i + 1})")
+        doc.save(filepath)
+        doc.close()
+        return filepath
+
+    return _creator
+
+
+@pytest.fixture
+def create_test_image():
+    """Factory fixture to create test PIL images."""
+
+    def _creator(filepath: str, width: int = 800, height: int = 600, color: str = "white") -> str:
+        from PIL import Image
+
+        img = Image.new("RGB", (width, height), color=color)
+        img.save(filepath)
+        return filepath
+
+    return _creator

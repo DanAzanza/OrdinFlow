@@ -2,6 +2,7 @@ import base64
 import io
 import logging
 import os
+import threading
 from typing import Any
 
 import numpy as np
@@ -12,6 +13,45 @@ from core.config import AppConfig
 logger = logging.getLogger(__name__)
 
 _JPEG_QUALITY = 90
+
+_RAPID_OCR_ENGINE: Any = None
+_OCR_LOCK = threading.RLock()
+
+
+def get_rapid_ocr() -> Any:
+    """Returns the globally cached RapidOCR engine instance or None if unavailable."""
+    global _RAPID_OCR_ENGINE
+    if _RAPID_OCR_ENGINE is None:
+        with _OCR_LOCK:
+            if _RAPID_OCR_ENGINE is None:
+                try:
+                    from rapidocr_onnxruntime import RapidOCR  # type: ignore[import-untyped]
+
+                    _RAPID_OCR_ENGINE = RapidOCR()
+                except (ImportError, RuntimeError, OSError):
+                    _RAPID_OCR_ENGINE = False
+    return _RAPID_OCR_ENGINE if _RAPID_OCR_ENGINE is not False else None
+
+
+def run_rapid_ocr(img: Any, engine: Any = None) -> list[Any] | None:
+    """Thread-safely executes RapidOCR on an image input (numpy array or PIL image)."""
+    ocr_engine = engine if engine is not None else get_rapid_ocr()
+    if not ocr_engine:
+        return None
+    with _OCR_LOCK:
+        try:
+            res, _ = ocr_engine(img)
+            return res
+        except Exception as e:
+            logger.debug("[run_rapid_ocr] OCR inference error: %s", e)
+            return None
+
+
+def align_to_vit_grid(dim: int, patch_size: int = 28) -> int:
+    """Rounds a dimension down to an exact multiple of the ViT token patch size (default 28px)."""
+    if dim <= 0:
+        return patch_size
+    return (dim // patch_size) * patch_size
 
 HAS_FITZ = False
 try:
@@ -63,7 +103,7 @@ def _encode_pil_fallback(
         w, h = img.size
         longest_side = max(w, h)
         target_max = (max_dim // 28) * 28 if max_dim >= 28 else 28
-        if (longest_side != target_max or (w % 28 != 0 or h % 28 != 0)) and (longest_side > target_max or upscale):
+        if longest_side > 0 and (longest_side != target_max or (w % 28 != 0 or h % 28 != 0)) and (longest_side > target_max or upscale):
             scale = target_max / float(longest_side)
             scaled_w = max(1, int(round(w * scale)))
             scaled_h = max(1, int(round(h * scale)))

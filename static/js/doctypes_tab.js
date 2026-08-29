@@ -49,7 +49,7 @@ function renderDocTypesSidebar() {
 				const fieldCount = Object.keys(doc.extraction_fields || {}).length;
 
 				return `
-					<div class="category-item ${isSelected ? "active" : ""}" onclick="selectDocType('${escapeHtml(key)}')">
+					<div class="category-item ${isSelected ? "active" : ""}" data-type="${escapeHtml(key)}" onclick="selectDocType(this.dataset.type)">
 						<div class="category-item-name">
 							<span class="category-emoji">${emoji}</span>
 							<span class="category-label" title="${escapeHtml(key)}">
@@ -149,13 +149,13 @@ function renderDocTypeForm(typeName) {
 						<input type="text" class="doc-editor-input doc-field-key-input" value="${escapeHtml(fKey)}" readonly aria-label="Field name: ${escapeHtml(fKey)}" />
 					</td>
 					<td class="doc-field-prompt-td">
-						<textarea class="doc-editor-textarea auto-resize-ta" rows="1" placeholder="Prompt for the AI..." aria-label="Prompt for ${escapeHtml(fKey)}" oninput="autoResizeTextarea(this)" onchange="updateDocTypeField('${escapeHtml(typeName)}', '${escapeHtml(fKey)}', 'desc', this.value)">${escapeHtml(desc)}</textarea>
+						<textarea class="doc-editor-textarea auto-resize-ta" rows="1" placeholder="Prompt for the AI..." aria-label="Prompt for ${escapeHtml(fKey)}" oninput="autoResizeTextarea(this)" data-type="${escapeHtml(typeName)}" data-field="${escapeHtml(fKey)}" onchange="updateDocTypeField(this.dataset.type, this.dataset.field, 'desc', this.value)">${escapeHtml(desc)}</textarea>
 					</td>
 					<td class="doc-field-req-td">
-						<input type="checkbox" class="config-checkbox" ${req ? "checked" : ""} aria-label="Require field ${escapeHtml(fKey)}" onchange="updateDocTypeField('${escapeHtml(typeName)}', '${escapeHtml(fKey)}', 'req', this.checked)" />
+						<input type="checkbox" class="config-checkbox" ${req ? "checked" : ""} aria-label="Require field ${escapeHtml(fKey)}" data-type="${escapeHtml(typeName)}" data-field="${escapeHtml(fKey)}" onchange="updateDocTypeField(this.dataset.type, this.dataset.field, 'req', this.checked)" />
 					</td>
 					<td class="doc-field-act-td">
-						<button type="button" class="btn btn-sm btn-danger" onclick="removeExtractionField('${escapeHtml(typeName)}', '${escapeHtml(fKey)}')" title="Remove field">🗑️</button>
+						<button type="button" class="btn btn-sm btn-danger" data-type="${escapeHtml(typeName)}" data-field="${escapeHtml(fKey)}" onclick="removeExtractionField(this.dataset.type, this.dataset.field)" title="Remove field">🗑️</button>
 					</td>
 				</tr>
 			`;
@@ -190,7 +190,7 @@ function renderDocTypeForm(typeName) {
 					<h3 class="doc-header-name">${escapeHtml(typeName)}</h3>
 				</div>
 			</div>
-			<button type="button" class="btn btn-sm btn-danger" onclick="deleteDocType('${escapeHtml(typeName)}')">🗑️ Delete Category</button>
+			<button type="button" class="btn btn-sm btn-danger" data-type="${escapeHtml(typeName)}" onclick="deleteDocType(this.dataset.type)">🗑️ Delete Category</button>
 		</div>
 
 		<div class="doc-editor-section">
@@ -198,13 +198,13 @@ function renderDocTypeForm(typeName) {
 			<span class="doc-field-hint">
 				Define the visual, text, or layout features the AI uses to recognize this document.
 			</span>
-			<textarea class="doc-editor-textarea auto-resize-ta" rows="2" placeholder="E.g. Document containing the text 'Report' in the header area..." oninput="autoResizeTextarea(this)" onchange="updateDocTypeRules('${escapeHtml(typeName)}', this.value)">${escapeHtml(descValue)}</textarea>
+			<textarea class="doc-editor-textarea auto-resize-ta" rows="2" placeholder="E.g. Document containing the text 'Report' in the header area..." oninput="autoResizeTextarea(this)" data-type="${escapeHtml(typeName)}" onchange="updateDocTypeRules(this.dataset.type, this.value)">${escapeHtml(descValue)}</textarea>
 		</div>
 
 		<div class="doc-editor-section">
 			<div class="doc-section-header-row">
 				<h4>📋 Extraction Fields & AI Prompts</h4>
-				<button type="button" class="btn btn-sm btn-accent" onclick="addExtractionField('${escapeHtml(typeName)}')">➕ Add Field</button>
+				<button type="button" class="btn btn-sm btn-accent" data-type="${escapeHtml(typeName)}" onclick="addExtractionField(this.dataset.type)">➕ Add Field</button>
 			</div>
 			${tableHtml}
 		</div>

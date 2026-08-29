@@ -59,17 +59,17 @@ def _resolve_split_source(context: str, folder: str | None, filename: str) -> tu
     if context == "cases":
         if not folder:
             return None, (jsonify({"error": "Folder is required for cases context"}), 400)
-        src_path = os.path.join(DashboardState.config.target_base_dir, folder, filename)
-        if not os.path.isfile(src_path):
-            return None, (jsonify({"error": "File not found"}), 404)
+        src_path = os.path.abspath(os.path.join(DashboardState.config.target_base_dir, folder, filename))
         if not _is_within_base(src_path, DashboardState.config.target_base_dir):
             return None, (jsonify({"error": "Access denied"}), 403)
-    else:
-        src_path = os.path.join(DashboardState.config.watch_dir, filename)
         if not os.path.isfile(src_path):
             return None, (jsonify({"error": "File not found"}), 404)
+    else:
+        src_path = os.path.abspath(os.path.join(DashboardState.config.watch_dir, filename))
         if not _is_within_base(src_path, DashboardState.config.watch_dir):
             return None, (jsonify({"error": "Access denied"}), 403)
+        if not os.path.isfile(src_path):
+            return None, (jsonify({"error": "File not found"}), 404)
 
     return src_path, None
 
@@ -91,11 +91,15 @@ def _slice_or_move_document(
     data["Document"] = doc_type
 
     target_folder = _render_target_folder(data, doc_type)
-    target_dir = os.path.join(DashboardState.config.target_base_dir, target_folder)
+    target_dir = os.path.abspath(os.path.join(DashboardState.config.target_base_dir, target_folder))
+    if not _is_within_base(target_dir, DashboardState.config.target_base_dir):
+        raise PermissionError(f"Access denied: Target directory outside base '{target_folder}'")
     os.makedirs(target_dir, exist_ok=True)
 
     target_filename = _render_target_filename(data, doc_type, ext)
     target_filename, target_path = _deduplicate_filename(target_dir, target_filename)
+    if not _is_within_base(target_path, DashboardState.config.target_base_dir):
+        raise PermissionError(f"Access denied: Target file outside base '{target_filename}'")
 
     pages_to_extract = _parse_pages_input(data.get("pages"), total_pages)
     should_slice = (
@@ -120,22 +124,36 @@ def api_split_inspector_submit():
     if not DashboardState.config:
         return jsonify({"error": "Config not available"}), 503
 
-    raw_data = request.get_json() or {}
-    context = raw_data.get("context", "inbox")
-    filename = raw_data.get("filename")
-    folder = raw_data.get("folder")
+    from routes.schemas import SplitInspectorSubmitSchema, validate_schema
 
-    if not filename:
-        return jsonify({"error": "Filename is required"}), 400
+    raw_data = request.get_json(silent=True)
+    if not isinstance(raw_data, dict):
+        return jsonify({"error": "Invalid request payload (dictionary expected)"}), 400
 
-    documents_input = raw_data.get("documents")
-    if not documents_input or not isinstance(documents_input, list):
+    validated, schema_err = validate_schema(SplitInspectorSubmitSchema, raw_data)
+    if not validated or schema_err:
+        context = str(raw_data.get("context", "inbox"))
+        filename = raw_data.get("filename")
+        folder = raw_data.get("folder")
+        if not filename or not isinstance(filename, str):
+            return jsonify({"error": schema_err or "Filename is required"}), 400
         single_doc = {
             k: (v.strip() if isinstance(v, str) else v)
             for k, v in raw_data.items()
             if k not in ("context", "filename", "folder", "documents")
         }
         documents_input = [single_doc]
+    else:
+        context = validated.context
+        filename = validated.filename
+        folder = validated.folder
+        documents_input = validated.documents or [
+            {
+                k: (v.strip() if isinstance(v, str) else v)
+                for k, v in raw_data.items()
+                if k not in ("context", "filename", "folder", "documents")
+            }
+        ]
 
     src_path, err_resp = _resolve_split_source(context, folder, filename)
     if err_resp is not None:

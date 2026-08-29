@@ -1571,7 +1571,6 @@ td:first-child {
 }
 
 /* ── Skills & Skill Editor ─────────────────────────────────────────── */
-/* ── Skills & Skill Editor ─────────────────────────────────────────── */
 .doc-editor-container {
     display: flex;
     gap: 10px;
@@ -4884,6 +4883,82 @@ color: #fff;
     background: rgba(14, 165, 233, 0.3) !important;
     border-color: #38bdf8 !important;
     transform: scale(1.03);
+}
+
+/* Action Inline Editor & Task Workflow Styles */
+.action-inline-editor-card {
+    background: var(--surface-container-high, rgba(15, 23, 42, 0.65));
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 12px;
+    margin: 6px 0 12px 12px;
+    display: grid;
+    gap: 8px;
+}
+
+.action-editor-grid-row {
+    display: grid;
+    grid-template-columns: 140px 1fr;
+    gap: 8px;
+    align-items: center;
+}
+
+.action-editor-grid-row-border {
+    display: grid;
+    grid-template-columns: 140px 1fr;
+    gap: 8px;
+    align-items: center;
+    border-top: 1px dashed var(--border);
+    padding-top: 6px;
+}
+
+.action-editor-grid-row-top {
+    display: grid;
+    grid-template-columns: 140px 1fr;
+    gap: 8px;
+}
+
+.action-editor-label {
+    font-size: 0.8rem;
+    color: var(--text-dim);
+    font-weight: 600;
+}
+
+.action-editor-label-accent {
+    font-size: 0.8rem;
+    color: var(--cyan);
+    font-weight: 600;
+}
+
+.action-editor-label-warn {
+    font-size: 0.8rem;
+    color: var(--warning);
+    font-weight: 600;
+}
+
+.action-editor-input-cyan {
+    background: var(--surface-container-lowest);
+    color: var(--cyan);
+    border: 1px solid var(--cyan-border);
+    border-radius: var(--radius-xs);
+    padding: 4px 8px;
+}
+
+.action-editor-input-code,
+.action-editor-textarea-code {
+    background: var(--surface-container-lowest);
+    color: var(--cyan);
+    font-family: "Cascadia Code", "Fira Code", monospace;
+    border: 1px solid var(--cyan-border);
+    border-radius: var(--radius-xs);
+    padding: 4px 8px;
+}
+
+.task-add-action-row,
+.workflow-add-task-row {
+    margin-top: 8px;
+    display: flex;
+    gap: 8px;
 }
 
 /* ── Screen Reader & Accessibility Utilities ── */

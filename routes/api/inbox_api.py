@@ -161,19 +161,23 @@ def api_inbox_assign(filename: str):
     if err:
         return jsonify({"error": err}), 400
 
-    src_path = os.path.join(DashboardState.config.watch_dir, filename)
-    if not os.path.isfile(src_path):
+    src_path, err_resp = _resolve_and_guard(filename, DashboardState.config.watch_dir, require_type="file")
+    if err_resp:
+        return err_resp
+    if not src_path:
         return jsonify({"error": "File not found"}), 404
-    if not _is_within_base(src_path, DashboardState.config.watch_dir):
-        return jsonify({"error": "Access denied"}), 403
 
     folder_name = _render_target_folder(data, doc_type)
-    target_dir = os.path.join(DashboardState.config.target_base_dir, folder_name)
+    target_dir = os.path.abspath(os.path.join(DashboardState.config.target_base_dir, folder_name))
+    if not _is_within_base(target_dir, DashboardState.config.target_base_dir):
+        return jsonify({"error": "Target folder outside base directory"}), 403
     os.makedirs(target_dir, exist_ok=True)
 
     ext = os.path.splitext(src_path)[1]
     target_filename = _render_target_filename(data, doc_type, ext)
     target_filename, target_path = _deduplicate_filename(target_dir, target_filename)
+    if not _is_within_base(target_path, DashboardState.config.target_base_dir):
+        return jsonify({"error": "Target file outside base directory"}), 403
 
     _remove_meta_sidecar(src_path)
 
@@ -195,11 +199,11 @@ def api_inbox_auto_assign(filename: str):
     if not DashboardState.config:
         return jsonify({"error": "Config not available"}), 503
 
-    src_path = os.path.join(DashboardState.config.watch_dir, filename)
-    if not os.path.isfile(src_path):
+    src_path, err_resp = _resolve_and_guard(filename, DashboardState.config.watch_dir, require_type="file")
+    if err_resp:
+        return err_resp
+    if not src_path:
         return jsonify({"error": "File not found"}), 404
-    if not _is_within_base(src_path, DashboardState.config.watch_dir):
-        return jsonify({"error": "Access denied"}), 403
 
     delimiter = DashboardState.config.folder_delimiter if hasattr(DashboardState.config, "folder_delimiter") else "--"
     base_name = os.path.splitext(os.path.basename(filename))[0]

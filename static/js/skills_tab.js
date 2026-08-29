@@ -5,7 +5,6 @@
 let selectedSkillId = null;
 let currentEditingSkill = null;
 let currentEditingSkillOriginalName = null;
-let activeInputField = null;
 let isNewSkillCreation = false;
 
 const FORBIDDEN_NAME_CHARS_REGEX = /[\\/:*?"<>|]/;
@@ -27,15 +26,6 @@ function onSkillNameInput(val) {
 		currentEditingSkill.name = val.trim();
 	}
 }
-
-document.addEventListener("focusin", (e) => {
-	if (
-		e.target &&
-		(e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA" || e.target.tagName === "SELECT")
-	) {
-		activeInputField = e.target;
-	}
-});
 
 async function loadSkills(forceRefresh = false) {
 	if (state.skills && state.skills.length > 0 && !forceRefresh) {
@@ -121,7 +111,7 @@ function renderSkillsSidebar(skills, searchQuery = "") {
 				const icon = isImport ? "📥" : "⚡";
 
 				return `
-					<div class="doc-type-item ${isSelected ? "active" : ""}" onclick="selectSkill('${escapeHtml(skill.id)}')">
+					<div class="doc-type-item ${isSelected ? "active" : ""}" data-id="${escapeHtml(skill.id)}" onclick="selectSkill(this.dataset.id)">
 						<div class="doc-type-item-name">
 							<span class="skill-emoji">${icon}</span>
 							<span class="skill-label" title="${escapeHtml(skill.name || skill.id)}">
@@ -129,7 +119,7 @@ function renderSkillsSidebar(skills, searchQuery = "") {
 							</span>
 						</div>
 						<div class="skill-item-actions">
-							<button type="button" class="btn-icon-subtle btn-icon-danger" onclick="event.stopPropagation(); deleteSkillById('${escapeHtml(skill.id)}')" title="Delete skill">
+							<button type="button" class="btn-icon-subtle btn-icon-danger" data-id="${escapeHtml(skill.id)}" onclick="event.stopPropagation(); deleteSkillById(this.dataset.id)" title="Delete skill">
 								🗑️
 							</button>
 						</div>
@@ -211,6 +201,7 @@ async function selectSkill(skillId) {
 
 	selectedSkillId = skillId;
 	currentEditingSkill = skillObj;
+	currentEditingSkillOriginalName = skillObj.name || skillObj.id || "";
 	if (Array.isArray(skillObj.tasks) && skillObj.tasks.length > 0) {
 		currentEditingTasks = JSON.parse(JSON.stringify(skillObj.tasks));
 	} else if (Array.isArray(skillObj.steps) && skillObj.steps.length > 0) {

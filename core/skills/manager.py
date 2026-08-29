@@ -231,8 +231,18 @@ class SkillManager:
 
         os.makedirs(self.skills_dir, exist_ok=True)
         filepath = os.path.join(self.skills_dir, f"{clean_filename}.yaml")
-        with open(filepath, "w", encoding="utf-8") as f:
-            yaml.dump(skill_data, f, Dumper=_SkillYamlDumper, allow_unicode=True, sort_keys=False)
+        tmp_filepath = f"{filepath}.tmp_{os.getpid()}"
+        try:
+            with open(tmp_filepath, "w", encoding="utf-8") as f:
+                yaml.dump(skill_data, f, Dumper=_SkillYamlDumper, allow_unicode=True, sort_keys=False)
+            os.replace(tmp_filepath, filepath)
+        except Exception:
+            if os.path.exists(tmp_filepath):
+                try:
+                    os.remove(tmp_filepath)
+                except OSError:
+                    pass
+            raise
 
         with self._lock:
             try:
@@ -395,8 +405,10 @@ class SkillManager:
                                         meta_modified = True
 
                                     if meta_modified:
-                                        with open(meta_path, "w", encoding="utf-8") as mf:
+                                        tmp_meta = meta_path + f".tmp_{os.getpid()}"
+                                        with open(tmp_meta, "w", encoding="utf-8") as mf:
                                             json.dump(meta_data, mf, indent=2, ensure_ascii=False)
+                                        os.replace(tmp_meta, meta_path)
                                 except Exception as e:
                                     logger.debug("[SkillManager] Could not update meta file %s: %s", meta_path, e)
         except Exception as e:

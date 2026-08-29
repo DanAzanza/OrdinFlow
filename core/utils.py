@@ -109,16 +109,73 @@ _MISSING_VALUES = frozenset(
 )
 
 
+_RESERVED_WIN_NAMES = {
+    "CON",
+    "PRN",
+    "AUX",
+    "NUL",
+    "COM1",
+    "COM2",
+    "COM3",
+    "COM4",
+    "COM5",
+    "COM6",
+    "COM7",
+    "COM8",
+    "COM9",
+    "LPT1",
+    "LPT2",
+    "LPT3",
+    "LPT4",
+    "LPT5",
+    "LPT6",
+    "LPT7",
+    "LPT8",
+    "LPT9",
+}
+
+
+def is_bool_value(val: Any) -> bool:
+    """Generically checks whether a value represents an explicit boolean."""
+    if isinstance(val, bool):
+        return True
+    if isinstance(val, str) and val.strip().lower() in (
+        "true",
+        "false",
+        "yes",
+        "no",
+        "ja",
+        "nein",
+    ):
+        return True
+    return False
+
+
+def to_bool_value(val: Any) -> bool:
+    """Generically converts a string or boolean value to a Python bool."""
+    if isinstance(val, bool):
+        return val
+    if isinstance(val, str):
+        return val.strip().lower() in ("true", "1", "yes", "ja")
+    return bool(val)
+
+
+def sanitize_filename(text: str, fallback: str = "UNKNOWN") -> str:
+    """Sanitizes a string for safe use in file and directory names."""
+    if not text:
+        return fallback
+    clean = re.sub(r'[\x00-\x1f\\/*?:"<>|]', "", str(text)).strip()
+    clean = clean.strip(". ")
+    if not clean:
+        return fallback
+    if clean.upper() in _RESERVED_WIN_NAMES:
+        return f"_{clean}"
+    return clean.replace("__", "_").replace("--", "-").strip()
+
+
 def clean_path_component(text: str) -> str:
     """Strips characters from text that are invalid or disruptive in the Windows filesystem (e.g. square brackets)."""
-    if not text:
-        return "UNKNOWN"
-    cleaned = _RE_INVALID_PATH_CHARS.sub("", str(text))
-    # Since "__" is our folder delimiter, replace it with a single "_"
-    cleaned = cleaned.replace("__", "_")
-    cleaned = cleaned.replace("--", "-")
-    cleaned = cleaned.strip()
-    return cleaned if cleaned else "UNKNOWN"
+    return sanitize_filename(text, fallback="UNKNOWN")
 
 
 def clean_template_result(text: str, delimiter: str = "__") -> str:
@@ -252,6 +309,26 @@ def deduplicate_path(target_filepath: str) -> str:
     return target_filepath
 
 
+def init_windows_dpi_awareness() -> None:
+    """Configures Per-Monitor V2 DPI awareness on Windows with progressive fallbacks."""
+    if sys.platform == "win32":
+        try:
+            import ctypes
+
+            u32 = getattr(ctypes.windll, "user32", None)
+            shcore = getattr(ctypes.windll, "shcore", None)
+            if u32 and hasattr(u32, "SetProcessDpiAwarenessContext"):
+                u32.SetProcessDpiAwarenessContext(ctypes.c_void_p(-4))
+                return
+            if shcore and hasattr(shcore, "SetProcessDpiAwareness"):
+                shcore.SetProcessDpiAwareness(2)
+                return
+            if u32 and hasattr(u32, "SetProcessDPIAware"):
+                u32.SetProcessDPIAware()
+        except Exception as e:
+            logger.debug("[Utils] DPI awareness init error: %s", e)
+
+
 def send_to_trash(path: str) -> bool:
     """Moves a file or directory to the OS recycle bin (Windows Recycle Bin / trash).
 
@@ -290,7 +367,10 @@ def send_to_trash(path: str) -> bool:
         fileop.pFrom = p_from
         fileop.pTo = None
         fileop.fFlags = fof_allowundo | fof_noconfirmation | fof_silent | fof_noerrorui
-        res = ctypes.windll.shell32.SHFileOperationW(ctypes.byref(fileop))
+        shell32 = ctypes.windll.shell32
+        shell32.SHFileOperationW.argtypes = [ctypes.c_void_p]
+        shell32.SHFileOperationW.restype = ctypes.c_int
+        res = shell32.SHFileOperationW(ctypes.byref(fileop))
         return res == 0
     else:
         try:

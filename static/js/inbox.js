@@ -1,7 +1,7 @@
 async function fetchInbox() {
 	try {
 		state.inbox = await api("/api/inbox");
-		const pruefCount = state.inbox.filter((f) => f.is_pruefen).length;
+		const pruefCount = state.inbox.filter((f) => Boolean(f.is_review ?? f.is_pruefen)).length;
 		const bIn = document.getElementById("badgeInbox");
 		if (bIn) bIn.textContent = state.inbox.length;
 		const bp = document.getElementById("badgePruefen");
@@ -113,29 +113,35 @@ function initInboxDelegation(list) {
 
 function renderFileCardHtml(f) {
 	const hasPreview = !!f.preview_url;
+	const isReview = Boolean(f.is_review ?? f.is_pruefen);
+	const reason = f.reason || f.grund || "";
 
 	// Check if filename has all information for auto assign
-	const parts = splitByDelimiter(f.name.split(".")[0]);
-	const hasAllInfo = parts.length === 4;
+	const baseName = f.name.replace(/\.[^/.]+$/, "");
+	const parts = splitByDelimiter(baseName);
+	const expectedParts = (state.config && Array.isArray(state.config.folder_structure))
+		? state.config.folder_structure.length
+		: 4;
+	const hasAllInfo = parts.length === expectedParts;
 
-	return `<div class="file-card ${f.is_pruefen ? "pruefen" : ""}">
+	return `<div class="file-card ${isReview ? "pruefen" : ""}">
       <div class="preview clickable-preview" data-inspect="${encodeURIComponent(f.path)}">
         ${
 					hasPreview
-						? `<img data-src="${f.preview_url}" src="${INBOX_PLACEHOLDER_IMG}" alt="Preview" class="lazy-thumb" onerror="this.parentElement.innerHTML='<span class=no-preview>Preview unavailable</span>'">`
+						? `<img data-src="${escapeHtml(f.preview_url)}" src="${INBOX_PLACEHOLDER_IMG}" alt="Preview" class="lazy-thumb" onerror="this.parentElement.innerHTML='<span class=no-preview>Preview unavailable</span>'">`
 						: '<span class="no-preview">No preview</span>'
 				}
       </div>
       <div class="file-info clickable-file-info" data-inspect="${encodeURIComponent(f.path)}">
         <div class="file-name">${escapeHtml(f.name)}</div>
         <div class="file-meta">${formatSize(f.size)} · ${escapeHtml(f.modified || "")}</div>
-        ${f.is_pruefen && f.grund ? `<div class="file-meta file-meta-warning">⚠ ${escapeHtml(f.grund)}</div>` : ""}
+        ${isReview && reason ? `<div class="file-meta file-meta-warning">⚠ ${escapeHtml(reason)}</div>` : ""}
         ${renderValidationBadges(f.extracted)}
       </div>
-      <span class="inbox-tag ${f.is_pruefen ? "review" : "processing"} file-inbox-tag">${f.is_pruefen ? "⚠ Review" : "Processing"}</span>
+      <span class="inbox-tag ${isReview ? "review" : "processing"} file-inbox-tag">${isReview ? "⚠ Review" : "Processing"}</span>
       <div class="file-actions">
         ${
-					f.is_pruefen
+					isReview
 						? `
           <button type="button" class="btn btn-sm btn-accent" data-retryfile="${encodeURIComponent(f.path)}" title="Reprocess">🔄</button>
           ${
@@ -207,7 +213,7 @@ function renderInbox() {
 	const searchEl = document.getElementById("searchInbox");
 	const q = searchEl ? searchEl.value.toLowerCase() : "";
 	let data = state.inbox || [];
-	if (state.pruefenOnly) data = data.filter((f) => f.is_pruefen);
+	if (state.pruefenOnly) data = data.filter((f) => Boolean(f.is_review ?? f.is_pruefen));
 	if (q) data = data.filter((f) => (f.name || "").toLowerCase().includes(q));
 
 	currentInboxData = data;
@@ -223,7 +229,7 @@ function renderInbox() {
 
 	// Compute hash of data to avoid destroying DOM and resetting image loads if nothing changed
 	const currentHash = `${q}|${state.pruefenOnly}|${data.length}|` +
-		data.map((f) => `${f.path}:${f.is_pruefen}:${f.grund || ""}:${f.size}`).join("|");
+		data.map((f) => `${f.path}:${Boolean(f.is_review ?? f.is_pruefen)}:${f.reason || f.grund || ""}:${f.size}`).join("|");
 
 	if (currentHash === lastInboxRenderHash) {
 		return;
@@ -246,7 +252,7 @@ function renderInbox() {
 
 async function autoAssignFile(filename) {
 	try {
-		const safePath = filename.split("/").map(encodeURIComponent).join("/");
+		const safePath = safePathEncode(filename);
 		await api("/api/inbox/" + safePath + "/auto_assign", {
 			method: "POST",
 		});
@@ -260,7 +266,7 @@ async function autoAssignFile(filename) {
 
 async function retryFile(filename) {
 	try {
-		const safePath = filename.split("/").map(encodeURIComponent).join("/");
+		const safePath = safePathEncode(filename);
 		await api("/api/inbox/" + safePath + "/retry", {
 			method: "POST",
 		});

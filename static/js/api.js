@@ -32,9 +32,6 @@ const state = {
 	expandedFiles: [],
 	sortCol: 0,
 	sortAsc: true,
-	selectedInboxFile: null,
-	editingFolder: null,
-	editingFile: null,
 };
 
 /* ═══════════════════════════════════════════════════════════
@@ -57,43 +54,84 @@ function escapeHtml(str) {
 		.replace(/'/g, "&#39;");
 }
 
+function safePathEncode(path) {
+	if (!path) return "";
+	return String(path).split("/").map(encodeURIComponent).join("/");
+}
+
 function formatDateString(dateStr) {
 	if (!dateStr || dateStr === "–") return "–";
-	// Match YYYY-MM-DD
-	const mYmd = String(dateStr)
-		.trim()
-		.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-	if (mYmd) {
-		return `${mYmd[3]}.${mYmd[2]}.${mYmd[1]}`;
-	}
-	// Match DD-MM-YYYY
-	const mDmy = String(dateStr)
-		.trim()
-		.match(/^(\d{2})-(\d{2})-(\d{4})$/);
-	if (mDmy) {
-		return `${mDmy[1]}.${mDmy[2]}.${mDmy[3]}`;
-	}
+	const s = String(dateStr).trim();
+	const mYmd = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+	if (mYmd) return `${mYmd[3]}.${mYmd[2]}.${mYmd[1]}`;
+	const mDmy = s.match(/^(\d{1,2})[.-](\d{1,2})[.-](\d{4})$/);
+	if (mDmy) return `${mDmy[1].padStart(2, "0")}.${mDmy[2].padStart(2, "0")}.${mDmy[3]}`;
 	return dateStr;
+}
+
+function parseDateToTimestamp(dateStr) {
+	if (!dateStr || dateStr === "–" || dateStr === "-") return null;
+	const s = String(dateStr).trim();
+	const mIso = s.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})$/);
+	if (mIso) return new Date(Number(mIso[1]), Number(mIso[2]) - 1, Number(mIso[3])).getTime();
+	const mDe = s.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/);
+	if (mDe) return new Date(Number(mDe[3]), Number(mDe[2]) - 1, Number(mDe[1])).getTime();
+	return null;
+}
+
+function isValidCalendarDate(year, month, day) {
+	if (year < 1900 || year > 2100 || month < 1 || month > 12 || day < 1 || day > 31) return false;
+	const d = new Date(Date.UTC(year, month - 1, day));
+	return d.getUTCFullYear() === year && d.getUTCMonth() === month - 1 && d.getUTCDate() === day;
+}
+
+function normalizeDateForInput(val) {
+	if (val === null || val === undefined) return null;
+	let s = String(val).trim();
+	if (!s) return null;
+
+	s = s.split(/[T\s]/)[0].trim();
+	let y, m, d;
+
+	let match = s.match(/^(\d{4})[./-](\d{1,2})[./-](\d{1,2})$/);
+	if (match) {
+		y = parseInt(match[1], 10);
+		m = parseInt(match[2], 10);
+		d = parseInt(match[3], 10);
+	} else {
+		match = s.match(/^(\d{1,2})[./-](\d{1,2})[./-](\d{2,4})$/);
+		if (match) {
+			d = parseInt(match[1], 10);
+			m = parseInt(match[2], 10);
+			let rawYear = parseInt(match[3], 10);
+			y = rawYear < 100 ? (rawYear <= 50 ? 2000 + rawYear : 1900 + rawYear) : rawYear;
+		}
+	}
+
+	if (y && m && d && isValidCalendarDate(y, m, d)) {
+		return `${String(y).padStart(4, "0")}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+	}
+
+	return null;
+}
+
+function splitByDelimiter(folderName, delimiter) {
+	if (!folderName) return [];
+	const delim = delimiter || (state.config && state.config.folder_delimiter) || "--";
+	if (folderName.includes(delim)) return folderName.split(delim);
+	if (folderName.includes("__")) return folderName.split("__");
+	return [folderName];
 }
 
 function cleanHeaderLabel(str) {
 	if (!str) return "";
-	// Add space between adjacent placeholders: }{ -> } {
 	const s = str.replace(/\}\{/g, "} {");
-	// Remove curly braces
-	const cleaned = s.replace(/\{/g, "").replace(/\}/g, "");
-	return cleaned.trim();
-}
-
-function getDynamicHeaders() {
-	const struct = (state.config && state.config.folder_structure) || [];
-	return struct.map(cleanHeaderLabel);
+	return s.replace(/\{/g, "").replace(/\}/g, "").trim();
 }
 
 function renderValidationBadges(ext) {
 	if (!ext || typeof ext !== "object") return "";
 	const hasSign = ext.Signed !== undefined ? ext.Signed : null;
-
 	if (hasSign === null) return "";
 
 	let html = '<div class="validation-badges-container">';
@@ -167,8 +205,8 @@ async function fetchStatus() {
    TABS
    ═══════════════════════════════════════════════════════════ */
 
-async function ensureSkillsLoaded() {
-	if (!state.skills || state.skills.length === 0) {
+async function ensureSkillsLoaded(forceRefresh = false) {
+	if (forceRefresh || !state.skills || state.skills.length === 0) {
 		try {
 			const data = await api("/api/skills");
 			state.skills = data.skills || [];
@@ -180,7 +218,7 @@ async function ensureSkillsLoaded() {
 	return state.skills;
 }
 
-function getImportSkillsDocTypes() {
+function getEffectiveDocTypes() {
 	const skills = state.skills || [];
 	const importSkills = skills.filter((s) => s.type === "import" && s.enabled !== false);
 	const docTypes = {};
@@ -200,8 +238,26 @@ function getImportSkillsDocTypes() {
 	return docTypes;
 }
 
+const getImportSkillsDocTypes = getEffectiveDocTypes;
+
+function getDocTypeConfig(name) {
+	if (!name) return null;
+	const docTypes = getEffectiveDocTypes();
+	if (docTypes[name]) return docTypes[name];
+	const lower = String(name).toLowerCase();
+	for (const [k, v] of Object.entries(docTypes)) {
+		if (k.toLowerCase() === lower) return v;
+	}
+	return null;
+}
+
+function getDocTypeEmoji(name) {
+	const cfg = getDocTypeConfig(name);
+	return (cfg && cfg.emoji) || "📄";
+}
+
 function getDokArtOptions() {
-	const docTypes = getImportSkillsDocTypes();
+	const docTypes = getEffectiveDocTypes();
 	const keys = Object.keys(docTypes);
 	return keys.length > 0 ? keys.sort() : [];
 }

@@ -306,28 +306,6 @@ def _default_window_exists(pattern: str) -> bool:
     """Checks if a top-level window matching the pattern exists on Windows."""
     if sys.platform != "win32" or not pattern:
         return False
-    try:
-        import ctypes
+    from core.skills.window_manager import find_window_hwnd
 
-        user32 = ctypes.windll.user32  # type: ignore[union-attr]
-        clean_pat = pattern.lower().replace("*", "")
-        found = False
-
-        def enum_cb(hwnd: int, _lparam: int) -> bool:
-            nonlocal found
-            if user32.IsWindowVisible(hwnd):
-                length = user32.GetWindowTextLengthW(hwnd)
-                if length > 0:
-                    buff = ctypes.create_unicode_buffer(length + 1)
-                    user32.GetWindowTextW(hwnd, buff, length + 1)
-                    if clean_pat in buff.value.lower():
-                        found = True
-                        return False
-            return True
-
-        cb = ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.c_void_p, ctypes.c_void_p)(enum_cb)
-        user32.EnumWindows(cb, 0)
-        return found
-    except Exception as e:
-        logger.debug("[ConditionEvaluator] Window check error: %s", e)
-        return False
+    return find_window_hwnd(pattern, require_visible=True) is not None

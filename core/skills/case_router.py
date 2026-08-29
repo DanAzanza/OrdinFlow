@@ -8,6 +8,8 @@ import os
 import time
 from typing import Any
 
+from core.routing import parse_folder_name
+
 logger = logging.getLogger(__name__)
 
 
@@ -107,21 +109,11 @@ def find_pending_cases(
         unprocessed_files = [f for f in matching if skill_id not in f.get("executed_skills", [])]
 
         if unprocessed_files:
-            parts = folder_name.split(delimiter) if delimiter in folder_name else folder_name.split("__")
-            parsed_meta: dict[str, str] = {}
-
-            if folder_structure and isinstance(folder_structure, list):
-                for idx, key in enumerate(folder_structure):
-                    clean_key = str(key).strip("{} ")
-                    raw_val = parts[idx].strip() if idx < len(parts) else ""
-                    val = "" if raw_val == "----" else raw_val
-                    if clean_key:
-                        parsed_meta[clean_key] = val
-                        parsed_meta[f"{{{clean_key}}}"] = val
-            else:
-                for idx, part in enumerate(parts):
-                    clean_part = "" if part.strip() == "----" else part.strip()
-                    parsed_meta[f"part_{idx}"] = clean_part
+            parsed_meta = parse_folder_name(
+                folder_name,
+                folder_structure=folder_structure,
+                delimiter=delimiter if delimiter in folder_name else "__",
+            )
 
             # Automatically derive Vorname / Nachname if Person or Patient is present in comma notation
             person_val = parsed_meta.get("Person") or parsed_meta.get("person") or parsed_meta.get("Patient") or parsed_meta.get("patient") or ""

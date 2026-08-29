@@ -2,35 +2,9 @@
    CASES MANAGEMENT & EXPORT STATUS TRACKING
    ═══════════════════════════════════════════════════════════ */
 
-function docEmoji(type) {
-	if (!type || typeof type !== "string") return "📄";
-	const docTypes = typeof getImportSkillsDocTypes === "function"
-		? getImportSkillsDocTypes()
-		: (state.config && state.config.document_types) || {};
-	const matchKey = Object.keys(docTypes).find(
-		(k) =>
-			k.toLowerCase() === type.toLowerCase() ||
-			type.toLowerCase().includes(k.toLowerCase()) ||
-			k.toLowerCase().includes(type.toLowerCase()),
-	);
-	if (matchKey && docTypes[matchKey] && docTypes[matchKey].emoji) {
-		return docTypes[matchKey].emoji;
-	}
-	return "📄";
-}
-
 function docLabel(type) {
 	if (!type || typeof type !== "string") return type || "";
-	const docTypes = typeof getImportSkillsDocTypes === "function"
-		? getImportSkillsDocTypes()
-		: (state.config && state.config.document_types) || {};
-	const matchKey = Object.keys(docTypes).find(
-		(k) =>
-			k.toLowerCase() === type.toLowerCase() ||
-			type.toLowerCase().includes(k.toLowerCase()) ||
-			k.toLowerCase().includes(type.toLowerCase()),
-	);
-	return matchKey || type;
+	return type;
 }
 
 function sortCases(col) {
@@ -70,37 +44,9 @@ async function fetchCases() {
 
 		renderCases();
 		if (typeof renderLegend === "function") renderLegend();
-		bindDetailEvents();
 	} catch (e) {
 		console.error("Error fetching Cases:", e);
 	}
-}
-
-function splitByDelimiter(str, customDelim = null) {
-	if (!str) return [];
-	const delim =
-		customDelim || (state.config && state.config.folder_delimiter) || "--";
-	return str.split(delim);
-}
-
-function parseDateToTimestamp(str) {
-	if (!str) return null;
-	const s = String(str).trim();
-	const m1 = s.match(/^(\d{1,2})[\s.\-/]+(\d{1,2})[\s.\-/]+(\d{4})$/);
-	if (m1) {
-		const day = parseInt(m1[1], 10);
-		const month = parseInt(m1[2], 10) - 1;
-		const year = parseInt(m1[3], 10);
-		return new Date(year, month, day).getTime();
-	}
-	const m2 = s.match(/^(\d{4})[\s.\-/]+(\d{1,2})[\s.\-/]+(\d{1,2})$/);
-	if (m2) {
-		const year = parseInt(m2[1], 10);
-		const month = parseInt(m2[2], 10) - 1;
-		const day = parseInt(m2[3], 10);
-		return new Date(year, month, day).getTime();
-	}
-	return null;
 }
 
 async function triggerApproveFolder(folderName, currentApproved) {
@@ -201,7 +147,7 @@ function renderCases() {
 		const dots = sortedTypes
 			.map(
 				(d) =>
-					`<span class="doc-emoji" title="${escapeHtml(docLabel(d))}">${docEmoji(d)}</span>`,
+					`<span class="doc-emoji" title="${escapeHtml(docLabel(d))}">${getDocTypeEmoji(d)}</span>`,
 			)
 			.join("");
 
@@ -234,10 +180,10 @@ function renderCases() {
 			statusBadgeHtml = `<span class="badge cases-badge-partial" title="${a.completed_applicable_tasks} of ${a.total_applicable_tasks} skills executed">🟡 In Progress${taskInfo}</span>`;
 		} else if (a.is_approved) {
 			rowStatusClass = "case-row-approved";
-			statusBadgeHtml = `<button type="button" class="btn btn-sm cases-badge-approved clickable" onclick="event.stopPropagation(); triggerApproveFolder('${escapeHtml(a.folder)}', true)" title="Click to revoke approval">🔵 Approved</button>`;
+			statusBadgeHtml = `<button type="button" class="btn btn-sm cases-badge-approved clickable" data-folder="${escapeHtml(a.folder)}" onclick="event.stopPropagation(); triggerApproveFolder(this.dataset.folder, true)" title="Click to revoke approval">🔵 Approved</button>`;
 		} else {
 			rowStatusClass = "case-row-pending";
-			statusBadgeHtml = `<button type="button" class="btn btn-sm cases-btn-approve" onclick="event.stopPropagation(); triggerApproveFolder('${escapeHtml(a.folder)}', false)" title="Approve case for export skills">🚀 Approve</button>`;
+			statusBadgeHtml = `<button type="button" class="btn btn-sm cases-btn-approve" data-folder="${escapeHtml(a.folder)}" onclick="event.stopPropagation(); triggerApproveFolder(this.dataset.folder, false)" title="Approve case for export skills">🚀 Approve</button>`;
 		}
 
 		html += `<tr class="${isExpanded ? "expanded" : ""} ${rowStatusClass}" data-folder="${escapeHtml(a.folder)}">
@@ -247,8 +193,8 @@ function renderCases() {
                                 <div class="doc-dots">${dots}</div>
                                 <div class="cases-actions-btn-group">
                                     ${statusBadgeHtml}
-                                    <button type="button" class="btn btn-sm btn-accent" onclick="event.stopPropagation(); openFolderEdit('${escapeHtml(a.folder)}')" title="Edit folder">✏️</button>
-                                    <button type="button" class="btn btn-sm btn-danger" onclick="event.stopPropagation(); deleteFolder('${escapeHtml(a.folder)}')" title="Delete case folder">🗑️</button>
+                                    <button type="button" class="btn btn-sm btn-accent" data-folder="${escapeHtml(a.folder)}" onclick="event.stopPropagation(); openFolderEdit(this.dataset.folder)" title="Edit folder">✏️</button>
+                                    <button type="button" class="btn btn-sm btn-danger" data-folder="${escapeHtml(a.folder)}" onclick="event.stopPropagation(); deleteFolder(this.dataset.folder)" title="Delete case folder">🗑️</button>
                                 </div>
                             </div>
                         </td>
@@ -265,10 +211,38 @@ function renderCases() {
 		}
 	});
 	tbody.innerHTML = html;
+	initCasesDelegation();
+}
 
-	// Event delegation for secure folder names click
-	tbody.querySelectorAll("tr[data-folder]").forEach((tr) => {
-		tr.addEventListener("click", () => toggleDetail(tr.dataset.folder));
+let isCasesDelegated = false;
+function initCasesDelegation() {
+	if (isCasesDelegated) return;
+	const tbody = document.getElementById("casesBody");
+	if (!tbody) return;
+	isCasesDelegated = true;
+
+	tbody.addEventListener("click", (e) => {
+		const delBtn = e.target.closest("button[data-delfile]");
+		if (delBtn) {
+			e.stopPropagation();
+			const filename = decodeURIComponent(delBtn.dataset.delfile);
+			deleteFile("cases", state.expandedFolder, filename);
+			return;
+		}
+
+		const inspectEl = e.target.closest("[data-inspectvorgang]");
+		if (inspectEl) {
+			e.stopPropagation();
+			const filename = decodeURIComponent(inspectEl.dataset.inspectvorgang);
+			openSplitInspector("cases", state.expandedFolder, filename);
+			return;
+		}
+
+		const tr = e.target.closest("tr[data-folder]");
+		if (tr && !e.target.closest("button") && !e.target.closest(".detail-row")) {
+			toggleDetail(tr.dataset.folder);
+			return;
+		}
 	});
 }
 
@@ -294,7 +268,7 @@ function renderDetailFiles() {
       <div class="preview clickable file-card-preview-clickable" data-inspectvorgang="${encodeURIComponent(f.name)}">
         ${
 					f.has_preview
-						? `<img src="${f.preview_url}" alt="Preview" loading="lazy" onerror="this.parentElement.innerHTML='<span class=no-preview>Preview unavailable</span>'">`
+						? `<img src="${escapeHtml(f.preview_url)}" alt="Preview" loading="lazy" onerror="this.parentElement.innerHTML='<span class=no-preview>Preview unavailable</span>'">`
 						: '<span class="no-preview">No preview</span>'
 				}
       </div>
@@ -303,7 +277,7 @@ function renderDetailFiles() {
           <div class="file-name clickable" title="${escapeHtml(f.name)}">${escapeHtml(f.name)}</div>
           <div class="file-meta">${formatSize(f.size)} · ${escapeHtml(f.modified || "")}</div>
           <div class="file-skill-badges file-skill-badges-flex">
-              <span class="badge file-doctype-badge">${docEmoji(f.doc_type)} ${escapeHtml(docLabel(f.doc_type || "Document"))}</span>
+              <span class="badge file-doctype-badge">${getDocTypeEmoji(f.doc_type)} ${escapeHtml(docLabel(f.doc_type || "Document"))}</span>
               ${skillBadgesHtml}
           </div>
         </div>
@@ -316,29 +290,6 @@ function renderDetailFiles() {
 			.join("") +
 		"</div>";
 	return html;
-}
-
-function bindDetailEvents() {
-	const detail = document.getElementById("detailContent");
-	if (!detail) return;
-
-	// Open file in Split-Screen Inspector on click
-	detail.querySelectorAll("[data-inspectvorgang]").forEach((el) => {
-		el.addEventListener("click", (e) => {
-			e.stopPropagation();
-			const filename = decodeURIComponent(el.dataset.inspectvorgang);
-			openSplitInspector("cases", state.expandedFolder, filename);
-		});
-	});
-
-	// Delete buttons
-	detail.querySelectorAll("button[data-delfile]").forEach((btn) => {
-		btn.addEventListener("click", (e) => {
-			e.stopPropagation();
-			const filename = decodeURIComponent(btn.dataset.delfile);
-			deleteFile("cases", state.expandedFolder, filename);
-		});
-	});
 }
 
 async function toggleDetail(folder) {
@@ -359,7 +310,6 @@ async function toggleDetail(folder) {
 		state.expandedFiles = [];
 	}
 	renderCases();
-	bindDetailEvents();
 }
 
 async function deleteFolder(folder) {

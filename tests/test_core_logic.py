@@ -6,15 +6,6 @@ import tempfile
 from core.config import AppConfig
 from core.processor import DocumentProcessor
 
-# ──────────────────────────────────────────────────────────────
-# HIGH VALUE
-# ──────────────────────────────────────────────────────────────
-
-
-# ──────────────────────────────────────────────────────────────
-# MEDIUM VALUE
-# ──────────────────────────────────────────────────────────────
-
 
 def test_load_from_yaml_creates_default_when_missing(tmp_path):
     """Fehlt die YAML-Datei, wird sie mit Default-Werten erzeugt."""
@@ -397,7 +388,6 @@ def test_empty_pages_deleted(tmp_path):
     assert os.path.exists(target_dir)
 
     reconstructed_pdf = os.path.join(target_dir, "Vertrag__Mustermann.pdf")
-    assert os.path.exists(reconstructed_pdf)
     assert os.path.exists(reconstructed_pdf)
 
     # Reconstructed PDF should only have 2 pages (page 2 LEER was deleted)

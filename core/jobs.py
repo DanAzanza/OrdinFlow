@@ -77,16 +77,18 @@ class BackgroundJobQueue:
 
     def start(self):
         """Starts the background worker thread (if not already active)."""
-        if self._worker_thread and self._worker_thread.is_alive():
-            return
-        self._shutdown = False
-        self._worker_thread = threading.Thread(target=self._worker_loop, name="DMS-JobWorker", daemon=True)
-        self._worker_thread.start()
-        logger.info("[JobQueue] Background worker started (FIFO, sequential).")
+        with self._lock:
+            self._shutdown = False
+            if self._worker_thread and self._worker_thread.is_alive():
+                return
+            self._worker_thread = threading.Thread(target=self._worker_loop, name="DMS-JobWorker", daemon=True)
+            self._worker_thread.start()
+            logger.info("[JobQueue] Background worker started (FIFO, sequential).")
 
     def stop(self):
         """Stops the worker thread after completing the current job."""
-        self._shutdown = True
+        with self._lock:
+            self._shutdown = True
         # Wake up queue if empty
         self._queue.put(None)  # type: ignore
 

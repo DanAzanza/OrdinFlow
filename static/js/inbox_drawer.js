@@ -4,9 +4,8 @@
 
 function extractFieldsFromFilenameAndFolder(docType, filename, folderName = "") {
 	const extracted = {};
-	if (!filename) return extracted;
-
-	const baseName = filename.split("/").pop().split(".")[0];
+	const rawName = (filename || "").split("/").pop();
+	const baseName = rawName.replace(/\.[^/.]+$/, "");
 	const docTypes = getImportSkillsDocTypes();
 	const docCfg = docTypes[docType] || (state.config && state.config.document_types ? state.config.document_types[docType] : null);
 
@@ -156,8 +155,8 @@ async function openSplitInspector(contextOrFilename, folder = null, filename = n
 					<div class="inspector-preview-wrap">
 						${(previewUrl || fileUrl)
 							? ((previewUrl || fileUrl).endsWith(".pdf") || (state.inspectorFile || "").toLowerCase().endsWith(".pdf")
-								? `<iframe src="${fileUrl || previewUrl}#toolbar=0&navpanes=0&view=FitH"></iframe>`
-								: `<img src="${previewUrl || fileUrl}" alt="Preview" />`)
+								? `<iframe src="${escapeHtml(fileUrl || previewUrl)}#toolbar=0&navpanes=0&view=FitH"></iframe>`
+								: `<img src="${escapeHtml(previewUrl || fileUrl)}" alt="Preview" />`)
 							: `<div class="inbox-drawer-folder-empty">📁 Folder contains no preview files</div>`
 						}
 					</div>
@@ -204,13 +203,10 @@ async function openSplitInspector(contextOrFilename, folder = null, filename = n
 			const metaUrl = context === "cases"
 				? `/api/file/meta/cases/${encodeURIComponent(folder)}/${encodeURIComponent(targetFile)}`
 				: `/api/file/meta/inbox/${encodeURIComponent(targetFile)}`;
-			const metaRes = await fetch(metaUrl);
-			if (metaRes.ok) {
-				const metaJson = await metaRes.json();
-				if (metaJson && metaJson.extracted && Object.keys(metaJson.extracted).length > 0) {
-					extractedData = Object.assign({}, metaJson.extracted);
-					hasMetaFile = true;
-				}
+			const metaJson = await api(metaUrl);
+			if (metaJson && metaJson.extracted && Object.keys(metaJson.extracted).length > 0) {
+				extractedData = Object.assign({}, metaJson.extracted);
+				hasMetaFile = true;
 			}
 		} catch (e) {
 			// No .meta file available
@@ -240,8 +236,8 @@ async function openSplitInspector(contextOrFilename, folder = null, filename = n
 				<div class="inspector-card">
 					<div class="inspector-preview-wrap">
 						${(previewUrl || fileUrl).endsWith(".pdf") || (targetFile || "").toLowerCase().endsWith(".pdf")
-								? `<iframe src="${fileUrl || previewUrl}#toolbar=0&navpanes=0&view=FitH"></iframe>`
-								: `<img src="${previewUrl || fileUrl}" alt="Preview" />`
+								? `<iframe src="${escapeHtml(fileUrl || previewUrl)}#toolbar=0&navpanes=0&view=FitH"></iframe>`
+								: `<img src="${escapeHtml(previewUrl || fileUrl)}" alt="Preview" />`
 						}
 					</div>
 				</div>
@@ -250,7 +246,7 @@ async function openSplitInspector(contextOrFilename, folder = null, filename = n
 						<span>✏️</span> Edit & Assign Document
 					</h4>
 					<div id="drawerFormWrapper">
-						${buildGenericInspectorForm(docType, "", "", "", extractedData)}
+						${buildGenericInspectorForm(docType, extractedData)}
 					</div>
 				</div>
 			`
@@ -370,11 +366,11 @@ function onSectionDokArtChange(secId, newDokArt) {
 function renderDrawerSections() {
 	const wrapper = document.getElementById("drawerFormWrapper");
 	if (wrapper && state.drawerDocSections) {
-		wrapper.innerHTML = buildGenericInspectorForm(null, "", "", "", state.currentInspectorExtracted || {});
+		wrapper.innerHTML = buildGenericInspectorForm(null, state.currentInspectorExtracted || {});
 	}
 }
 
-function buildGenericInspectorForm(docType, personStr, datum, produkt, extractedData = {}) {
+function buildGenericInspectorForm(docType = null, extractedData = {}) {
 	if (!state.drawerDocSections || state.drawerDocSections.length === 0) {
 		state.drawerDocSections = initDrawerDocSections(docType, extractedData);
 	}
@@ -453,13 +449,13 @@ function buildGenericInspectorForm(docType, personStr, datum, produkt, extracted
 					<span class="inbox-drawer-title-accent">
 						📄 Section ${idx + 1} (${escapeHtml(curDokArt)})
 					</span>
-					${isMulti ? `<button type="button" class="btn btn-sm btn-danger inbox-drawer-btn-remove" onclick="removeDrawerDocSection('${escapeHtml(String(sec.id))}')">🗑️ Remove section</button>` : ""}
+					${isMulti ? `<button type="button" class="btn btn-sm btn-danger inbox-drawer-btn-remove" data-secid="${escapeHtml(String(sec.id))}" onclick="removeDrawerDocSection(this.dataset.secid)">🗑️ Remove section</button>` : ""}
 				</div>
 
 				<div class="grid-2col">
 					<div class="form-group zero-margin">
 						<label for="${sanitizeDomId("sec", sec.id, "dok_art")}" class="doc-editor-label">Document Type *</label>
-						<select id="${sanitizeDomId("sec", sec.id, "dok_art")}" class="doc-editor-input sec-dok-art inbox-drawer-field-select-lg" aria-label="Document Type" onchange="onSectionDokArtChange('${escapeHtml(String(sec.id))}', this.value)">
+						<select id="${sanitizeDomId("sec", sec.id, "dok_art")}" class="doc-editor-input sec-dok-art inbox-drawer-field-select-lg" aria-label="Document Type" data-secid="${escapeHtml(String(sec.id))}" onchange="onSectionDokArtChange(this.dataset.secid, this.value)">
 							${optionsList.length > 0
 								? optionsList.map(opt => `<option value="${escapeHtml(opt)}" ${opt === curDokArt ? "selected" : ""}>${escapeHtml(opt)}</option>`).join("")
 								: `<option value="">Empty</option>`
@@ -590,13 +586,6 @@ function buildFolderInspectorForm(folder, extractedData = {}) {
 	return html;
 }
 
-function onDrawerDokArtChange(newDokArt) {
-	if (state.drawerDocSections && state.drawerDocSections.length > 0) {
-		state.drawerDocSections[0].docType = newDokArt;
-	}
-	renderDrawerSections();
-}
-
 async function submitDrawerInspector() {
 	const context = state.inspectorContext || "inbox";
 	const filename = state.inspectorFile;
@@ -674,15 +663,6 @@ async function submitDrawerInspector() {
 	} catch (e) {
 		toast("Approval error: " + e.message, "error");
 	}
-}
-
-function closeSplitInspector() {
-	const viewer = document.getElementById("inspectorViewerContainer");
-	if (viewer) viewer.innerHTML = "";
-	state.inspectorFile = null;
-	state.inspectorFolder = null;
-	state.inspectorContext = null;
-	state.drawerDocSections = null;
 }
 
 async function inspectorDeleteCurrent() {

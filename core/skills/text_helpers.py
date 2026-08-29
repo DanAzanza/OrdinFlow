@@ -77,6 +77,8 @@ def _set_clipboard_unicode(user32: Any, kernel32: Any, text: str) -> bool:
     kernel32.GlobalLock.restype = ctypes.c_void_p
     kernel32.GlobalLock.argtypes = [ctypes.c_void_p]
     kernel32.GlobalUnlock.argtypes = [ctypes.c_void_p]
+    kernel32.GlobalFree.restype = ctypes.c_void_p
+    kernel32.GlobalFree.argtypes = [ctypes.c_void_p]
     user32.SetClipboardData.restype = ctypes.c_void_p
     user32.SetClipboardData.argtypes = [ctypes.c_uint, ctypes.c_void_p]
 
@@ -90,7 +92,9 @@ def _set_clipboard_unicode(user32: Any, kernel32: Any, text: str) -> bool:
     ctypes.memmove(ptr, encoded, len(encoded))
     kernel32.GlobalUnlock(h_mem)
     user32.EmptyClipboard()
-    user32.SetClipboardData(CF_UNICODETEXT, h_mem)
+    if not user32.SetClipboardData(CF_UNICODETEXT, h_mem):
+        kernel32.GlobalFree(h_mem)
+        return False
     return True
 
 

@@ -1,9 +1,7 @@
 from __future__ import annotations
 
-import ctypes
 import logging
 import re
-import sys
 import threading
 import time
 from typing import Any
@@ -22,39 +20,17 @@ except Exception:
 
 logger = logging.getLogger(__name__)
 
-try:
-    from rapidocr_onnxruntime import RapidOCR  # type: ignore[import-untyped]
-
-    rapid_ocr = RapidOCR()
-except Exception:
-    rapid_ocr = None
-
-
-def get_active_window_title() -> str:
-    """Returns the window title of the currently active foreground window on Windows."""
-    if sys.platform == "win32" and hasattr(ctypes, "windll"):
-        try:
-            hwnd = ctypes.windll.user32.GetForegroundWindow()  # type: ignore[attr-defined]
-            if hwnd:
-                length = ctypes.windll.user32.GetWindowTextLengthW(hwnd)  # type: ignore[attr-defined]
-                if length > 0:
-                    buff = ctypes.create_unicode_buffer(length + 1)
-                    ctypes.windll.user32.GetWindowTextW(hwnd, buff, length + 1)  # type: ignore[attr-defined]
-                    return buff.value
-        except (AttributeError, OSError, RuntimeError, ValueError):
-            logger.debug("Unable to read active window title", exc_info=True)
-    return "Remote Desktop*"
+from core.image_processing import run_rapid_ocr
+from core.skills.window_manager import get_active_window_title
 
 
 def ocr_snippet(image: Image.Image) -> str:
     """Performs quick OCR on a cropped PIL image snippet to extract element label."""
-    if not rapid_ocr:
-        return ""
     try:
         import numpy as np
 
         img_np = np.array(image.convert("RGB"))
-        result, _ = rapid_ocr(img_np)
+        result = run_rapid_ocr(img_np)
         if result:
             texts = [res[1] for res in result if res[1] and len(res[1].strip()) > 1]
             if texts:

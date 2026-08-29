@@ -53,7 +53,7 @@ function updateSkillsSidebarBadge(qState) {
 	}
 }
 
-function buildQueueListHtml(items, activeItemId) {
+function buildQueueListHtml(items) {
 	if (!items || items.length === 0) {
 		return `
 			<div class="empty-state-box">
@@ -85,7 +85,7 @@ function buildQueueListHtml(items, activeItemId) {
 			const progressPct = (item.progress && item.progress.percent) ? item.progress.percent : 0;
 
 			return `
-				<div class="queue-item-card ${isRunning ? "queue-item-running" : "queue-item-idle"}" data-queue-id="${escapeHtml(item.id)}" draggable="${!isRunning}" ondragstart="onQueueDragStart(event, '${escapeHtml(item.id)}')" ondragover="onQueueDragOver(event)" ondragleave="onQueueDragLeave(event)" ondragend="onQueueDragEnd(event)" ondrop="onQueueDrop(event, '${escapeHtml(item.id)}')">
+				<div class="queue-item-card ${isRunning ? "queue-item-running" : "queue-item-idle"}" data-queue-id="${escapeHtml(item.id)}" draggable="${!isRunning}" ondragstart="onQueueDragStart(event, this.dataset.queueId)" ondragover="onQueueDragOver(event)" ondragleave="onQueueDragLeave(event)" ondragend="onQueueDragEnd(event)" ondrop="onQueueDrop(event, this.dataset.queueId)">
 					<div class="queue-item-header">
 						<div class="queue-item-title-group">
 							<span class="queue-drag-handle">↕️</span>
@@ -100,7 +100,7 @@ function buildQueueListHtml(items, activeItemId) {
 							${
 								!isRunning
 									? `
-								<button type="button" class="btn btn-sm btn-icon queue-remove-btn" onclick="removeQueueItem('${escapeHtml(item.id)}')" title="Remove from queue">
+								<button type="button" class="btn btn-sm btn-icon queue-remove-btn" data-id="${escapeHtml(item.id)}" onclick="removeQueueItem(this.dataset.id)" title="Remove from queue">
 									🗑️
 								</button>
 							`
@@ -211,8 +211,7 @@ function updateQueueInspectorIfOpen(qState) {
 	// Update Items Container
 	const container = document.getElementById("queueItemsContainer");
 	if (container) {
-		const activeId = qState.active_item ? qState.active_item.id : null;
-		container.innerHTML = buildQueueListHtml(qState.items, activeId);
+		container.innerHTML = buildQueueListHtml(qState.items);
 	}
 }
 
@@ -236,7 +235,7 @@ async function renderQueueInspector() {
 		)
 		.join("");
 
-	const queueListHtml = buildQueueListHtml(qState.items, qState.active_item ? qState.active_item.id : null);
+	const queueListHtml = buildQueueListHtml(qState.items);
 
 	let btnRowHtml = `
 		<button type="button" class="btn btn-primary btn-sm queue-main-btn" onclick="startSkillQueue()">

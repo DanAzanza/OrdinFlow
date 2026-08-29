@@ -20,16 +20,6 @@ def test_extract_page_spatial_and_plain_text_without_image_returns_empty():
     assert plain == ""
 
 
-# ──────────────────────────────────────────────────────────────
-# HIGH VALUE: _results_disagree – Diskrepanz-Detection
-# ──────────────────────────────────────────────────────────────
-
-
-# ──────────────────────────────────────────────────────────────
-# HIGH VALUE: Vision-Klassifizierungsregeln für neue Dokumenttypen
-# ──────────────────────────────────────────────────────────────
-
-
 def test_vision_visitenkarte_rules_extracted():
     """Visitenkarten-Richtlinien werden korrekt extrahiert."""
     from core.vision import LLMExtractor
@@ -212,16 +202,6 @@ def test_routing_with_missing_name_keeps_in_watch(processor, tmp_path):
 
     # No destination folder should be created (no plausible name)
     assert len(os.listdir(processor.config.target_base_dir)) == 0
-
-
-# ──────────────────────────────────────────────────────────────
-# MEDIUM VALUE: Dokument-Konsolidierung auf einer Seite
-# ──────────────────────────────────────────────────────────────
-
-
-# ──────────────────────────────────────────────────────────────
-# MEDIUM VALUE: Produkt-Normalisierung – Leerzeichen & Sonderzeichen
-# ──────────────────────────────────────────────────────────────
 
 
 def test_extract_hybrid_voting_two_phase_grouping(processor):
@@ -550,16 +530,6 @@ def test_get_optimal_cpu_threads():
     threads = _get_optimal_cpu_threads(0)
     assert isinstance(threads, int)
     assert threads >= 1
-
-
-def test_generate_layer_candidates():
-    """Tests strictly decreasing layer candidate ladder for dynamic VRAM fitting."""
-    from core.llm_backends import _generate_layer_candidates
-
-    assert _generate_layer_candidates(-1) == [-1, 20, 10, 5, 0]
-    assert _generate_layer_candidates(0) == [0]
-    assert _generate_layer_candidates(36) == [36, 20, 10, 5, 0]
-    assert _generate_layer_candidates(15) == [15, 10, 5, 0]
 
 
 def test_render_dpi_in_app_config():

@@ -457,11 +457,6 @@ def test_validate_multidoc_batch_low_confidence(processor):
     assert "Low confidence for required field 'Datum'" in reason
     assert "0.50" in reason
 
-    is_valid, reason = processor.extraction_pipeline.validate_extracted_data(extracted_multidoc)
-    assert not is_valid
-    assert "Low confidence for required field 'Datum'" in reason
-    assert "0.50" in reason
-
 
 def test_notiz_skips_llm_vision_extraction(processor):
     """Testet, dass für Dokumente ohne Extraktionsfelder (Notiz/dependent) keine LLM Vision API Calls gemacht werden."""

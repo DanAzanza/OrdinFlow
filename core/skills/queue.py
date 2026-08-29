@@ -80,10 +80,21 @@ class SkillQueueManager:
                 "auto_repeat_interval_seconds": self.auto_repeat_interval_seconds,
                 "items": [item.to_dict() for item in self.items],
             }
-            tmp_file = self._state_file + ".tmp"
-            with open(tmp_file, "w", encoding="utf-8") as f:
-                json.dump(payload, f, ensure_ascii=False, indent=2)
-            os.replace(tmp_file, self._state_file)
+            tmp_file = f"{self._state_file}.tmp_{os.getpid()}_{int(time.time() * 1000)}"
+            for attempt in range(5):
+                try:
+                    with open(tmp_file, "w", encoding="utf-8") as f:
+                        json.dump(payload, f, ensure_ascii=False, indent=2)
+                    os.replace(tmp_file, self._state_file)
+                    return
+                except OSError:
+                    if attempt < 4:
+                        time.sleep(0.05 * (attempt + 1))
+            if os.path.exists(tmp_file):
+                try:
+                    os.remove(tmp_file)
+                except OSError:
+                    pass
         except Exception as e:
             logger.warning("[SkillQueueManager] Could not save queue state: %s", e)
 
@@ -441,13 +452,19 @@ class SkillQueueManager:
 
 
 _SKILL_QUEUE_MANAGER: SkillQueueManager | None = None
+_QUEUE_MGR_LOCK = threading.Lock()
 
 
 def get_skill_queue_manager(skill_manager: SkillManager | None = None) -> SkillQueueManager:
     """Returns the singleton instance of SkillQueueManager."""
     global _SKILL_QUEUE_MANAGER
     if _SKILL_QUEUE_MANAGER is None:
-        _SKILL_QUEUE_MANAGER = SkillQueueManager(skill_manager=skill_manager)
+        with _QUEUE_MGR_LOCK:
+            if _SKILL_QUEUE_MANAGER is None:
+                _SKILL_QUEUE_MANAGER = SkillQueueManager(skill_manager=skill_manager)
+            elif skill_manager is not None:
+                _SKILL_QUEUE_MANAGER.skill_manager = skill_manager
     elif skill_manager is not None:
-        _SKILL_QUEUE_MANAGER.skill_manager = skill_manager
+        with _QUEUE_MGR_LOCK:
+            _SKILL_QUEUE_MANAGER.skill_manager = skill_manager
     return _SKILL_QUEUE_MANAGER

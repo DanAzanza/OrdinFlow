@@ -177,12 +177,14 @@ def api_cases_approve():
     if not DashboardState.config:
         return jsonify({"error": "Config not available"}), 503
 
-    data = request.get_json() or {}
-    folder_name = data.get("folder")
-    approved = data.get("approved", True)
+    from routes.schemas import CaseApprovalSchema
 
-    if not folder_name:
-        return jsonify({"error": "Folder name is required"}), 400
+    validated, err = validate_schema(CaseApprovalSchema, request.get_json())
+    if not validated or err:
+        return jsonify({"error": err or "Invalid payload"}), 400
+
+    folder_name = validated.folder
+    approved = validated.approved
 
     target_base = DashboardState.config.target_base_dir
     folder_path = os.path.abspath(os.path.join(target_base, folder_name))
@@ -419,11 +421,16 @@ def api_cases_delete_file(folder_name: str, filename: str):
 def api_cases_delete_folder(folder_name: str):
     if not DashboardState.config:
         return jsonify({"error": "Config not available"}), 503
-    folder_path = os.path.join(DashboardState.config.target_base_dir, folder_name)
-    if not os.path.isdir(folder_path):
+    folder_path, err_resp = _resolve_and_guard(
+        folder_name,
+        DashboardState.config.target_base_dir,
+        require_type="dir",
+        allow_root=False,
+    )
+    if err_resp:
+        return err_resp
+    if not folder_path:
         return jsonify({"error": "Folder not found"}), 404
-    if not _is_within_base(folder_path, DashboardState.config.target_base_dir):
-        return jsonify({"error": "Access denied"}), 403
 
     try:
         send_to_trash(folder_path)
@@ -450,6 +457,7 @@ def api_file_cases(subpath: str):
 
 
 @cases_api_bp.route("/api/preview/Cases/<path:folder_name>/<path:filename>")
+@cases_api_bp.route("/api/preview/cases/<path:folder_name>/<path:filename>")
 def api_cases_preview(folder_name: str, filename: str):
     if not DashboardState.config:
         return jsonify({"error": "Config not available"}), 503

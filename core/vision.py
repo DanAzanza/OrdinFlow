@@ -10,6 +10,7 @@ from core.utils import (
     MISSING_PLACEHOLDER,
     clean_extracted_value,
     is_missing_value,
+    to_bool_value,
 )
 
 logger = logging.getLogger(__name__)
@@ -21,6 +22,7 @@ def _repair_and_parse_json(raw_text: str) -> dict[str, Any]:
         return {}
 
     text = raw_text.strip()
+    text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()
 
     if "```" in text:
         text = re.sub(r"^```[a-zA-Z]*\n?", "", text, flags=re.MULTILINE)
@@ -560,10 +562,7 @@ def _sanitize_extraction_output(
     for key in list(all_keys):
         val = normalized_res.get(key)
         if key == "Signed":
-            if isinstance(val, str):
-                normalized_res["Signed"] = val.strip().lower() in ("true", "1", "yes")
-            else:
-                normalized_res["Signed"] = bool(val)
+            normalized_res["Signed"] = to_bool_value(val)
         elif is_missing_value(val):
             if key.lower() in optional_fields:
                 normalized_res[key] = ""

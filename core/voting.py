@@ -11,7 +11,7 @@ from collections.abc import Sequence
 from difflib import SequenceMatcher
 from typing import Any
 
-from core.utils import MISSING_PLACEHOLDER, is_missing_value
+from core.utils import MISSING_PLACEHOLDER, is_bool_value, is_missing_value, to_bool_value
 
 # Empirical weighting for multi-tier extraction
 # Dual-Source Tier 1 (weight 1.0) + Spatial Text (weight 1.0)
@@ -43,33 +43,6 @@ _UMLAUT_MAP = str.maketrans(
 )
 
 
-def is_bool_value(val: Any) -> bool:
-    """Generically checks whether a value is a boolean."""
-    if isinstance(val, bool):
-        return True
-    if isinstance(val, str) and val.strip().lower() in (
-        "true",
-        "false",
-        "yes",
-        "no",
-        "ja",
-        "nein",
-        "1",
-        "0",
-    ):
-        return True
-    return False
-
-
-def to_bool_value(val: Any) -> bool:
-    """Generically converts a string or boolean value to a Python bool."""
-    if isinstance(val, bool):
-        return val
-    if isinstance(val, str):
-        return val.strip().lower() in ("true", "1", "yes", "ja")
-    return bool(val)
-
-
 def normalize_for_clustering(val: str) -> str:
     """Normalizes text for fuzzy voting."""
     if not isinstance(val, str):
@@ -90,8 +63,16 @@ def are_similar_or_substring(a: str, b: str, threshold: float = 0.80) -> bool:
     # Differing numbers/digits indicate distinct IDs, dates, or amounts and must not be clustered
     digits_a = re.findall(r"\d+", a)
     digits_b = re.findall(r"\d+", b)
-    if digits_a and digits_b and digits_a != digits_b:
-        return False
+    if digits_a and digits_b:
+        if len(digits_a) == len(digits_b):
+            try:
+                if [int(d) for d in digits_a] != [int(d) for d in digits_b]:
+                    return False
+            except ValueError:
+                if digits_a != digits_b:
+                    return False
+        elif digits_a != digits_b:
+            return False
 
     if fuzz_similarity(a, b) >= threshold:
         return True

@@ -9,6 +9,7 @@ from __future__ import annotations
 import ctypes
 import logging
 import os
+import re
 import sys
 import time
 from collections.abc import Callable, Mapping
@@ -53,6 +54,31 @@ def execute_focus_window(
     return ready
 
 
+def send_native_click(x: int, y: int, button: str = "left", double: bool = False) -> bool:
+    """Dispatches physical mouse clicks to Windows OS desktop coordinates with 64-bit safety."""
+    if sys.platform != "win32":
+        return False
+    try:
+        u32 = ctypes.windll.user32
+        u32.SetCursorPos(int(x), int(y))
+        if button == "right":
+            u32.mouse_event(0x0008, 0, 0, 0, 0)
+            u32.mouse_event(0x0010, 0, 0, 0, 0)
+        elif double:
+            u32.mouse_event(0x0002, 0, 0, 0, 0)
+            u32.mouse_event(0x0004, 0, 0, 0, 0)
+            time.sleep(0.05)
+            u32.mouse_event(0x0002, 0, 0, 0, 0)
+            u32.mouse_event(0x0004, 0, 0, 0, 0)
+        else:
+            u32.mouse_event(0x0002, 0, 0, 0, 0)
+            u32.mouse_event(0x0004, 0, 0, 0, 0)
+        return True
+    except Exception as e:
+        logger.debug("[ActionExecutor] send_native_click error: %s", e)
+        return False
+
+
 def execute_mouse_click(
     step: Mapping[str, Any],
     step_id: str,
@@ -77,7 +103,8 @@ def execute_mouse_click(
         coords = locate_fn(locator, win)
         if coords is not None:
             break
-        handle_known_dialog_popups(win)
+        if win:
+            handle_known_dialog_popups(win)
         if attempt < max_retries:
             if not sleep_fn(retry_delay_s):
                 return False
@@ -90,20 +117,12 @@ def execute_mouse_click(
         return False
 
     with input_shield():
-        if sys.platform == "win32":
-            ctypes.windll.user32.SetCursorPos(coords[0], coords[1])
-            if action_type == "CLICK":
-                ctypes.windll.user32.mouse_event(0x0002, 0, 0, 0, 0)
-                ctypes.windll.user32.mouse_event(0x0004, 0, 0, 0, 0)
-            elif action_type == "DOUBLE_CLICK":
-                ctypes.windll.user32.mouse_event(0x0002, 0, 0, 0, 0)
-                ctypes.windll.user32.mouse_event(0x0004, 0, 0, 0, 0)
-                time.sleep(0.05)
-                ctypes.windll.user32.mouse_event(0x0002, 0, 0, 0, 0)
-                ctypes.windll.user32.mouse_event(0x0004, 0, 0, 0, 0)
-            elif action_type == "RIGHT_CLICK":
-                ctypes.windll.user32.mouse_event(0x0008, 0, 0, 0, 0)
-                ctypes.windll.user32.mouse_event(0x0010, 0, 0, 0, 0)
+        if action_type == "DOUBLE_CLICK":
+            send_native_click(coords[0], coords[1], double=True)
+        elif action_type == "RIGHT_CLICK":
+            send_native_click(coords[0], coords[1], button="right")
+        else:
+            send_native_click(coords[0], coords[1])
 
     return True
 
@@ -170,8 +189,10 @@ def execute_type_file_path(
         save_failure_screenshot(step_id, f"Missing File: {final_path}", target_window)
         return False
 
-    if rdp_prefix and final_path.startswith("C:"):
-        final_path = rdp_prefix + final_path[2:]
+    if rdp_prefix and re.match(r"^[a-zA-Z]:", final_path):
+        drive_letter = final_path[0].upper()
+        prefix = rdp_prefix.rstrip("\\/")
+        final_path = f"{prefix}\\{drive_letter}{final_path[2:]}"
 
     press_enter = bool(step.get("press_enter", True))
     with input_shield():

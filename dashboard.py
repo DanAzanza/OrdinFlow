@@ -68,8 +68,7 @@ def heartbeat_monitor() -> None:
                 "[*] Dashboard closed (no heartbeat for 300s and all processing idle). Terminating application..."
             )
             DashboardState.shutdown_event.set()
-            time.sleep(2)
-            os._exit(0)
+            break
 
 
 def open_browser(port: int) -> None:

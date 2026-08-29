@@ -4,11 +4,14 @@ import atexit
 import ctypes
 import logging
 import sys
+import threading
 from contextlib import contextmanager
 
 logger = logging.getLogger(__name__)
 
 _block_input_active = False
+_shield_lock = threading.Lock()
+_shield_depth = 0
 
 
 def set_block_input(enable: bool) -> bool:
@@ -29,6 +32,9 @@ def set_block_input(enable: bool) -> bool:
 
 def _emergency_unblock() -> None:
     """Safety Net: Ensures keyboard/mouse is unblocked upon process termination."""
+    global _shield_depth
+    with _shield_lock:
+        _shield_depth = 0
     if _block_input_active:
         set_block_input(False)
 
@@ -39,12 +45,19 @@ atexit.register(_emergency_unblock)
 @contextmanager
 def input_shield(enabled: bool = True):
     """Context Manager for temporary user input blocking. Guaranteed release via try...finally."""
-    if not enabled:
+    global _shield_depth
+    if not enabled or sys.platform != "win32":
         yield
         return
 
-    set_block_input(True)
+    with _shield_lock:
+        if _shield_depth == 0:
+            set_block_input(True)
+        _shield_depth += 1
     try:
         yield
     finally:
-        set_block_input(False)
+        with _shield_lock:
+            _shield_depth = max(0, _shield_depth - 1)
+            if _shield_depth == 0:
+                set_block_input(False)

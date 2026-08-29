@@ -10,6 +10,7 @@ from __future__ import annotations
 import ctypes
 import logging
 import sys
+import threading
 import time
 from collections.abc import Mapping
 from typing import Any
@@ -70,29 +71,59 @@ UIA_CONTROL_TYPES: dict[str, int] = {
     "document": 50030,
 }
 
-_uia_com_instance: Any = None
-_uia_core_module: Any = None
+_local_com = threading.local()
+
+if sys.platform == "win32":
+    try:
+        from ctypes import wintypes
+
+        _user32 = ctypes.windll.user32
+        _SMTO_NORMAL = 0x0000
+        _SMTO_ABORTIFHUNG = 0x0002
+
+        _user32.SendMessageTimeoutW.argtypes = [
+            wintypes.HWND,
+            wintypes.UINT,
+            wintypes.WPARAM,
+            wintypes.LPARAM,
+            wintypes.UINT,
+            wintypes.UINT,
+            ctypes.POINTER(getattr(wintypes, "DWORD_PTR", ctypes.c_ulonglong)),
+        ]
+        _user32.SendMessageTimeoutW.restype = getattr(wintypes, "LPARAM", ctypes.c_longlong)
+
+        _user32.GetClassNameW.argtypes = [wintypes.HWND, wintypes.LPWSTR, ctypes.c_int]
+        _user32.GetClassNameW.restype = ctypes.c_int
+        _user32.GetDlgCtrlID.argtypes = [wintypes.HWND]
+        _user32.GetDlgCtrlID.restype = ctypes.c_int
+        _user32.GetWindowRect.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.RECT)]
+        _user32.GetWindowRect.restype = wintypes.BOOL
+        _user32.EnumChildWindows.argtypes = [wintypes.HWND, ctypes.c_void_p, getattr(wintypes, "LPARAM", ctypes.c_longlong)]
+        _user32.EnumChildWindows.restype = wintypes.BOOL
+    except (AttributeError, OSError) as e:
+        logger.debug("[UIALocator] User32 prototype initialization skipped: %s", e)
 
 
 def _get_uia_com() -> Any:
-    """Lazily initializes the IUIAutomation COM object."""
-    global _uia_com_instance, _uia_core_module
-    if _uia_com_instance is not None:
-        return _uia_com_instance
-
+    """Lazily initializes the IUIAutomation COM object for the current thread."""
     if sys.platform != "win32":
         return None
+
+    if getattr(_local_com, "instance", None) is not None:
+        return _local_com.instance
 
     try:
         import comtypes.client  # type: ignore[import-untyped]
 
         ctypes.windll.ole32.CoInitializeEx(0, 0x0)  # MTA
-        _uia_core_module = comtypes.client.GetModule("UIAutomationCore.dll")
-        _uia_com_instance = comtypes.client.CreateObject(
-            _uia_core_module.CUIAutomation,
-            interface=_uia_core_module.IUIAutomation,
+        core_mod = comtypes.client.GetModule("UIAutomationCore.dll")
+        inst = comtypes.client.CreateObject(
+            core_mod.CUIAutomation,
+            interface=core_mod.IUIAutomation,
         )
-        return _uia_com_instance
+        _local_com.core_mod = core_mod
+        _local_com.instance = inst
+        return inst
     except Exception as e:
         logger.debug("[UIALocator] IUIAutomation COM initialization unavailable: %s", e)
         return None
@@ -250,11 +281,12 @@ class UIALocator:
 
         # Try COM ValuePattern
         com_elem = elem.get("com_elem")
-        if com_elem is not None and _uia_core_module is not None:
+        core_mod = getattr(_local_com, "core_mod", None)
+        if com_elem is not None and core_mod is not None:
             try:
                 pattern = com_elem.GetCurrentPattern(UIA_ValuePatternId)
                 if pattern:
-                    val_pattern = pattern.QueryInterface(_uia_core_module.IUIAutomationValuePattern)
+                    val_pattern = pattern.QueryInterface(core_mod.IUIAutomationValuePattern)
                     if val_pattern:
                         return str(val_pattern.CurrentValue or "").strip()
             except Exception:
@@ -288,11 +320,12 @@ class UIALocator:
             return False
 
         com_elem = elem.get("com_elem")
-        if com_elem is not None and _uia_core_module is not None:
+        core_mod = getattr(_local_com, "core_mod", None)
+        if com_elem is not None and core_mod is not None:
             try:
                 pattern = com_elem.GetCurrentPattern(UIA_ValuePatternId)
                 if pattern:
-                    val_pattern = pattern.QueryInterface(_uia_core_module.IUIAutomationValuePattern)
+                    val_pattern = pattern.QueryInterface(core_mod.IUIAutomationValuePattern)
                     if val_pattern:
                         val_pattern.SetValue(str(text))
                         return True
@@ -321,11 +354,12 @@ class UIALocator:
             return False
 
         com_elem = elem.get("com_elem")
-        if com_elem is not None and _uia_core_module is not None:
+        core_mod = getattr(_local_com, "core_mod", None)
+        if com_elem is not None and core_mod is not None:
             try:
                 pattern = com_elem.GetCurrentPattern(UIA_InvokePatternId)
                 if pattern:
-                    invoke_pattern = pattern.QueryInterface(_uia_core_module.IUIAutomationInvokePattern)
+                    invoke_pattern = pattern.QueryInterface(core_mod.IUIAutomationInvokePattern)
                     if invoke_pattern:
                         invoke_pattern.Invoke()
                         return True
@@ -340,10 +374,9 @@ class UIALocator:
 
         center = elem.get("center")
         if center and sys.platform == "win32":
-            ctypes.windll.user32.SetCursorPos(center[0], center[1])
-            ctypes.windll.user32.mouse_event(0x0002, 0, 0, 0, 0)
-            ctypes.windll.user32.mouse_event(0x0004, 0, 0, 0, 0)
-            return True
+            from core.skills.action_executor import send_native_click
+
+            return send_native_click(center[0], center[1])
 
         return False
 
@@ -363,32 +396,10 @@ class UIALocator:
         """Finds top-level HWND matching window title pattern."""
         if sys.platform != "win32":
             return 0
-        user32 = ctypes.windll.user32
-        target_hwnd = 0
+        from core.skills.window_manager import find_window_hwnd
 
-        def enum_win_cb(hwnd: int, _lparam: int) -> bool:
-            nonlocal target_hwnd
-            if not user32.IsWindowVisible(hwnd):
-                return True
-            buff = ctypes.create_unicode_buffer(512)
-            user32.GetWindowTextW(hwnd, buff, 512)
-            title = buff.value.strip()
-            if not title:
-                return True
-
-            if not window_title or window_title == "*":
-                target_hwnd = hwnd
-                return False
-
-            clean_pat = window_title.rstrip("*").lower()
-            if clean_pat in title.lower():
-                target_hwnd = hwnd
-                return False
-            return True
-
-        WNDENUMPROC = ctypes.WINFUNCTYPE(ctypes.c_bool, wintypes.HWND, wintypes.LPARAM)
-        user32.EnumWindows(WNDENUMPROC(enum_win_cb), 0)
-        return target_hwnd
+        hwnd = find_window_hwnd(window_title, require_visible=True)
+        return hwnd or 0
 
     @staticmethod
     def _inspect_child_windows(

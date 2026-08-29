@@ -535,3 +535,134 @@ def test_api_skills_pick_element(client, monkeypatch):
     assert "prompt" in data["locator"]
 
 
+def test_api_config_get_and_put(client):
+    # 1. GET /api/config
+    res_get = client.get("/api/config")
+    assert res_get.status_code == 200
+    cfg_data = res_get.get_json()
+    assert "folder_delimiter" in cfg_data
+
+    # 2. PUT /api/config valid update
+    res_put = client.put("/api/config", json={"folder_delimiter": "__test__"})
+    assert res_put.status_code == 200
+    assert res_put.get_json()["status"] == "ok"
+    assert "folder_delimiter" in res_put.get_json()["changed"]
+
+    # 3. Verify updated config
+    res_get2 = client.get("/api/config")
+    assert res_get2.get_json()["folder_delimiter"] == "__test__"
+
+
+def test_api_system_status_and_lifecycle(client):
+    # 1. GET /api/status
+    res_status = client.get("/api/status")
+    assert res_status.status_code == 200
+    data = res_status.get_json()
+    assert "paused" in data
+    assert "skill_queue" in data
+
+    # 2. GET /api/jobs
+    res_jobs = client.get("/api/jobs")
+    assert res_jobs.status_code == 200
+    assert "jobs" in res_jobs.get_json()
+
+    # 3. POST /api/router/pause and resume
+    res_pause = client.post("/api/router/pause")
+    assert res_pause.status_code == 200
+    assert res_pause.get_json()["status"] == "paused"
+
+    res_resume = client.post("/api/router/resume")
+    assert res_resume.status_code == 200
+    assert res_resume.get_json()["status"] in ("active", "resumed")
+
+    # 4. GET /api/system/fs_list
+    res_fs = client.get("/api/system/fs_list")
+    assert res_fs.status_code == 200
+    fs_data = res_fs.get_json()
+    assert "entries" in fs_data
+    assert "drives" in fs_data
+
+
+def test_api_cases_crud_and_approval(client, tmp_path):
+    DashboardState.config.target_base_dir = str(tmp_path)
+    case_folder = tmp_path / "2026-08-22__Einlagen__Mustermann__Max"
+    case_folder.mkdir()
+    pdf_file = case_folder / "Fußscan.pdf"
+    pdf_file.touch()
+
+    # 1. Approve case folder
+    res_app = client.post("/api/cases/approve", json={"folder": "2026-08-22__Einlagen__Mustermann__Max", "approved": True})
+    assert res_app.status_code == 200
+    assert (case_folder / ".approved").exists()
+
+    # 2. Revoke approval
+    res_rev = client.post("/api/cases/approve", json={"folder": "2026-08-22__Einlagen__Mustermann__Max", "approved": False})
+    assert res_rev.status_code == 200
+    assert not (case_folder / ".approved").exists()
+
+    # 3. Edit / Rename Case Folder
+    res_rename = client.put(
+        "/api/cases/2026-08-22__Einlagen__Mustermann__Max",
+        json={"Datum": "2026-08-23", "Produkt": "Schuhe", "Person": "Muster, Erika"},
+    )
+    assert res_rename.status_code == 200
+
+    # 4. Delete individual case file
+    # Re-create file in updated folder or original
+    cur_folders = [f for f in tmp_path.iterdir() if f.is_dir()]
+    assert len(cur_folders) >= 1
+    active_folder = cur_folders[0]
+    (active_folder / "test_doc.pdf").touch()
+
+    res_del_file = client.delete(f"/api/cases/{active_folder.name}/test_doc.pdf")
+    assert res_del_file.status_code == 200
+    assert not (active_folder / "test_doc.pdf").exists()
+
+    # 5. Delete entire case folder
+    res_del_folder = client.delete(f"/api/cases/{active_folder.name}")
+    assert res_del_folder.status_code == 200
+
+
+def test_api_split_inspector_submit_cases_and_security(client, tmp_path):
+    DashboardState.config.watch_dir = str(tmp_path / "inbox")
+    DashboardState.config.target_base_dir = str(tmp_path / "cases")
+    (tmp_path / "inbox").mkdir(exist_ok=True)
+    (tmp_path / "cases").mkdir(exist_ok=True)
+
+    # 1. Path traversal security rejection
+    res_sec = client.post(
+        "/api/split_inspector/submit",
+        json={
+            "context": "inbox",
+            "filename": "../../../Windows/explorer.exe",
+            "documents": [{"document": "Rezept"}],
+        },
+    )
+    assert res_sec.status_code in (400, 403, 404)
+
+    # 2. Valid submit moving non-PDF file
+    src_file = tmp_path / "inbox" / "scan_note.txt"
+    src_file.write_text("Hello text document", encoding="utf-8")
+
+    res_valid = client.post(
+        "/api/split_inspector/submit",
+        json={
+            "context": "inbox",
+            "filename": "scan_note.txt",
+            "documents": [
+                {
+                    "document": "Rezept",
+                    "Datum": "2026-08-22",
+                    "Produkt": "Einlagen",
+                    "Person": "Mustermann, Max",
+                }
+            ],
+        },
+    )
+    assert res_valid.status_code == 200
+    data = res_valid.get_json()
+    assert data["status"] == "ok"
+    assert len(data["results"]) == 1
+
+
+

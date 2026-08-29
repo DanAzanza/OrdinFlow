@@ -43,7 +43,7 @@ function renderSkillDocTypesTags() {
 			const emoji = knownMap[dt]?.emoji || "📄";
 			const chip = document.createElement("span");
 			chip.className = "skill-doctype-chip";
-			chip.innerHTML = `<span>${escapeHtml(emoji)}</span> <span>${escapeHtml(dt)}</span> <button type="button" class="skill-doctype-chip-remove" onclick="removeDocTypeFromSkill('${escapeHtml(dt)}')" title="Remove ${escapeHtml(dt)}">✖️</button>`;
+			chip.innerHTML = `<span>${escapeHtml(emoji)}</span> <span>${escapeHtml(dt)}</span> <button type="button" class="skill-doctype-chip-remove" data-doctype="${escapeHtml(dt)}" onclick="removeDocTypeFromSkill(this.dataset.doctype)" title="Remove ${escapeHtml(dt)}">✖️</button>`;
 			container.appendChild(chip);
 		}
 	}
@@ -74,7 +74,7 @@ function toggleDocTypeDropdown(event) {
 		menu.innerHTML = availableNames
 			.map((name) => {
 				const emoji = knownMap[name]?.emoji || "📄";
-				return `<div class="doctype-popover-item" onclick="addDocTypeToSkill('${escapeHtml(name)}')">
+				return `<div class="doctype-popover-item" data-doctype="${escapeHtml(name)}" onclick="addDocTypeToSkill(this.dataset.doctype)">
 					<span>${escapeHtml(emoji)}</span>
 					<span>${escapeHtml(name)}</span>
 				</div>`;

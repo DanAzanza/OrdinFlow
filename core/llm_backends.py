@@ -521,12 +521,14 @@ class _LlamaCppBackend(LLMBackend):
         import gc
 
         with _LLM_LOCK:
-            if hasattr(self, "_llm") and self._llm is not None:
-                try:
-                    del self._llm
-                except Exception as e:
-                    logger.debug("Error deallocating local LLM: %s", e)
-                self._llm = None
+            try:
+                close_fn = getattr(self._llm, "close", None)
+                if callable(close_fn):
+                    close_fn()
+                del self._llm
+            except Exception as e:
+                logger.debug("Error deallocating local LLM: %s", e)
+            self._llm = None
             _GLOBAL_LLM_INSTANCE = None
             _GLOBAL_LLM_KEY = None
             self._loaded = False
@@ -562,9 +564,9 @@ class _LlamaCppBackend(LLMBackend):
         return formatted
 
     def call_vision_api(self, payload: dict[str, object]) -> str:
-        if not self._ensure_loaded():
-            return ""
         with _LLM_LOCK:
+            if not self._ensure_loaded():
+                return ""
             try:
                 if hasattr(self._llm, "reset"):
                     try:

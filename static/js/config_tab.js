@@ -336,14 +336,14 @@ async function loadPathPickerDirectory(targetPath = "") {
         if (drivesEl) {
             drivesEl.innerHTML = (res.drives || []).map(d => {
                 const isActive = res.current_path && res.current_path.toUpperCase().startsWith(d.toUpperCase());
-                return `<button type="button" class="path-picker-pill-btn ${isActive ? "active" : ""}" onclick="loadPathPickerDirectory('${escapeHtml(d.replace(/\\/g, "\\\\"))}')">💾 ${escapeHtml(d)}</button>`;
+                return `<button type="button" class="path-picker-pill-btn ${isActive ? "active" : ""}" data-path="${escapeHtml(d)}" onclick="loadPathPickerDirectory(this.dataset.path)">💾 ${escapeHtml(d)}</button>`;
             }).join("");
         }
 
         // Render Quick Shortcuts
         if (quickEl) {
             quickEl.innerHTML = (res.quick_locations || []).map(q => {
-                return `<button type="button" class="path-picker-pill-btn" onclick="loadPathPickerDirectory('${escapeHtml(q.path.replace(/\\/g, "\\\\"))}')">📍 ${escapeHtml(q.name)}</button>`;
+                return `<button type="button" class="path-picker-pill-btn" data-path="${escapeHtml(q.path)}" onclick="loadPathPickerDirectory(this.dataset.path)">📍 ${escapeHtml(q.name)}</button>`;
             }).join("");
         }
 
@@ -353,7 +353,7 @@ async function loadPathPickerDirectory(targetPath = "") {
             (res.breadcrumbs || []).forEach((c, idx) => {
                 if (idx > 0) crumbsHtml += '<span class="path-crumb-sep">\\</span>';
                 const isLast = idx === res.breadcrumbs.length - 1;
-                crumbsHtml += `<span class="path-crumb ${isLast ? "current" : ""}" onclick="loadPathPickerDirectory('${escapeHtml(c.path.replace(/\\/g, "\\\\"))}')">${escapeHtml(c.name)}</span>`;
+                crumbsHtml += `<span class="path-crumb ${isLast ? "current" : ""}" data-path="${escapeHtml(c.path)}" onclick="loadPathPickerDirectory(this.dataset.path)">${escapeHtml(c.name)}</span>`;
             });
             breadcrumbsEl.innerHTML = crumbsHtml;
         }
@@ -363,7 +363,7 @@ async function loadPathPickerDirectory(targetPath = "") {
             let itemsHtml = "";
             if (res.parent_path) {
                 itemsHtml += `
-                    <div class="path-picker-item" onclick="loadPathPickerDirectory('${escapeHtml(res.parent_path.replace(/\\/g, "\\\\"))}')">
+                    <div class="path-picker-item" data-path="${escapeHtml(res.parent_path)}" onclick="loadPathPickerDirectory(this.dataset.path)">
                         <div class="path-picker-item-left">
                             <span class="path-picker-item-icon">📁</span>
                             <span class="path-picker-item-name">.. (Übergeordneter Ordner)</span>
@@ -378,8 +378,8 @@ async function loadPathPickerDirectory(targetPath = "") {
                     const isSelected = _activePathPicker.selectedPath === entry.path;
                     const icon = entry.is_dir ? "📁" : (entry.name.endsWith(".gguf") ? "🤖" : "📄");
                     const clickAction = entry.is_dir
-                        ? `ondblclick="loadPathPickerDirectory('${escapeHtml(entry.path.replace(/\\/g, "\\\\"))}')" onclick="selectPathPickerItem('${escapeHtml(entry.path.replace(/\\/g, "\\\\"))}', true, this)"`
-                        : `onclick="selectPathPickerItem('${escapeHtml(entry.path.replace(/\\/g, "\\\\"))}', false, this)" ondblclick="confirmSystemPathPicker()"`;
+                        ? `data-path="${escapeHtml(entry.path)}" ondblclick="loadPathPickerDirectory(this.dataset.path)" onclick="selectPathPickerItem(this.dataset.path, true, this)"`
+                        : `data-path="${escapeHtml(entry.path)}" onclick="selectPathPickerItem(this.dataset.path, false, this)" ondblclick="confirmSystemPathPicker()"`;
 
                     itemsHtml += `
                         <div class="path-picker-item ${isSelected ? "selected" : ""}" ${clickAction}>

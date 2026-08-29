@@ -49,11 +49,6 @@ from core.skills.uia_locator import UIALocator
 
 logger = logging.getLogger(__name__)
 
-try:
-    import numpy as np
-except ImportError:
-    np = None  # type: ignore[assignment]
-
 
 class ExportEngine(BaseSkill):
     """Executes step-by-step RPA desktop UI and RDP automations."""

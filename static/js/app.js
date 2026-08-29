@@ -16,6 +16,10 @@ function switchTab(name) {
 		inspector.style.display = (name === "config") ? "none" : "flex";
 	}
 
+	if (name !== "skills" && typeof stopQueuePolling === "function") {
+		stopQueuePolling();
+	}
+
 	if (name === "log") {
 		if (typeof startLogPolling === "function") startLogPolling();
 		if (typeof updateLogInspectorAnalytics === "function") updateLogInspectorAnalytics();
@@ -59,17 +63,14 @@ function resetAppInspectorContent() {
 	}
 }
 
-function toggleAppInspector() {
-	const activeTab = document.querySelector(".nav-item.active")?.dataset?.tab || 
-	                  document.querySelector(".tab-content.active")?.id?.replace("tab-", "");
-	if (activeTab === "log" && typeof updateLogInspectorAnalytics === "function") {
-		updateLogInspectorAnalytics();
-	} else if (activeTab === "config" && typeof updateConfigInspector === "function") {
-		updateConfigInspector();
-	} else if (activeTab === "skills" && typeof loadSkills === "function" && state.skills && state.skills.length > 0) {
-		const selected = (typeof selectedSkillId !== "undefined" && selectedSkillId) ? selectedSkillId : state.skills[0].id;
-		if (typeof selectSkill === "function") selectSkill(selected);
+function renderDocumentPreview(fileUrl, previewUrl, fileName) {
+	const src = previewUrl || fileUrl;
+	if (!src) return '<div class="no-preview">No preview available</div>';
+	const isPdf = (fileName || src).toLowerCase().endsWith(".pdf");
+	if (isPdf) {
+		return `<iframe src="${escapeHtml(src)}#toolbar=0&navpanes=0&view=FitH" loading="lazy"></iframe>`;
 	}
+	return `<img src="${escapeHtml(src)}" alt="Preview" loading="lazy" onerror="this.parentElement.innerHTML='<span class=no-preview>Preview unavailable</span>'" />`;
 }
 
 function toggleSidebar() {
@@ -123,11 +124,7 @@ function openAppInspector(data) {
 					? `
 			<div class="inspector-card">
 				<div class="inspector-preview-wrap">
-					${
-						data.previewUrl.endsWith(".pdf")
-							? `<iframe src="${data.previewUrl}"></iframe>`
-							: `<img src="${data.previewUrl}" alt="Preview" />`
-					}
+					${renderDocumentPreview(data.fileUrl, data.previewUrl, data.fileName)}
 				</div>
 			</div>`
 					: ""
@@ -250,20 +247,27 @@ function showSkeletons() {
 document.addEventListener("keydown", (e) => {
 	if (e.key === "Escape") {
 		closeConfirm();
-		if (typeof closeLegal === "function") closeLegal();
-		if (typeof closeFolderEdit === "function") closeFolderEdit();
+		document.querySelectorAll(".modal-overlay.show, .modal-overlay.open, .modal-overlay.active, .modal.show, .modal.open, .modal.active").forEach((m) => {
+			m.classList.remove("show", "open", "active");
+			if (m.style.display === "flex") m.style.display = "none";
+		});
 		if (typeof closeSystemPathPicker === "function") closeSystemPathPicker();
-		if (typeof closeCreateSkillModal === "function") closeCreateSkillModal();
-		if (typeof closeAiSynthesisModal === "function") closeAiSynthesisModal();
 		if (typeof closeAppInspector === "function") closeAppInspector();
+		if (typeof closeLegal === "function") closeLegal();
 	}
 });
-document.getElementById("confirmModal")?.addEventListener("click", (e) => {
-	if (e.target === e.currentTarget) closeConfirm();
-});
 
-document.getElementById("legalModal")?.addEventListener("click", (e) => {
-	if (e.target === e.currentTarget) closeLegal();
+document.addEventListener("click", (e) => {
+	if (!e.target || !e.target.classList) return;
+	if (e.target.classList.contains("modal-overlay") || e.target.closest("[data-modal-close]")) {
+		const overlay = e.target.classList.contains("modal-overlay") ? e.target : e.target.closest(".modal-overlay");
+		if (overlay) {
+			overlay.classList.remove("show", "open", "active");
+			if (overlay.style.display === "flex") overlay.style.display = "none";
+			if (overlay.id === "confirmModal") closeConfirm();
+			if (overlay.id === "systemPathPickerModal" && typeof closeSystemPathPicker === "function") closeSystemPathPicker();
+		}
+	}
 });
 
 /* ═══════════════════════════════════════════════════════════
@@ -284,11 +288,19 @@ async function openLegal(docName) {
 
 	try {
 		const res = await api(`/api/legal/${docName}`);
-		document.getElementById("legalModalBody").innerHTML =
-			res.content || "<p>No content available.</p>";
+		const body = document.getElementById("legalModalBody");
+		if (body) {
+			body.innerHTML = '<pre class="legal-pre-text"></pre>';
+			const pre = body.querySelector("pre");
+			if (pre) {
+				pre.textContent = res.content || "No content available.";
+			}
+		}
 	} catch (e) {
-		document.getElementById("legalModalBody").innerHTML =
-			`<p style="color:var(--danger)">Error loading document: ${escapeHtml(e.message)}</p>`;
+		const body = document.getElementById("legalModalBody");
+		if (body) {
+			body.innerHTML = `<p class="legal-error-text">Error loading document: ${escapeHtml(e.message)}</p>`;
+		}
 	}
 }
 
@@ -391,7 +403,7 @@ AppEvents.on("cases:refresh", () => {
 });
 AppEvents.on("skills:refresh", () => {
 	if (typeof ensureSkillsLoaded === "function") ensureSkillsLoaded(true);
-	if (typeof fetchSkills === "function") fetchSkills();
+	if (typeof loadSkills === "function") loadSkills(true);
 });
 AppEvents.on("config:refresh", () => {
 	if (typeof fetchConfig === "function") fetchConfig();
@@ -435,6 +447,14 @@ function stopUiPolling() {
 
 startUiPolling();
 
+let _debouncedSyncTimer = null;
+function debouncedSyncAppState() {
+	if (_debouncedSyncTimer) clearTimeout(_debouncedSyncTimer);
+	_debouncedSyncTimer = setTimeout(() => {
+		syncAppState();
+	}, 300);
+}
+
 // Dedicated heartbeat keepalive every 12s - runs continuously even when tab is backgrounded
 setInterval(() => {
 	fetch("/api/heartbeat", { method: "POST" }).catch(() => {});
@@ -445,73 +465,30 @@ document.addEventListener("visibilitychange", () => {
 	if (document.visibilityState === "visible") {
 		fetch("/api/heartbeat", { method: "POST" }).catch(() => {});
 		startUiPolling();
-		syncAppState();
+		debouncedSyncAppState();
 		const activeTab = document.querySelector(".nav-item.active")?.dataset?.tab;
-		if (activeTab === "log" && typeof fetchLogDelta === "function") {
-			fetchLogDelta();
+		if (activeTab === "log" && typeof startLogPolling === "function") {
+			startLogPolling();
 			if (typeof updateLogInspectorAnalytics === "function") updateLogInspectorAnalytics();
 		} else if (activeTab === "skills" && typeof renderQueueInspector === "function") {
 			renderQueueInspector();
 		}
 	} else {
 		stopUiPolling();
+		if (typeof stopLogPolling === "function") stopLogPolling();
+		if (typeof stopQueuePolling === "function") stopQueuePolling();
 	}
 });
 
-// On window focus force immediate sync
+// On window focus force debounced sync
 window.addEventListener("focus", () => {
 	fetch("/api/heartbeat", { method: "POST" }).catch(() => {});
-	syncAppState();
+	debouncedSyncAppState();
 });
 
 /* ── Shared UI/UX & Data Formatting Utilities ── */
 
-/**
- * Validates real Gregorian calendar dates (including leap years).
- */
-function isValidCalendarDate(year, month, day) {
-	if (year < 1900 || year > 2100 || month < 1 || month > 12 || day < 1 || day > 31) return false;
-	const d = new Date(Date.UTC(year, month - 1, day));
-	return d.getUTCFullYear() === year && d.getUTCMonth() === month - 1 && d.getUTCDate() === day;
-}
 
-/**
- * Normalizes varied date strings (DD.MM.YYYY, DD/MM/YY, ISO timestamps) to strict ISO YYYY-MM-DD.
- * Returns null if input cannot be safely parsed into a valid Gregorian date.
- */
-function normalizeDateForInput(val) {
-	if (val === null || val === undefined) return null;
-	let s = String(val).trim();
-	if (!s) return null;
-
-	// Strip time portions if present (e.g. "2026-08-24T12:00:00Z" or "2026-08-24 10:00")
-	s = s.split(/[T\s]/)[0].trim();
-
-	let y, m, d;
-
-	// Pattern 1: ISO formats YYYY-MM-DD, YYYY.MM.DD, YYYY/MM/DD
-	let match = s.match(/^(\d{4})[./-](\d{1,2})[./-](\d{1,2})$/);
-	if (match) {
-		y = parseInt(match[1], 10);
-		m = parseInt(match[2], 10);
-		d = parseInt(match[3], 10);
-	} else {
-		// Pattern 2: European formats DD.MM.YYYY, DD-MM-YYYY, DD/MM/YYYY or 2-digit years
-		match = s.match(/^(\d{1,2})[./-](\d{1,2})[./-](\d{2,4})$/);
-		if (match) {
-			d = parseInt(match[1], 10);
-			m = parseInt(match[2], 10);
-			let rawYear = parseInt(match[3], 10);
-			y = rawYear < 100 ? (rawYear <= 50 ? 2000 + rawYear : 1900 + rawYear) : rawYear;
-		}
-	}
-
-	if (y && m && d && isValidCalendarDate(y, m, d)) {
-		return `${String(y).padStart(4, "0")}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
-	}
-
-	return null;
-}
 
 /**
  * Sanitizes strings into safe DOM ID tokens (only [a-zA-Z0-9_-]).

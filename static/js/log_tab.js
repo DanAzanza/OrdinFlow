@@ -19,7 +19,11 @@ function stopLogPolling() {
 	}
 }
 
+let _isFetchingLogDelta = false;
+
 async function fetchLogDelta() {
+	if (_isFetchingLogDelta) return;
+	_isFetchingLogDelta = true;
 	try {
 		const d = await api(`/api/log?since_id=${state.lastLogId}&limit=300`);
 		if (d.max_id !== undefined && d.max_id < state.lastLogId) {
@@ -41,6 +45,8 @@ async function fetchLogDelta() {
 		}
 	} catch (e) {
 		console.error("Error fetching log delta:", e);
+	} finally {
+		_isFetchingLogDelta = false;
 	}
 }
 
@@ -67,8 +73,6 @@ function setLogFilter(level) {
 function filterLogs() {
 	renderLogLines();
 }
-
-const setLogLevelFilter = setLogFilter;
 
 function renderLogLines() {
 	const container = document.getElementById("logLines");

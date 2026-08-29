@@ -8,6 +8,7 @@ Executes the exact checks as `.github/workflows/ci.yml`:
 
 from __future__ import annotations
 
+import shutil
 import subprocess
 import sys
 import time
@@ -16,13 +17,30 @@ from pathlib import Path
 ROOT_DIR = Path(__file__).resolve().parent.parent
 
 
-def run_gate(name: str, cmd: list[str]) -> bool:
+def _resolve_pyright_cmd() -> tuple[list[str], bool]:
+    """Determines the most reliable pyright invocation across Python venv, PATH binary, and npx."""
+    try:
+        import pyright  # noqa: F401
+
+        return [sys.executable, "-m", "pyright", "core/", "routes/"], False
+    except ImportError:
+        pass
+
+    if shutil.which("pyright"):
+        return ["pyright", "core/", "routes/"], (sys.platform == "win32")
+
+    if shutil.which("npx"):
+        return ["npx", "pyright", "core/", "routes/"], (sys.platform == "win32")
+
+    return [sys.executable, "-m", "pyright", "core/", "routes/"], False
+
+
+def run_gate(name: str, cmd: list[str], use_shell: bool = False) -> bool:
     """Executes a single quality gate command, printing clean diagnostics."""
     print(f"\n[CI Gate] Running {name}...")
     print(f"Command: {' '.join(cmd)}")
     start_t = time.time()
     try:
-        use_shell = sys.platform == "win32" and cmd[0] == "npx"
         cmd_input = subprocess.list2cmdline(cmd) if use_shell else cmd
         res = subprocess.run(
             cmd_input,
@@ -59,8 +77,8 @@ def main() -> int:
         return 1
 
     # 2. Pyright Static Type Checker (Full scope: core/ and routes/)
-    pyright_cmd = ["npx", "pyright", "core/", "routes/"] if sys.platform == "win32" else ["pyright", "core/", "routes/"]
-    pyright_ok = run_gate("Pyright Static Type Checker", pyright_cmd)
+    pyright_cmd, use_shell = _resolve_pyright_cmd()
+    pyright_ok = run_gate("Pyright Static Type Checker", pyright_cmd, use_shell=use_shell)
     if not pyright_ok:
         print("\n\033[91m[!] CI Gate Blocked by Pyright Type Diagnostics.\033[0m")
         return 1

@@ -51,7 +51,13 @@ class FileService:
         if not valid_kw:
             return None
 
-        for item in os.listdir(base_dir):
+        try:
+            entries = os.listdir(base_dir)
+        except OSError as e:
+            logger.debug("[FileService] Error reading base_dir '%s': %s", base_dir, e)
+            return None
+
+        for item in entries:
             item_path = os.path.join(base_dir, item)
             if os.path.isdir(item_path):
                 item_clean = _clean_folder_match_name(item)
@@ -94,10 +100,10 @@ class FileService:
 
         if existing_folder:
             existing_folder_name = os.path.basename(existing_folder)
-            existing_fehlt_count = existing_folder_name.upper().count("MISSING") + existing_folder_name.count("----")
-            target_fehlt_count = target_folder_name.upper().count("MISSING") + target_folder_name.count("----")
+            existing_missing_count = existing_folder_name.upper().count("MISSING") + existing_folder_name.count("----")
+            target_missing_count = target_folder_name.upper().count("MISSING") + target_folder_name.count("----")
 
-            if target_fehlt_count < existing_fehlt_count and os.path.abspath(existing_folder) != os.path.abspath(
+            if target_missing_count < existing_missing_count and os.path.abspath(existing_folder) != os.path.abspath(
                 target_dir
             ):
                 try:
@@ -190,8 +196,8 @@ class FileService:
             return False
 
         filename = os.path.basename(filepath)
-        if not os.path.exists(filepath):
-            logger.warning(f"[!] Source file '{filepath}' no longer exists for splitting.")
+        if not page_results:
+            logger.warning(f"[!] No page results provided to split '{filepath}'. Aborting without deleting source.")
             return False
 
         logger.info(f"[*] Splitting batch PDF '{filename}' into {len(page_results)} separate files...")

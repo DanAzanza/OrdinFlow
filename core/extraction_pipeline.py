@@ -5,11 +5,10 @@ Domain-agnostic module for page classification, multi-resolution extraction tier
 
 import logging
 import os
-import threading
 from typing import Any
 
 from core.config import AppConfig
-from core.image_processing import ImagePreprocessor
+from core.image_processing import ImagePreprocessor, get_rapid_ocr, run_rapid_ocr
 from core.utils import is_missing_value
 from core.vision import LLMExtractor
 from core.voting import (
@@ -21,22 +20,7 @@ from core.voting import (
 
 logger = logging.getLogger(__name__)
 
-_RAPID_OCR_ENGINE = None
-_OCR_LOCK = threading.Lock()
-
-
-def _get_rapid_ocr():
-    global _RAPID_OCR_ENGINE
-    if _RAPID_OCR_ENGINE is None:
-        with _OCR_LOCK:
-            if _RAPID_OCR_ENGINE is None:
-                try:
-                    from rapidocr_onnxruntime import RapidOCR  # type: ignore[import-untyped]
-
-                    _RAPID_OCR_ENGINE = RapidOCR()
-                except (ImportError, RuntimeError, OSError):
-                    _RAPID_OCR_ENGINE = False
-    return _RAPID_OCR_ENGINE if _RAPID_OCR_ENGINE is not False else None
+_get_rapid_ocr = get_rapid_ocr
 
 
 def _extract_page_spatial_and_plain_text(
@@ -107,8 +91,7 @@ def _extract_page_spatial_and_plain_text(
                     img_np = None
 
                 if img_np is not None:
-                    with _OCR_LOCK:
-                        res, _ = engine(img_np)
+                    res = run_rapid_ocr(img_np, engine=engine)
                     if res:
                         img_h, img_w = img_np.shape[:2]
                         ocr_spatial = []
@@ -155,14 +138,11 @@ class ExtractionPipeline:
 
         # 2. Warm up RapidOCR ONNX runtime providers & inference sessions
         try:
-            engine = _get_rapid_ocr()
-            if engine is not None and engine is not False:
-                import numpy as np
+            import numpy as np
 
-                dummy_np = np.zeros((64, 64, 3), dtype=np.uint8)
-                with _OCR_LOCK:
-                    engine(dummy_np)
-                logger.info("[+] RapidOCR engine warmed up.")
+            dummy_np = np.zeros((64, 64, 3), dtype=np.uint8)
+            run_rapid_ocr(dummy_np)
+            logger.info("[+] RapidOCR engine warmed up.")
         except Exception as e:
             logger.debug("RapidOCR warmup pass skipped: %s", e)
 

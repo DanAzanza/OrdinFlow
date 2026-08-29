@@ -55,6 +55,22 @@ class ConfigUpdateSchema(BaseModel):
     document_types: dict[str, Any] | None = None
 
 
+class CaseApprovalSchema(BaseModel):
+    """Schema for POST /api/cases/approve."""
+
+    folder: str
+    approved: bool = True
+
+
+class SplitInspectorSubmitSchema(BaseModel):
+    """Schema for POST /api/split_inspector/submit."""
+
+    context: str = "inbox"
+    filename: str
+    folder: str | None = None
+    documents: list[dict[str, Any]] = Field(default_factory=list)
+
+
 def validate_schema(schema_cls: Any, data: dict[str, Any] | None) -> tuple[Any | None, str | None]:
     """Helper function to safely validate JSON payloads against a Pydantic schema."""
     if data is None:
@@ -75,8 +91,10 @@ def validate_schema(schema_cls: Any, data: dict[str, Any] | None) -> tuple[Any |
 
 __all__ = [
     "AssignDocumentSchema",
+    "CaseApprovalSchema",
     "ConfigUpdateSchema",
     "FlexibleDocumentPayload",
     "FolderEditSchema",
+    "SplitInspectorSubmitSchema",
     "validate_schema",
 ]

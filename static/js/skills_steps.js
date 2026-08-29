@@ -403,7 +403,7 @@ function renderEditorSteps() {
 													${paramText ? `<span class="action-item-param" title="${escapeHtml(act.text || paramText)}">${escapeHtml(paramText)}</span>` : ""}
 													${showVariableChips && availableVars.length > 0 ? `
 														<div class="variable-chips-row">
-															${availableVars.map(v => `<span class="var-insert-chip" onclick="insertVariableToAction(${taskIdx}, ${actIdx}, '${escapeHtml(v)}')" title="Insert variable ${escapeHtml(v)}">+ ${escapeHtml(v)}</span>`).join("")}
+															${availableVars.map(v => `<span class="var-insert-chip" data-var="${escapeHtml(v)}" onclick="insertVariableToAction(${taskIdx}, ${actIdx}, this.dataset.var)" title="Insert variable ${escapeHtml(v)}">+ ${escapeHtml(v)}</span>`).join("")}
 														</div>
 													` : ""}
 												</div>
@@ -419,10 +419,10 @@ function renderEditorSteps() {
 											</div>
 										</div>
 										${act._editing ? `
-										<div class="action-inline-editor-card" style="background: rgba(15, 23, 42, 0.65); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; padding: 12px; margin: 6px 0 12px 12px; display: grid; gap: 8px;">
-											<div style="display: grid; grid-template-columns: 140px 1fr; gap: 8px; align-items: center;">
-												<label style="font-size: 0.8rem; color: #94a3b8; font-weight: 600;">Action Type:</label>
-												<select class="form-select form-select-sm" style="background: #0f172a; color: #f8fafc; border: 1px solid rgba(255,255,255,0.15); border-radius: 4px; padding: 4px 8px;" onchange="updateActionProperty(${taskIdx}, ${actIdx}, 'action_type', this.value); renderEditorSteps();">
+										<div class="action-inline-editor-card">
+											<div class="action-editor-grid-row">
+												<label class="action-editor-label">Action Type:</label>
+												<select class="form-select form-select-sm action-editor-input" onchange="updateActionProperty(${taskIdx}, ${actIdx}, 'action_type', this.value); renderEditorSteps();">
 													<option value="CLICK" ${act.action_type === "CLICK" ? "selected" : ""}>🎯 Click Element</option>
 													<option value="DOUBLE_CLICK" ${act.action_type === "DOUBLE_CLICK" ? "selected" : ""}>🖱️ Double Click</option>
 													<option value="RIGHT_CLICK" ${act.action_type === "RIGHT_CLICK" ? "selected" : ""}>🖱️ Right Click</option>
@@ -442,18 +442,18 @@ function renderEditorSteps() {
 													<option value="CALL_SKILL" ${act.action_type === "CALL_SKILL" ? "selected" : ""}>⚡ Call Sub-Skill</option>
 												</select>
 											</div>
-											<div style="display: grid; grid-template-columns: 140px 1fr; gap: 8px; align-items: center;">
-												<label style="font-size: 0.8rem; color: #94a3b8; font-weight: 600;">Description:</label>
-												<input type="text" class="form-control form-control-sm" style="background: #0f172a; color: #f8fafc; border: 1px solid rgba(255,255,255,0.15); border-radius: 4px; padding: 4px 8px;" value="${escapeHtml(act.description || "")}" placeholder="Description of this step" onchange="updateActionProperty(${taskIdx}, ${actIdx}, 'description', this.value)" />
+											<div class="action-editor-grid-row">
+												<label class="action-editor-label">Description:</label>
+												<input type="text" class="form-control form-control-sm action-editor-input" value="${escapeHtml(act.description || "")}" placeholder="Description of this step" onchange="updateActionProperty(${taskIdx}, ${actIdx}, 'description', this.value)" />
 											</div>
 											${act.action_type === "FOR_EACH_DOCUMENT" ? `
-											<div style="display: grid; grid-template-columns: 140px 1fr; gap: 8px; align-items: center;">
-												<label style="font-size: 0.8rem; color: #38bdf8; font-weight: 600;">Document Types:</label>
-												<input type="text" class="form-control form-control-sm" style="background: #0f172a; color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.3); border-radius: 4px; padding: 4px 8px;" value="${escapeHtml(Array.isArray(act.document_types) ? act.document_types.join(', ') : (act.document_types || '*'))}" placeholder="Fußscan, Rezept, *" onchange="updateActionProperty(${taskIdx}, ${actIdx}, 'document_types', this.value.split(',').map(s => s.trim()).filter(Boolean))" />
+											<div class="action-editor-grid-row">
+												<label class="action-editor-label-accent">Document Types:</label>
+												<input type="text" class="form-control form-control-sm action-editor-input-cyan" value="${escapeHtml(Array.isArray(act.document_types) ? act.document_types.join(', ') : (act.document_types || '*'))}" placeholder="Fußscan, Rezept, *" onchange="updateActionProperty(${taskIdx}, ${actIdx}, 'document_types', this.value.split(',').map(s => s.trim()).filter(Boolean))" />
 											</div>
-											<div style="display: grid; grid-template-columns: 140px 1fr; gap: 8px; align-items: center;">
-												<label style="font-size: 0.8rem; color: #94a3b8; font-weight: 600;">On Item Error:</label>
-												<select class="form-select form-select-sm" style="background: #0f172a; color: #f8fafc; border: 1px solid rgba(255,255,255,0.15); border-radius: 4px; padding: 4px 8px;" onchange="updateActionProperty(${taskIdx}, ${actIdx}, 'on_item_error', this.value)">
+											<div class="action-editor-grid-row">
+												<label class="action-editor-label">On Item Error:</label>
+												<select class="form-select form-select-sm action-editor-input" onchange="updateActionProperty(${taskIdx}, ${actIdx}, 'on_item_error', this.value)">
 													<option value="ABORT" ${(!act.on_item_error || act.on_item_error === 'ABORT') ? "selected" : ""}>🛑 Abort Loop</option>
 													<option value="CONTINUE" ${act.on_item_error === 'CONTINUE' ? "selected" : ""}>⏭️ Skip & Continue Next Doc</option>
 													<option value="RETRY" ${act.on_item_error === 'RETRY' ? "selected" : ""}>🔄 Retry Once</option>
@@ -461,25 +461,25 @@ function renderEditorSteps() {
 											</div>
 											` : ""}
 											${(act.action_type === "BRANCH" || act.action_type === "IF_CONDITION" || act.action_type === "VALIDATE_UI_STATE" || act.action_type === "WHILE_LOOP") ? `
-											<div style="display: grid; grid-template-columns: 140px 1fr; gap: 8px; align-items: center;">
-												<label style="font-size: 0.8rem; color: #38bdf8; font-weight: 600;">Condition Expr:</label>
-												<input type="text" class="form-control form-control-sm" style="background: #0f172a; color: #38bdf8; font-family: monospace; border: 1px solid rgba(56, 189, 248, 0.3); border-radius: 4px; padding: 4px 8px;" value="${escapeHtml(typeof act.condition === 'string' ? act.condition : (act.condition?.expr || JSON.stringify(act.condition || '')))}" placeholder="{category} == 'Fußscan'" onchange="updateActionProperty(${taskIdx}, ${actIdx}, 'condition', this.value)" />
+											<div class="action-editor-grid-row">
+												<label class="action-editor-label-accent">Condition Expr:</label>
+												<input type="text" class="form-control form-control-sm action-editor-input-code" value="${escapeHtml(typeof act.condition === 'string' ? act.condition : (act.condition?.expr || JSON.stringify(act.condition || '')))}" placeholder="{category} == 'Fußscan'" onchange="updateActionProperty(${taskIdx}, ${actIdx}, 'condition', this.value)" />
 											</div>
 											` : ""}
 											${act.action_type === "WHILE_LOOP" ? `
-											<div style="display: grid; grid-template-columns: 140px 1fr; gap: 8px; align-items: center;">
-												<label style="font-size: 0.8rem; color: #94a3b8; font-weight: 600;">Max Iterations:</label>
-												<input type="number" class="form-control form-control-sm" style="background: #0f172a; color: #f8fafc; border: 1px solid rgba(255,255,255,0.15); border-radius: 4px; padding: 4px 8px;" value="${act.max_iterations || 20}" placeholder="20" onchange="updateActionProperty(${taskIdx}, ${actIdx}, 'max_iterations', parseInt(this.value) || 20)" />
+											<div class="action-editor-grid-row">
+												<label class="action-editor-label">Max Iterations:</label>
+												<input type="number" class="form-control form-control-sm action-editor-input" value="${act.max_iterations || 20}" placeholder="20" onchange="updateActionProperty(${taskIdx}, ${actIdx}, 'max_iterations', parseInt(this.value) || 20)" />
 											</div>
 											` : ""}
 											${act.action_type === "EXTRACT_UI_TEXT" ? `
-											<div style="display: grid; grid-template-columns: 140px 1fr; gap: 8px; align-items: center;">
-												<label style="font-size: 0.8rem; color: #94a3b8; font-weight: 600;">Save Variable:</label>
-												<input type="text" class="form-control form-control-sm" style="background: #0f172a; color: #f8fafc; border: 1px solid rgba(255,255,255,0.15); border-radius: 4px; padding: 4px 8px;" value="${escapeHtml(act.extract_to_var || act.variable || "ui_extracted_var")}" placeholder="ui_patient_id" onchange="updateActionProperty(${taskIdx}, ${actIdx}, 'extract_to_var', this.value)" />
+											<div class="action-editor-grid-row">
+												<label class="action-editor-label">Save Variable:</label>
+												<input type="text" class="form-control form-control-sm action-editor-input" value="${escapeHtml(act.extract_to_var || act.variable || "ui_extracted_var")}" placeholder="ui_patient_id" onchange="updateActionProperty(${taskIdx}, ${actIdx}, 'extract_to_var', this.value)" />
 											</div>
-											<div style="display: grid; grid-template-columns: 140px 1fr; gap: 8px; align-items: center;">
-												<label style="font-size: 0.8rem; color: #94a3b8; font-weight: 600;">Provider:</label>
-												<select class="form-select form-select-sm" style="background: #0f172a; color: #f8fafc; border: 1px solid rgba(255,255,255,0.15); border-radius: 4px; padding: 4px 8px;" onchange="updateActionProperty(${taskIdx}, ${actIdx}, 'provider', this.value)">
+											<div class="action-editor-grid-row">
+												<label class="action-editor-label">Provider:</label>
+												<select class="form-select form-select-sm action-editor-input" onchange="updateActionProperty(${taskIdx}, ${actIdx}, 'provider', this.value)">
 													<option value="auto" ${(!act.provider || act.provider === 'auto') ? "selected" : ""}>🤖 Auto (UIA -> Vision Fallback)</option>
 													<option value="uia" ${act.provider === 'uia' ? "selected" : ""}>⚡ UIA (Native Windows Control)</option>
 													<option value="vision" ${act.provider === 'vision' ? "selected" : ""}>👁️ Vision (RDP / OCR Pixel)</option>
@@ -487,54 +487,54 @@ function renderEditorSteps() {
 											</div>
 											` : ""}
 											${act.action_type === "SET_VARIABLE" ? `
-											<div style="display: grid; grid-template-columns: 140px 1fr; gap: 8px; align-items: center;">
-												<label style="font-size: 0.8rem; color: #94a3b8; font-weight: 600;">Variable Name:</label>
-												<input type="text" class="form-control form-control-sm" style="background: #0f172a; color: #f8fafc; border: 1px solid rgba(255,255,255,0.15); border-radius: 4px; padding: 4px 8px;" value="${escapeHtml(act.variable || "")}" placeholder="my_var" onchange="updateActionProperty(${taskIdx}, ${actIdx}, 'variable', this.value)" />
+											<div class="action-editor-grid-row">
+												<label class="action-editor-label">Variable Name:</label>
+												<input type="text" class="form-control form-control-sm action-editor-input" value="${escapeHtml(act.variable || "")}" placeholder="my_var" onchange="updateActionProperty(${taskIdx}, ${actIdx}, 'variable', this.value)" />
 											</div>
-											<div style="display: grid; grid-template-columns: 140px 1fr; gap: 8px; align-items: center;">
-												<label style="font-size: 0.8rem; color: #94a3b8; font-weight: 600;">Value / Formula:</label>
-												<input type="text" class="form-control form-control-sm" style="background: #0f172a; color: #f8fafc; border: 1px solid rgba(255,255,255,0.15); border-radius: 4px; padding: 4px 8px;" value="${escapeHtml(act.value || "")}" placeholder="Custom value or {other_var}" onchange="updateActionProperty(${taskIdx}, ${actIdx}, 'value', this.value)" />
+											<div class="action-editor-grid-row">
+												<label class="action-editor-label">Value / Formula:</label>
+												<input type="text" class="form-control form-control-sm action-editor-input" value="${escapeHtml(act.value || "")}" placeholder="Custom value or {other_var}" onchange="updateActionProperty(${taskIdx}, ${actIdx}, 'value', this.value)" />
 											</div>
 											` : ""}
 											${(act.action_type === "POWERSHELL" || act.action_type === "RUN_SCRIPT" || act.action_type === "EXECUTE_COMMAND") ? `
-											<div style="display: grid; grid-template-columns: 140px 1fr; gap: 8px;">
-												<label style="font-size: 0.8rem; color: #94a3b8; font-weight: 600;">Command / Script:</label>
-												<textarea class="form-control form-control-sm" rows="5" style="background: #0f172a; color: #38bdf8; font-family: monospace; border: 1px solid rgba(255,255,255,0.15); border-radius: 4px; padding: 6px;" onchange="updateActionProperty(${taskIdx}, ${actIdx}, 'command', this.value)">${escapeHtml(act.command || act.script || "")}</textarea>
+											<div class="action-editor-grid-row-top">
+												<label class="action-editor-label">Command / Script:</label>
+												<textarea class="form-control form-control-sm action-editor-textarea-code" rows="5" onchange="updateActionProperty(${taskIdx}, ${actIdx}, 'command', this.value)">${escapeHtml(act.command || act.script || "")}</textarea>
 											</div>
 											` : ""}
 											${act.action_type === "TYPE_TEXT" ? `
-											<div style="display: grid; grid-template-columns: 140px 1fr; gap: 8px; align-items: center;">
-												<label style="font-size: 0.8rem; color: #94a3b8; font-weight: 600;">Text to Type:</label>
-												<input type="text" class="form-control form-control-sm" style="background: #0f172a; color: #f8fafc; border: 1px solid rgba(255,255,255,0.15); border-radius: 4px; padding: 4px 8px;" value="${escapeHtml(act.text || "")}" placeholder="Text or variable (e.g. {Nachname})" onchange="updateActionProperty(${taskIdx}, ${actIdx}, 'text', this.value)" />
+											<div class="action-editor-grid-row">
+												<label class="action-editor-label">Text to Type:</label>
+												<input type="text" class="form-control form-control-sm action-editor-input" value="${escapeHtml(act.text || "")}" placeholder="Text or variable (e.g. {Nachname})" onchange="updateActionProperty(${taskIdx}, ${actIdx}, 'text', this.value)" />
 											</div>
 											` : ""}
 											${act.action_type === "TYPE_FILE_PATH" ? `
-											<div style="display: grid; grid-template-columns: 140px 1fr; gap: 8px; align-items: center;">
-												<label style="font-size: 0.8rem; color: #94a3b8; font-weight: 600;">File Path:</label>
-												<input type="text" class="form-control form-control-sm" style="background: #0f172a; color: #f8fafc; border: 1px solid rgba(255,255,255,0.15); border-radius: 4px; padding: 4px 8px;" value="${escapeHtml(act.file_path || "{document_fullpath}")}" placeholder="{document_fullpath}" onchange="updateActionProperty(${taskIdx}, ${actIdx}, 'file_path', this.value)" />
+											<div class="action-editor-grid-row">
+												<label class="action-editor-label">File Path:</label>
+												<input type="text" class="form-control form-control-sm action-editor-input" value="${escapeHtml(act.file_path || "{document_fullpath}")}" placeholder="{document_fullpath}" onchange="updateActionProperty(${taskIdx}, ${actIdx}, 'file_path', this.value)" />
 											</div>
 											` : ""}
 											${(act.action_type === "DELAY" || act.action_type === "SLEEP" || act.action_type === "WAIT") ? `
-											<div style="display: grid; grid-template-columns: 140px 1fr; gap: 8px; align-items: center;">
-												<label style="font-size: 0.8rem; color: #94a3b8; font-weight: 600;">Delay (ms):</label>
-												<input type="number" class="form-control form-control-sm" style="background: #0f172a; color: #f8fafc; border: 1px solid rgba(255,255,255,0.15); border-radius: 4px; padding: 4px 8px;" value="${act.delay_ms !== undefined ? act.delay_ms : (act.duration_s !== undefined ? act.duration_s * 1000 : 500)}" placeholder="500" onchange="updateActionProperty(${taskIdx}, ${actIdx}, 'delay_ms', isNaN(parseInt(this.value)) ? 0 : parseInt(this.value))" />
+											<div class="action-editor-grid-row">
+												<label class="action-editor-label">Delay (ms):</label>
+												<input type="number" class="form-control form-control-sm action-editor-input" value="${act.delay_ms !== undefined ? act.delay_ms : (act.duration_s !== undefined ? act.duration_s * 1000 : 500)}" placeholder="500" onchange="updateActionProperty(${taskIdx}, ${actIdx}, 'delay_ms', isNaN(parseInt(this.value)) ? 0 : parseInt(this.value))" />
 											</div>
 											` : ""}
 											${act.action_type === "FOCUS_WINDOW" ? `
-											<div style="display: grid; grid-template-columns: 140px 1fr; gap: 8px; align-items: center;">
-												<label style="font-size: 0.8rem; color: #94a3b8; font-weight: 600;">Window Title:</label>
-												<input type="text" class="form-control form-control-sm" style="background: #0f172a; color: #f8fafc; border: 1px solid rgba(255,255,255,0.15); border-radius: 4px; padding: 4px 8px;" value="${escapeHtml(act.window_title || "")}" placeholder="CorelDRAW*" onchange="updateActionProperty(${taskIdx}, ${actIdx}, 'window_title', this.value)" />
+											<div class="action-editor-grid-row">
+												<label class="action-editor-label">Window Title:</label>
+												<input type="text" class="form-control form-control-sm action-editor-input" value="${escapeHtml(act.window_title || "")}" placeholder="CorelDRAW*" onchange="updateActionProperty(${taskIdx}, ${actIdx}, 'window_title', this.value)" />
 											</div>
 											` : ""}
 											${(act.action_type === "CLICK" || act.action_type === "DOUBLE_CLICK" || act.action_type === "RIGHT_CLICK" || act.action_type === "WAIT_FOR_ELEMENT" || act.action_type === "EXTRACT_UI_TEXT") ? `
-											<div style="display: grid; grid-template-columns: 140px 1fr; gap: 8px; align-items: center;">
-												<label style="font-size: 0.8rem; color: #94a3b8; font-weight: 600;">Locator Target:</label>
-												<input type="text" class="form-control form-control-sm" style="background: #0f172a; color: #f8fafc; border: 1px solid rgba(255,255,255,0.15); border-radius: 4px; padding: 4px 8px;" value="${escapeHtml(act.locator?.prompt || act.locator?.value || act.locator?.automation_id || "")}" placeholder="Button name, automation_id, or OCR text" onchange="updateActionProperty(${taskIdx}, ${actIdx}, 'locator.prompt', this.value)" />
+											<div class="action-editor-grid-row">
+												<label class="action-editor-label">Locator Target:</label>
+												<input type="text" class="form-control form-control-sm action-editor-input" value="${escapeHtml(act.locator?.prompt || act.locator?.value || act.locator?.automation_id || "")}" placeholder="Button name, automation_id, or OCR text" onchange="updateActionProperty(${taskIdx}, ${actIdx}, 'locator.prompt', this.value)" />
 											</div>
 											` : ""}
-											<div style="display: grid; grid-template-columns: 140px 1fr; gap: 8px; align-items: center; border-top: 1px dashed rgba(255,255,255,0.1); padding-top: 6px;">
-												<label style="font-size: 0.8rem; color: #f59e0b; font-weight: 600;">On Error:</label>
-												<select class="form-select form-select-sm" style="background: #0f172a; color: #f8fafc; border: 1px solid rgba(255,255,255,0.15); border-radius: 4px; padding: 4px 8px;" onchange="updateActionProperty(${taskIdx}, ${actIdx}, 'on_error', this.value)">
+											<div class="action-editor-grid-row-border">
+												<label class="action-editor-label-warn">On Error:</label>
+												<select class="form-select form-select-sm action-editor-input" onchange="updateActionProperty(${taskIdx}, ${actIdx}, 'on_error', this.value)">
 													<option value="ABORT" ${(!act.on_error || act.on_error === 'ABORT') ? "selected" : ""}>🛑 Abort & Stop Workflow</option>
 													<option value="CONTINUE" ${act.on_error === 'CONTINUE' ? "selected" : ""}>⏭️ Ignore & Continue</option>
 													<option value="RETRY" ${act.on_error === 'RETRY' ? "selected" : ""}>🔄 Retry Step (up to 3x)</option>
@@ -546,8 +546,8 @@ function renderEditorSteps() {
 									})
 									.join("")
 					}
-					<div style="margin-top: 8px; display: flex; gap: 8px;">
-						<button type="button" class="btn btn-sm btn-secondary" style="font-size: 0.78rem; padding: 4px 10px;" onclick="addEditorAction(${taskIdx})">
+					<div class="task-add-action-row">
+						<button type="button" class="btn btn-sm btn-secondary btn-add-action-task" onclick="addEditorAction(${taskIdx})">
 							➕ Add Action to Task ${taskIdx + 1}
 						</button>
 					</div>
@@ -556,8 +556,8 @@ function renderEditorSteps() {
 		`;
 		})
 		.join("") + `
-		<div style="margin-top: 14px; display: flex; justify-content: flex-start;">
-			<button type="button" class="btn btn-sm btn-outline-primary" style="font-size: 0.82rem; padding: 6px 14px; font-weight: 600;" onclick="addEditorTask('Task ' + (currentEditingTasks.length + 1))">
+		<div class="workflow-add-task-row">
+			<button type="button" class="btn btn-sm btn-outline-primary btn-add-task" onclick="addEditorTask('Task ' + (currentEditingTasks.length + 1))">
 				➕ Add New Task
 			</button>
 		</div>

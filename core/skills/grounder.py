@@ -20,37 +20,50 @@ except ImportError:
     np = None  # type: ignore[assignment]
 
 
-_DPI_INITIALIZED = False
+from core.utils import init_windows_dpi_awareness
 
+init_windows_dpi_awareness()
 
-def _init_dpi_awareness() -> None:
-    """Sets Per-Monitor V2 DPI awareness once with progressive fallbacks."""
-    global _DPI_INITIALIZED
-    if _DPI_INITIALIZED or sys.platform != "win32":
-        return
-    _DPI_INITIALIZED = True
-    u32 = getattr(ctypes.windll, "user32", None)
-    shcore = getattr(ctypes.windll, "shcore", None)
+if sys.platform == "win32":
     try:
-        if u32 and hasattr(u32, "SetProcessDpiAwarenessContext"):
-            u32.SetProcessDpiAwarenessContext(ctypes.c_void_p(-4))
-            return
-    except Exception:
-        pass
-    try:
-        if shcore and hasattr(shcore, "SetProcessDpiAwareness"):
-            shcore.SetProcessDpiAwareness(2)
-            return
-    except Exception:
-        pass
-    try:
-        if u32 and hasattr(u32, "SetProcessDPIAware"):
-            u32.SetProcessDPIAware()
-    except Exception:
-        pass
+        from ctypes import wintypes
 
+        _user32 = ctypes.windll.user32
+        _gdi32 = ctypes.windll.gdi32
 
-_init_dpi_awareness()
+        _user32.GetDC.argtypes = [wintypes.HWND]
+        _user32.GetDC.restype = wintypes.HDC
+        _user32.ReleaseDC.argtypes = [wintypes.HWND, wintypes.HDC]
+        _user32.ReleaseDC.restype = ctypes.c_int
+        _user32.GetSystemMetrics.argtypes = [ctypes.c_int]
+        _user32.GetSystemMetrics.restype = ctypes.c_int
+
+        _gdi32.CreateCompatibleDC.argtypes = [wintypes.HDC]
+        _gdi32.CreateCompatibleDC.restype = wintypes.HDC
+        _gdi32.CreateCompatibleBitmap.argtypes = [wintypes.HDC, ctypes.c_int, ctypes.c_int]
+        _gdi32.CreateCompatibleBitmap.restype = wintypes.HBITMAP
+        _gdi32.SelectObject.argtypes = [wintypes.HDC, wintypes.HGDIOBJ]
+        _gdi32.SelectObject.restype = wintypes.HGDIOBJ
+        _gdi32.BitBlt.argtypes = [
+            wintypes.HDC,
+            ctypes.c_int,
+            ctypes.c_int,
+            ctypes.c_int,
+            ctypes.c_int,
+            wintypes.HDC,
+            ctypes.c_int,
+            ctypes.c_int,
+            wintypes.DWORD,
+        ]
+        _gdi32.BitBlt.restype = wintypes.BOOL
+        _gdi32.GetBitmapBits.argtypes = [wintypes.HBITMAP, ctypes.c_long, ctypes.c_void_p]
+        _gdi32.GetBitmapBits.restype = ctypes.c_long
+        _gdi32.DeleteObject.argtypes = [wintypes.HGDIOBJ]
+        _gdi32.DeleteObject.restype = wintypes.BOOL
+        _gdi32.DeleteDC.argtypes = [wintypes.HDC]
+        _gdi32.DeleteDC.restype = wintypes.BOOL
+    except (AttributeError, OSError) as e:
+        logger.debug("[SoMGrounder] Win32 ctypes prototype init skipped: %s", e)
 
 
 class SoMGrounder:
@@ -77,28 +90,26 @@ class SoMGrounder:
 
         # 1. Fast OCR Exact/Contains Match (RapidOCR)
         if loc_type in ("auto", "smart", "ocr_exact", "ocr_contains") and search_term:
-            from core.extraction_pipeline import _get_rapid_ocr
+            from core.image_processing import run_rapid_ocr
 
-            engine = _get_rapid_ocr()
-            if engine is not None:
-                try:
-                    img_np = np.array(screen) if np is not None else None
-                    if img_np is not None:
-                        res, _ = engine(img_np)
-                        if res:
-                            # Pass 1: Exact match
-                            for line in res:
-                                box, text, _ = line
-                                t = text.strip()
-                                if not t:
-                                    continue
-                                if search_term.lower() == t.lower():
-                                    xs = [float(p[0]) for p in box]
-                                    ys = [float(p[1]) for p in box]
-                                    cx = int(sum(xs) / len(xs))
-                                    cy = int(sum(ys) / len(ys))
-                                    offset = cast(list[int], locator.get("offset", [0, 0]))
-                                    return origin_x + cx + offset[0], origin_y + cy + offset[1]
+            try:
+                img_np = np.array(screen) if np is not None else None
+                if img_np is not None:
+                    res = run_rapid_ocr(img_np)
+                    if res:
+                        # Pass 1: Exact match
+                        for line in res:
+                            box, text, _ = line
+                            t = text.strip()
+                            if not t:
+                                continue
+                            if search_term.lower() == t.lower():
+                                xs = [float(p[0]) for p in box]
+                                ys = [float(p[1]) for p in box]
+                                cx = int(sum(xs) / len(xs))
+                                cy = int(sum(ys) / len(ys))
+                                offset = cast(list[int], locator.get("offset", [0, 0]))
+                                return origin_x + cx + offset[0], origin_y + cy + offset[1]
 
                             # Pass 2: Contains match (only for non-exact locator types)
                             if loc_type != "ocr_exact":
@@ -114,8 +125,8 @@ class SoMGrounder:
                                         cy = int(sum(ys) / len(ys))
                                         offset = cast(list[int], locator.get("offset", [0, 0]))
                                         return origin_x + cx + offset[0], origin_y + cy + offset[1]
-                except Exception as e:
-                    logger.warning("[SoMGrounder] RapidOCR Locator error: %s", e)
+            except Exception as e:
+                logger.warning("[SoMGrounder] RapidOCR Locator error: %s", e)
 
         # 2. Set-of-Mark (SoM) Grounding via VLM with High-Res Quadrant Tiling
         if (loc_type in ("auto", "smart", "som_vlm")) and vision_extractor and search_term:
@@ -165,50 +176,25 @@ class SoMGrounder:
         """Captures a screenshot of the entire screen or focuses the target window title."""
         if window_title and sys.platform == "win32":
             try:
-                hwnd = ctypes.windll.user32.FindWindowW(None, window_title)  # type: ignore[union-attr]
-                if not hwnd:
-                    found: list[int] = []
+                from core.skills.window_manager import activate_window, find_window_hwnd
 
-                    def enum_windows_proc(h: int, _lparam: int) -> bool:
-                        length = ctypes.windll.user32.GetWindowTextLengthW(h)  # type: ignore[union-attr]
-                        if length > 0:
-                            buff = ctypes.create_unicode_buffer(length + 1)
-                            ctypes.windll.user32.GetWindowTextW(h, buff, length + 1)  # type: ignore[union-attr]
-                            if window_title.lower().replace("*", "") in buff.value.lower():
-                                found.append(h)
-                        return True
-
-                    cb = ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.c_void_p, ctypes.c_void_p)(enum_windows_proc)
-                    ctypes.windll.user32.EnumWindows(cb, 0)
-                    if found:
-                        hwnd = found[0]
-
+                hwnd = find_window_hwnd(window_title)
                 if hwnd:
-                    user32 = ctypes.windll.user32  # type: ignore[union-attr]
-                    kernel32 = ctypes.windll.kernel32  # type: ignore[union-attr]
-                    current_tid = kernel32.GetCurrentThreadId()
-                    target_tid = user32.GetWindowThreadProcessId(hwnd, None)
-                    if current_tid != target_tid:
-                        user32.AttachThreadInput(current_tid, target_tid, True)
-                    user32.ShowWindow(hwnd, 9)  # SW_RESTORE
-                    user32.SetForegroundWindow(hwnd)
-                    user32.BringWindowToTop(hwnd)
-                    user32.SetFocus(hwnd)
-                    if current_tid != target_tid:
-                        user32.AttachThreadInput(current_tid, target_tid, False)
+                    activate_window(hwnd, show_cmd=9)  # SW_RESTORE
                     time.sleep(0.2)
-            except OSError as e:
+            except Exception as e:
                 logger.warning("[SoMGrounder] Error focusing window '%s': %s", window_title, e)
 
         if sys.platform == "win32":
             hdc = 0
             memdc = 0
             hbmp = 0
+            old_bmp = 0
             user32 = getattr(ctypes.windll, "user32", None)
             gdi32 = getattr(ctypes.windll, "gdi32", None)
             try:
                 if user32 and gdi32:
-                    _init_dpi_awareness()
+                    init_windows_dpi_awareness()
                     x_v = user32.GetSystemMetrics(76)
                     y_v = user32.GetSystemMetrics(77)
                     w_s = user32.GetSystemMetrics(78)
@@ -222,7 +208,7 @@ class SoMGrounder:
                     if hdc:
                         memdc = gdi32.CreateCompatibleDC(hdc)
                         hbmp = gdi32.CreateCompatibleBitmap(hdc, w_s, h_s)
-                        gdi32.SelectObject(memdc, hbmp)
+                        old_bmp = gdi32.SelectObject(memdc, hbmp)
                         gdi32.BitBlt(memdc, 0, 0, w_s, h_s, hdc, x_v, y_v, 0x00CC0020)
                         buf = (ctypes.c_char * (w_s * h_s * 4))()
                         gdi32.GetBitmapBits(hbmp, len(buf), buf)
@@ -232,6 +218,8 @@ class SoMGrounder:
             except Exception as e:
                 logger.debug("[SoMGrounder] Win32 BitBlt capture failed, trying ImageGrab: %s", e)
             finally:
+                if gdi32 and memdc and old_bmp:
+                    gdi32.SelectObject(memdc, old_bmp)
                 if gdi32 and hbmp:
                     gdi32.DeleteObject(hbmp)
                 if gdi32 and memdc:
@@ -262,32 +250,30 @@ class SoMGrounder:
         boxes: list[tuple[int, int, int, int]] = []
 
         # 1. RapidOCR Bounding Boxes (ONNX Engine)
-        from core.extraction_pipeline import _get_rapid_ocr
+        from core.image_processing import run_rapid_ocr
 
-        engine = _get_rapid_ocr()
-        if engine is not None:
-            try:
-                img_np = np.array(img) if np is not None else None
-                if img_np is not None:
-                    res, _ = engine(img_np)
-                    if res:
-                        for line in res:
-                            box = line[0]
-                            xs = [float(p[0]) for p in box]
-                            ys = [float(p[1]) for p in box]
-                            w = max(xs) - min(xs)
-                            h = max(ys) - min(ys)
-                            if w > 15 and h > 8:
-                                boxes.append(
-                                    (
-                                        int(min(xs)),
-                                        int(min(ys)),
-                                        int(max(xs)),
-                                        int(max(ys)),
-                                    )
+        try:
+            img_np = np.array(img) if np is not None else None
+            if img_np is not None:
+                res = run_rapid_ocr(img_np)
+                if res:
+                    for line in res:
+                        box = line[0]
+                        xs = [float(p[0]) for p in box]
+                        ys = [float(p[1]) for p in box]
+                        w = max(xs) - min(xs)
+                        h = max(ys) - min(ys)
+                        if w > 15 and h > 8:
+                            boxes.append(
+                                (
+                                    int(min(xs)),
+                                    int(min(ys)),
+                                    int(max(xs)),
+                                    int(max(ys)),
                                 )
-            except (AttributeError, RuntimeError, OSError, ValueError) as e:
-                logger.debug("[SoMGrounder] RapidOCR box extraction skipped: %s", e)
+                            )
+        except (AttributeError, RuntimeError, OSError, ValueError) as e:
+            logger.debug("[SoMGrounder] RapidOCR box extraction skipped: %s", e)
 
         # 2. Contour detection via OpenCV (for textless buttons & icons)
         if cv2 is not None and np is not None:

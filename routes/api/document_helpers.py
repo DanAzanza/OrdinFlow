@@ -21,9 +21,8 @@ from core.routing import (
 from core.utils import (
     deduplicate_path,
     is_missing_value,
-    remove_source_with_meta,
     safe_move,
-    trash_source_with_meta,
+    send_to_trash,
 )
 from routes.state import DashboardState
 
@@ -61,14 +60,20 @@ def load_meta_sidecar(filepath: str) -> dict[str, Any] | None:
     return None
 
 
-def _remove_meta_sidecar(filepath: str, use_trash: bool = True) -> None:
-    """Deletes or trashes the .meta sidecar file if present."""
+def remove_meta_sidecar(filepath: str, use_trash: bool = True) -> None:
+    """Deletes or trashes the .meta sidecar file directly if present without creating double .meta extensions."""
     meta_path = filepath if filepath.endswith(".meta") else filepath + ".meta"
     if os.path.exists(meta_path):
-        if use_trash:
-            trash_source_with_meta(meta_path)
-        else:
-            remove_source_with_meta(meta_path)
+        try:
+            if use_trash:
+                send_to_trash(meta_path)
+            else:
+                os.remove(meta_path)
+        except OSError as e:
+            logger.debug("[DocumentHelpers] Could not remove meta sidecar %s: %s", meta_path, e)
+
+
+_remove_meta_sidecar = remove_meta_sidecar
 
 
 def safe_move_with_meta(src_path: str, dst_path: str) -> None:
@@ -102,14 +107,34 @@ def _get_doc_routing_cfg(doc_type: str) -> dict:
     return {}
 
 
-def _resolve_and_guard(subpath: str, base_dir: str) -> tuple[str | None, tuple[Any, int] | None]:
+def resolve_and_guard(
+    subpath: str,
+    base_dir: str,
+    require_type: str = "file",
+    allow_root: bool = False,
+) -> tuple[str | None, tuple[Any, int] | None]:
     """Resolves subpath against base_dir and applies security and existence guards."""
     full_path = os.path.abspath(os.path.join(base_dir, subpath))
     if not _is_within_base(full_path, base_dir):
         return None, (jsonify({"error": "Access denied"}), 403)
-    if not os.path.isfile(full_path):
-        return None, (jsonify({"error": "File not found"}), 404)
+
+    if not allow_root and Path(full_path).resolve() == Path(base_dir).resolve():
+        return None, (jsonify({"error": "Operation not allowed on root directory"}), 400)
+
+    if require_type == "file":
+        if not os.path.isfile(full_path):
+            return None, (jsonify({"error": "File not found"}), 404)
+    elif require_type == "dir":
+        if not os.path.isdir(full_path):
+            return None, (jsonify({"error": "Directory not found"}), 404)
+    elif require_type == "any":
+        if not os.path.exists(full_path):
+            return None, (jsonify({"error": "Path not found"}), 404)
+
     return full_path, None
+
+
+_resolve_and_guard = resolve_and_guard
 
 
 def _get_doc_optional_fields(doc_type: str) -> set:
@@ -226,6 +251,8 @@ def _generate_pdf_thumbnail(full_path: str):
         return jsonify({"error": "PyMuPDF (fitz) not available"}), 500
     try:
         with fitz.open(full_path) as doc:
+            if len(doc) == 0:
+                return jsonify({"error": "PDF has no pages"}), 400
             page = doc[0]
             zoom = 280 / max(page.rect.width, 1.0)
             mat = fitz.Matrix(zoom, zoom)
@@ -238,5 +265,5 @@ def _generate_pdf_thumbnail(full_path: str):
         res.headers["ETag"] = etag
         res.headers["Cache-Control"] = "public, max-age=86400"
         return res
-    except (OSError, RuntimeError, ValueError, TypeError) as e:
+    except (OSError, RuntimeError, ValueError, TypeError, IndexError) as e:
         return jsonify({"error": f"Preview error: {e}"}), 500
