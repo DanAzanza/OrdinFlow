@@ -112,13 +112,17 @@ class ImagePreprocessor:
             img_h, img_w = img.shape[:2]
 
             gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+            render_dpi = getattr(self.config, "render_dpi", 200) or 200
+            dpi_scale = max(0.2, render_dpi / 300.0)
 
-            # 1. Robust Background Estimation (Sample inset margin 15px to 60px inside edge to avoid black scanner bed)
+            # 1. Robust Background Estimation (Sample inset margin proportionally inside edge to avoid black scanner bed)
             if img_h > 120 and img_w > 120:
-                margin_top = gray[15 : min(60, img_h // 4), :]
-                margin_bottom = gray[max(0, img_h - 60) : img_h - 15, :]
-                margin_left = gray[:, 15 : min(60, img_w // 4)]
-                margin_right = gray[:, max(0, img_w - 60) : img_w - 15]
+                m_min = max(5, int(15 * dpi_scale))
+                m_max = max(m_min + 5, int(60 * dpi_scale))
+                margin_top = gray[m_min : min(m_max, img_h // 4), :]
+                margin_bottom = gray[max(0, img_h - m_max) : img_h - m_min, :]
+                margin_left = gray[:, m_min : min(m_max, img_w // 4)]
+                margin_right = gray[:, max(0, img_w - m_max) : img_w - m_min]
                 margin_samples = np.concatenate([
                     margin_top.flatten(),
                     margin_bottom.flatten(),
@@ -146,24 +150,26 @@ class ImagePreprocessor:
             valid_rects: list[tuple[int, int, int, int]] = []
 
             # DPI-aware border strip thresholds (ignore thin lines along edge, keep headers)
-            max_edge_strip_w = max(30, int(img_w * 0.025))
-            max_edge_strip_h = max(30, int(img_h * 0.025))
+            max_edge_strip_w = max(int(20 * dpi_scale), int(img_w * 0.025))
+            max_edge_strip_h = max(int(20 * dpi_scale), int(img_h * 0.025))
+            touch_tol = max(2, int(5 * dpi_scale))
+            dust_limit = max(10, int(25 * dpi_scale))
 
             for cnt in contours:
                 x, y, w, h = cv2.boundingRect(cnt)
                 if w < self.config.min_contour_area and h < self.config.min_contour_area:
                     continue
 
-                touches_left = x <= 5
-                touches_top = y <= 5
-                touches_right = (x + w) >= (img_w - 5)
-                touches_bottom = (y + h) >= (img_h - 5)
+                touches_left = x <= touch_tol
+                touches_top = y <= touch_tol
+                touches_right = (x + w) >= (img_w - touch_tol)
+                touches_bottom = (y + h) >= (img_h - touch_tol)
                 touches_edge = touches_left or touches_top or touches_right or touches_bottom
 
                 # Filter thin scanner shadows / roller lines along outer edges
                 is_vert_strip = (touches_left or touches_right) and w <= max_edge_strip_w
                 is_horiz_strip = (touches_top or touches_bottom) and h <= max_edge_strip_h
-                is_corner_dust = touches_edge and w < 25 and h < 25
+                is_corner_dust = touches_edge and w < dust_limit and h < dust_limit
 
                 if is_vert_strip or is_horiz_strip or is_corner_dust:
                     continue
@@ -180,10 +186,11 @@ class ImagePreprocessor:
                 y1 = max(0, y_min - pad)
                 x2 = min(img_w, x_max + pad)
                 y2 = min(img_h, y_max + pad)
-                if (x2 - x1) > 50 and (y2 - y1) > 50:
+                min_dim = int(50 * dpi_scale)
+                if (x2 - x1) > min_dim and (y2 - y1) > min_dim:
                     img = img[y1:y2, x1:x2]
 
-            # 4. Apply White Border ONCE at 300 DPI stage
+            # 4. Apply White Border ONCE at raw rendering stage
             bw = self.config.white_border
             if bw > 0:
                 val = [255, 255, 255] if len(img.shape) == 3 else 255
@@ -277,8 +284,9 @@ class ImagePreprocessor:
                 with fitz.open(pdf_path) as doc:
                     if 0 <= idx < len(doc):
                         page = doc[idx]
-                        mat_300 = fitz.Matrix(300 / 72, 300 / 72)
-                        pix = page.get_pixmap(matrix=mat_300, colorspace=fitz.csRGB)
+                        dpi = getattr(self.config, "render_dpi", 200) or 200
+                        mat = fitz.Matrix(dpi / 72, dpi / 72)
+                        pix = page.get_pixmap(matrix=mat, colorspace=fitz.csRGB)
                         raw_img = Image.frombytes("RGB", (pix.width, pix.height), pix.samples)
                         del pix
                         prep_img = self.prepare_base_image(raw_img)
@@ -292,7 +300,7 @@ class ImagePreprocessor:
         pdf_path: str,
         return_raw: bool = False,
     ) -> list[Image.Image] | None:
-        """Reads the document and creates prepared base images using standardized 300 DPI rendering.
+        """Reads the document and creates prepared base images using standardized DPI rendering.
         Uses PyMuPDF (fitz) for PDFs and Pillow for image files.
         """
         _, ext = os.path.splitext(pdf_path.lower())
@@ -305,10 +313,11 @@ class ImagePreprocessor:
                 pil_images: list[Image.Image] = []
                 with fitz.open(pdf_path) as doc:
                     n_pages = len(doc)
-                    mat_300 = fitz.Matrix(300 / 72, 300 / 72)
+                    dpi = getattr(self.config, "render_dpi", 200) or 200
+                    mat = fitz.Matrix(dpi / 72, dpi / 72)
                     for i in range(n_pages):
                         page = doc[i]
-                        pix = page.get_pixmap(matrix=mat_300, colorspace=fitz.csRGB)
+                        pix = page.get_pixmap(matrix=mat, colorspace=fitz.csRGB)
                         img = Image.frombytes("RGB", (pix.width, pix.height), pix.samples)
                         pil_images.append(img)
                         del pix

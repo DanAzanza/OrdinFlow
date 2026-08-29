@@ -247,6 +247,15 @@ class LLMExtractor:
                 last_error = str(e)
                 wait_time = 2 ** (attempt + 1)
                 logger.warning(f"[-] LLM call failed (attempt {attempt + 1}/{retries}): {e}. Waiting {wait_time}s...")
+                if hasattr(self.config, "n_gpu_layers") and getattr(self.config, "n_gpu_layers", 0) != 0:
+                    err_lower = str(e).lower()
+                    if any(x in err_lower for x in ["access violation", "cuda", "out of memory", "segmentation fault"]):
+                        logger.warning("[*] GPU backend error during inference. Switching to CPU mode (n_gpu_layers=0)...")
+                        setattr(self.config, "n_gpu_layers", 0)
+                        try:
+                            self._backend.unload()
+                        except Exception:
+                            pass
                 time.sleep(wait_time)
         if last_error:
             logger.error(f"[!] Vision API error after {retries} attempts: {last_error}")

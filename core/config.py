@@ -35,8 +35,9 @@ class AppConfig:
     n_threads: int = 0
 
     # Preprocessing settings
+    render_dpi: int = 200
     crop_padding: int = 5
-    white_border: int = 32
+    white_border: int = 21
     contrast_limit: float = 1.0
 
     # Dashboard settings

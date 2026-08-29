@@ -538,3 +538,37 @@ def test_classify_single_page_skips_describe_image_on_known_doctype():
     mock_llm.describe_image.assert_not_called()
 
 
+def test_get_optimal_cpu_threads():
+    """Tests that _get_optimal_cpu_threads respects configured threads and calculates physical cores cleanly."""
+    from core.llm_backends import _get_optimal_cpu_threads
+
+    # 1. Configured threads > 0 are respected directly
+    assert _get_optimal_cpu_threads(4) == 4
+    assert _get_optimal_cpu_threads(8) == 8
+
+    # 2. Default calculation (0) returns a positive integer
+    threads = _get_optimal_cpu_threads(0)
+    assert isinstance(threads, int)
+    assert threads >= 1
+
+
+def test_generate_layer_candidates():
+    """Tests strictly decreasing layer candidate ladder for dynamic VRAM fitting."""
+    from core.llm_backends import _generate_layer_candidates
+
+    assert _generate_layer_candidates(-1) == [-1, 20, 10, 5, 0]
+    assert _generate_layer_candidates(0) == [0]
+    assert _generate_layer_candidates(36) == [36, 20, 10, 5, 0]
+    assert _generate_layer_candidates(15) == [15, 10, 5, 0]
+
+
+def test_render_dpi_in_app_config():
+    """Tests that AppConfig default render_dpi is 200 and white_border is 21."""
+    from core.config import AppConfig
+
+    cfg = AppConfig()
+    assert cfg.render_dpi == 200
+    assert cfg.white_border == 21
+
+
+

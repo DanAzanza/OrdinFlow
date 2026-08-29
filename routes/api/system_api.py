@@ -36,6 +36,8 @@ _CONFIG_SAFE_KEYS = [
     "type_k",
     "type_v",
     "max_tokens",
+    "n_threads",
+    "render_dpi",
     "vision_api_timeout",
     "vision_api_retries",
     "crop_edge_threshold",

@@ -11,8 +11,9 @@ type_k: 8
 type_v: 8
 max_tokens: 512
 n_threads: 0
+render_dpi: 200
 crop_padding: 5
-white_border: 32
+white_border: 21
 contrast_limit: 1.0
 dashboard_port: 8080
 crop_edge_threshold: 30

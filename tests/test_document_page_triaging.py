@@ -109,8 +109,9 @@ def test_apply_pdf_rotation():
     assert rot_0.size == (200, 100)
 
 
-def test_standardized_300dpi_rendering(tmp_path, test_config):
-    """Creates a synthetic PDF containing a single full-page scan and verifies standardized 300 DPI rendering."""
+def test_standardized_dpi_rendering(tmp_path, test_config):
+    """Creates a synthetic PDF containing a single full-page scan and verifies standardized DPI rendering."""
+    test_config.render_dpi = 200
     preprocessor = ImagePreprocessor(test_config)
 
     # 1. Create sample JPEG scan
@@ -127,16 +128,17 @@ def test_standardized_300dpi_rendering(tmp_path, test_config):
     doc.save(pdf_path)
     doc.close()
 
-    # 3. Test create_source_images renders the page cleanly at 300 DPI
+    # 3. Test create_source_images renders the page cleanly at 200 DPI
     raw_images = preprocessor.create_source_images(pdf_path, return_raw=True)
     assert raw_images is not None
     assert len(raw_images) == 1
-    # Check that it renders at standardized 300 DPI (2480x3509 for A4)
-    assert raw_images[0].size == (2480, 3509)
+    # Check that it renders at standardized 200 DPI (approx 1653x2339 for A4)
+    assert raw_images[0].size == (1653, 2339) or raw_images[0].size == (1654, 2339)
 
 
-def test_standardized_300dpi_rendering_with_page_rotation(tmp_path, test_config):
-    """Verifies that PDF page rotation (/Rotate 90) is properly rendered at 300 DPI."""
+def test_standardized_dpi_rendering_with_page_rotation(tmp_path, test_config):
+    """Verifies that PDF page rotation (/Rotate 90) is properly rendered at configured DPI."""
+    test_config.render_dpi = 200
     preprocessor = ImagePreprocessor(test_config)
 
     # Landscape scan (1600x1200) inserted into rotated page
@@ -156,8 +158,8 @@ def test_standardized_300dpi_rendering_with_page_rotation(tmp_path, test_config)
     raw_images = preprocessor.create_source_images(pdf_path, return_raw=True)
     assert raw_images is not None
     assert len(raw_images) == 1
-    # After 90° rotation, landscape page is rendered as portrait at 300 DPI
-    assert raw_images[0].size == (2480, 3509)
+    # After 90° rotation, landscape page is rendered as portrait at 200 DPI
+    assert raw_images[0].size == (1653, 2339) or raw_images[0].size == (1654, 2339)
 
 
 def test_standalone_image_loading_with_exif_support(tmp_path, test_config):
@@ -221,7 +223,8 @@ def test_digital_pdf_line_level_spatial_coordinates(tmp_path):
 
 
 def test_page_with_logo_renders_cleanly_at_300dpi(tmp_path, test_config):
-    """Verifies that a digital PDF page with a small logo and vector text renders cleanly at 300 DPI."""
+    """Verifies that a digital PDF page with a small logo and vector text renders cleanly at 300 DPI when requested."""
+    test_config.render_dpi = 300
     preprocessor = ImagePreprocessor(test_config)
 
     logo = Image.new("RGB", (100, 50), color="red")

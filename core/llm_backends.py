@@ -159,6 +159,29 @@ def _parse_ggml_type(val: Any, default: int = 8) -> int:
     return default
 
 
+def _get_optimal_cpu_threads(configured_threads: int = 0) -> int:
+    """Calculates optimal thread count for llama.cpp without SMT oversubscription."""
+    if configured_threads and configured_threads > 0:
+        return configured_threads
+
+    physical_cores = None
+    try:
+        import psutil  # type: ignore[import-untyped]
+
+        physical_cores = psutil.cpu_count(logical=False)
+    except Exception:
+        pass
+
+    if not physical_cores or physical_cores <= 0:
+        logical = os.cpu_count() or 4
+        physical_cores = max(1, logical // 2 if logical > 2 else logical)
+
+    # Leave 1 core free on multi-core systems for OS, Web API, and RapidOCR
+    if physical_cores > 2:
+        return physical_cores - 1
+    return max(1, physical_cores)
+
+
 def _generate_layer_candidates(requested: int) -> list[int]:
     """Generates a strictly decreasing layer ladder for dynamic VRAM fitting."""
     standard_steps = [36, 20, 10, 5, 0]
@@ -227,9 +250,7 @@ class _LlamaCppBackend(LLMBackend):
         parsed_type_k = _parse_ggml_type(getattr(config, "type_k", 8))
         parsed_type_v = _parse_ggml_type(getattr(config, "type_v", 8))
 
-        n_threads = getattr(config, "n_threads", 0)
-        if not n_threads or n_threads <= 0:
-            n_threads = max(4, (os.cpu_count() or 4) - 2)
+        n_threads = _get_optimal_cpu_threads(getattr(config, "n_threads", 0))
 
         cache_key = (
             model_path,
@@ -384,8 +405,34 @@ class _LlamaCppBackend(LLMBackend):
                                 clean_kwargs.pop("no_perf", None)
                                 loaded_llm = Llama(**clean_kwargs)  # type: ignore[assignment]
 
+                            # Probe lightweight execution to confirm the GPU / context is functioning
+                            try:
+                                loaded_llm.create_chat_completion(
+                                    messages=[{"role": "user", "content": "1"}],
+                                    max_tokens=1,
+                                )
+                            except Exception as probe_err:
+                                if cand != 0:
+                                    logger.warning(
+                                        "[-] Forward probe failed for n_gpu_layers=%s (flash_attn=%s): %s. Downgrading...",
+                                        "ALL" if cand < 0 else str(cand),
+                                        try_flash,
+                                        probe_err,
+                                    )
+                                    try:
+                                        if hasattr(loaded_llm, "close"):
+                                            loaded_llm.close()  # type: ignore[attr-defined]
+                                    except Exception:
+                                        pass
+                                    loaded_llm = None
+                                    gc.collect()
+                                    time.sleep(0.1)
+                                    continue
+                                else:
+                                    logger.debug("[-] CPU probe note: %s", probe_err)
+
                             logger.info(
-                                "[+] Successfully fitted %s layer(s) into GPU/system memory (flash_attn=%s).",
+                                "[+] Successfully fitted and validated %s layer(s) into GPU/system memory (flash_attn=%s).",
                                 "ALL" if cand < 0 else str(cand),
                                 try_flash,
                             )
@@ -606,11 +653,14 @@ class _LlamaCppBackend(LLMBackend):
                     else:
                         content = getattr(message, "content", "") if message is not None else ""
 
-                result = str(content).strip() if isinstance(content, (str, list)) else ""
-                return result
-            except (AttributeError, RuntimeError, ValueError, TypeError) as e:
+                return str(content).strip() if isinstance(content, (str, list)) else ""
+            except Exception as e:
                 logger.warning("[-] LLM call failed: %s", e)
-                return ""
+                err_str = str(e).lower()
+                if any(x in err_str for x in ["access violation", "segmentation fault", "cuda", "out of memory"]):
+                    logger.error("[!] Critical LLM backend error detected: %s. Unloading model for clean recovery...", e)
+                    self.unload()
+                raise
 
 
 # ---- Server Backend with Instructor/Pydantic (optional) ----
