@@ -628,9 +628,10 @@ class _LlamaCppBackend(LLMBackend):
                 try:
                     resp = self._llm.create_chat_completion(**kwargs)  # type: ignore[attr-defined]
                 except Exception as e:
-                    if grammar_obj is not None:
-                        logger.warning("[-] LLM call with grammar failed (%s). Retrying unconstrained...", e)
+                    if grammar_obj is not None or "response_format" in kwargs:
+                        logger.warning("[-] LLM call with grammar/response_format failed (%s). Retrying unconstrained...", e)
                         kwargs.pop("grammar", None)
+                        kwargs.pop("response_format", None)
                         resp = self._llm.create_chat_completion(**kwargs)  # type: ignore[attr-defined]
                     else:
                         raise
