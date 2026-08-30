@@ -102,36 +102,11 @@ def _is_valid_gguf(path_str: str, min_mb: int = 10) -> bool:
 
 
 _KV_QUANT_MAP: dict[str, int] = {
-    # 8-bit (Recommended default)
-    "8": 8,
-    "q8_0": 8,
-    "q8": 8,
-    "8bit": 8,
-    "int8": 8,
-    "q8_1": 9,
-    # 16-bit / unquantized
-    "1": 1,
-    "f16": 1,
-    "fp16": 1,
-    "16bit": 1,
-    "half": 1,
-    # 32-bit
-    "0": 0,
-    "f32": 0,
-    "fp32": 0,
-    "32bit": 0,
-    "float": 0,
-    # 4-bit / 5-bit
-    "2": 2,
-    "q4_0": 2,
-    "q4": 2,
-    "4bit": 2,
-    "q4_1": 3,
-    "6": 6,
-    "q5_0": 6,
-    "q5": 6,
-    "5bit": 6,
-    "q5_1": 7,
+    "8": 8, "q8_0": 8, "q8": 8, "8bit": 8, "int8": 8, "q8_1": 9,
+    "1": 1, "f16": 1, "fp16": 1, "16bit": 1, "half": 1,
+    "0": 0, "f32": 0, "fp32": 0, "32bit": 0, "float": 0,
+    "2": 2, "q4_0": 2, "q4": 2, "4bit": 2, "q4_1": 3,
+    "6": 6, "q5_0": 6, "q5": 6, "5bit": 6, "q5_1": 7,
 }
 
 _SUPPORTED_KV_TYPES = {0, 1, 2, 3, 6, 7, 8, 9}
@@ -408,19 +383,11 @@ class _LlamaCppBackend(LLMBackend):
                             # Probe lightweight execution to confirm the GPU / context is functioning
                             try:
                                 if chat_handler is not None:
-                                    dummy_b64_jpg = (
-                                        "/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAIBAQEBAQIBAQECAgICAgQDAgICAgUEBAMEBgUGBgYFBgYGBwkIBgcJBwYGCAsICQ"
-                                        "oKCgoKBggLDAsKDAkKCgr/2wBDAQICAgICAgUDAwUKBwYHCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoK"
-                                        "CgoKCgoKCgoKCgr/wAARCAA4ADgDASIAAhEBAxEB/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAw"
-                                        "IEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6Q0RFRkdI"
-                                        "SUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1N"
-                                        "XW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/8QAHwEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoL/8QAtREAAgECBAQDBAcF"
-                                        "BAQAAQJ3AAECAxEEBSExBhJBUQdhcRMiMoEIFEKRobHBCSMzUvAVYnLRChYkNOEl8RcYGRomJygpKjU2Nzg5OkNERUZHSElKU1"
-                                        "RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6goOEhYaHiImKkpOUlZaXmJmaoqOkpaanqKmqsrO0tba3uLm6wsPExcbHyMnK0tPU1dbX"
-                                        "2Nna4uPk5ebn6Onq8vP09fb3+Pn6/9oADAMBAAIRAxEAPwD9/KKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAK"
-                                        "KKKACiiigAooooAKKKKACiiigAooooAKKKKAP/2Q=="
+                                    dummy_b64 = (
+                                        "/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAP////////////////////////////////////////////////////"
+                                        "//////////////////////////////////wgALCAABAAEBAREA/8QAFBABAAAAAAAAAAAAAAAAAAAAAP/aAAgBAQABPxA="
                                     )
-                                    probe_messages = self._convert_messages([{"role": "user", "content": "probe", "images": [dummy_b64_jpg]}])
+                                    probe_messages = self._convert_messages([{"role": "user", "content": "probe", "images": [dummy_b64]}])
                                 else:
                                     probe_messages = [{"role": "user", "content": "1"}]
 
@@ -457,11 +424,17 @@ class _LlamaCppBackend(LLMBackend):
                                 else:
                                     logger.debug("[-] CPU probe note: %s", probe_err)
 
-                            logger.info(
-                                "[+] Successfully fitted and validated %s layer(s) into GPU/system memory (flash_attn=%s).",
-                                "ALL" if cand < 0 else str(cand),
-                                try_flash,
-                            )
+                            if cand == 0 and n_gpu_layers != 0:
+                                logger.warning(
+                                    "[*] GPU offloading not viable (insufficient VRAM). Successfully switched model execution to CPU mode (n_gpu_layers=0, %d threads).",
+                                    n_threads,
+                                )
+                            else:
+                                logger.info(
+                                    "[+] Successfully fitted and validated %s layer(s) into GPU/system memory (flash_attn=%s).",
+                                    "ALL" if cand < 0 else str(cand),
+                                    try_flash,
+                                )
                             break
                         except Exception as alloc_err:
                             logger.warning(

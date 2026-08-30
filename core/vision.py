@@ -252,7 +252,10 @@ class LLMExtractor:
                 if hasattr(self.config, "n_gpu_layers") and getattr(self.config, "n_gpu_layers", 0) != 0:
                     err_lower = str(e).lower()
                     if any(x in err_lower for x in ["access violation", "cuda", "out of memory", "segmentation fault"]):
-                        logger.warning("[*] GPU backend error during inference. Switching to CPU mode (n_gpu_layers=0)...")
+                        logger.warning(
+                            "[!] Critical GPU backend error during inference (%s). Switching in-memory to pure CPU mode (n_gpu_layers=0)...",
+                            e,
+                        )
                         setattr(self.config, "n_gpu_layers", 0)
                         try:
                             self._backend.unload()
