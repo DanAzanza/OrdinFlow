@@ -519,17 +519,18 @@ def test_classify_single_page_skips_describe_image_on_known_doctype():
 
 
 def test_get_optimal_cpu_threads():
-    """Tests that _get_optimal_cpu_threads respects configured threads and calculates physical cores cleanly."""
+    """Tests that _get_optimal_cpu_threads respects configured threads and defaults to all cores when <= 0."""
+    import os
     from core.llm_backends import _get_optimal_cpu_threads
 
     # 1. Configured threads > 0 are respected directly
     assert _get_optimal_cpu_threads(4) == 4
     assert _get_optimal_cpu_threads(8) == 8
 
-    # 2. Default calculation (0) returns a positive integer
+    # 2. Default calculation (0) returns all available cores
     threads = _get_optimal_cpu_threads(0)
     assert isinstance(threads, int)
-    assert threads >= 1
+    assert threads == (os.cpu_count() or 4)
 
 
 def test_render_dpi_in_app_config():

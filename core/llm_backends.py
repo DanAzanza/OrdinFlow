@@ -135,26 +135,10 @@ def _parse_ggml_type(val: Any, default: int = 8) -> int:
 
 
 def _get_optimal_cpu_threads(configured_threads: int = 0) -> int:
-    """Calculates optimal thread count for llama.cpp without SMT oversubscription."""
+    """Returns configured thread count, or all available CPU cores when <= 0."""
     if configured_threads and configured_threads > 0:
         return configured_threads
-
-    physical_cores = None
-    try:
-        import psutil  # type: ignore[import-untyped]
-
-        physical_cores = psutil.cpu_count(logical=False)
-    except Exception:
-        pass
-
-    if not physical_cores or physical_cores <= 0:
-        logical = os.cpu_count() or 4
-        physical_cores = max(1, logical // 2 if logical > 2 else logical)
-
-    # Leave 1 core free on multi-core systems for OS, Web API, and RapidOCR
-    if physical_cores > 2:
-        return physical_cores - 1
-    return max(1, physical_cores)
+    return max(1, os.cpu_count() or 4)
 
 
 def _generate_layer_candidates(requested: int) -> list[int]:
