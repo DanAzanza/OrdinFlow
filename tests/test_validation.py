@@ -480,3 +480,22 @@ def test_notiz_skips_llm_vision_extraction(processor):
     assert not mock_tier.called
     assert res is not None
     assert res.get("Document") == "Notiz"
+
+
+def test_validate_extracted_data_insufficient_evidence_weight(processor):
+    """Verifies that validate_extracted_data rejects single measurement extractions when evidence_weight < 1.25."""
+    extracted = {
+        "Document": "Lieferschein",
+        "Vorname": "Max",
+        "Nachname": "Mustermann",
+        "Datum": "2026-05-12",
+        "Produkt": "Dienstleistung",
+        "_confidence": {"Vorname": 1.0, "Nachname": 1.0, "Datum": 1.0, "Produkt": 1.0},
+        "_evidence_weight": {"Vorname": 2.0, "Nachname": 2.0, "Datum": 1.0, "Produkt": 2.0},
+    }
+
+    is_valid, reason = processor.extraction_pipeline.validate_extracted_data(extracted)
+    assert not is_valid
+    assert "Insufficient evidence for required field 'Datum'" in reason
+    assert "1.00 < 1.25" in reason
+

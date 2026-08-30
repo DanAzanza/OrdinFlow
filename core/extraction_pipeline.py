@@ -336,9 +336,9 @@ class ExtractionPipeline:
                 res["vision_description"] = desc
             return res
 
-        t1_dim = getattr(self.config, "tier1_dimension", 1260)
-        t2_dim = getattr(self.config, "tier2_dimension", 1512)
-        t3_dim = getattr(self.config, "tier3_dimension", 1764)
+        t1_dim = getattr(self.config, "tier1_dimension", 1120)
+        t2_dim = getattr(self.config, "tier2_dimension", 1344)
+        t3_dim = getattr(self.config, "tier3_dimension", 1568)
 
         # ── Step 1: Spatial OCR-LLM Pass (Layout-Aware Text) ──
         text_pass_results = self.run_text_extraction_tier(document_pages, "Document", "Spatial OCR-LLM Pass")
@@ -388,6 +388,7 @@ class ExtractionPipeline:
                 group_final["vision_description"] = desc
             group_final["pages"] = page_nums
             group_final["_confidence"] = confidences
+            group_final["_evidence_weight"] = winning_weights
             return group_final
 
         # ── Step 3: Vision-LLM Tier 2 for pending fields ──
@@ -471,6 +472,7 @@ class ExtractionPipeline:
 
         group_final["pages"] = page_nums
         group_final["_confidence"] = confidences
+        group_final["_evidence_weight"] = winning_weights
         return group_final
 
     def validate_extracted_data(self, extracted: dict[str, Any] | None) -> tuple[bool, str]:
@@ -500,6 +502,10 @@ class ExtractionPipeline:
             if isinstance(res.get("_confidence"), dict):
                 confidences.update(res["_confidence"])
 
+            evidence_weights = dict(extracted.get("_evidence_weight", {}))
+            if isinstance(res.get("_evidence_weight"), dict):
+                evidence_weights.update(res["_evidence_weight"])
+
             for field in extraction_fields:
                 if field in optional_fields:
                     continue
@@ -519,6 +525,14 @@ class ExtractionPipeline:
                         False,
                         f"Low confidence for required field '{field}' (K={conf:.2f}) in {matched_type} – manual review required",
                     )
+                # Evidence weight check: if tracked, required text fields need weight >= 1.25 (at least 2 measurements)
+                if evidence_weights and field in evidence_weights:
+                    ew = evidence_weights[field]
+                    if ew < 1.25:
+                        return (
+                            False,
+                            f"Insufficient evidence for required field '{field}' (weight={ew:.2f} < 1.25) in {matched_type} – manual review required",
+                        )
 
             if validation_cfg.get("signature_required", False):
                 has_sig = _to_bool_value(res.get("Signed", False)) or _to_bool_value(extracted.get("Signed", False))

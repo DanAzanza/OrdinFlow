@@ -407,10 +407,33 @@ class _LlamaCppBackend(LLMBackend):
 
                             # Probe lightweight execution to confirm the GPU / context is functioning
                             try:
+                                if chat_handler is not None:
+                                    dummy_b64_jpg = (
+                                        "/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAIBAQEBAQIBAQECAgICAgQDAgICAgUEBAMEBgUGBgYFBgYGBwkIBgcJBwYGCAsICQ"
+                                        "oKCgoKBggLDAsKDAkKCgr/2wBDAQICAgICAgUDAwUKBwYHCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoK"
+                                        "CgoKCgoKCgoKCgr/wAARCAA4ADgDASIAAhEBAxEB/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAw"
+                                        "IEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6Q0RFRkdI"
+                                        "SUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1N"
+                                        "XW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/8QAHwEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoL/8QAtREAAgECBAQDBAcF"
+                                        "BAQAAQJ3AAECAxEEBSExBhJBUQdhcRMiMoEIFEKRobHBCSMzUvAVYnLRChYkNOEl8RcYGRomJygpKjU2Nzg5OkNERUZHSElKU1"
+                                        "RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6goOEhYaHiImKkpOUlZaXmJmaoqOkpaanqKmqsrO0tba3uLm6wsPExcbHyMnK0tPU1dbX"
+                                        "2Nna4uPk5ebn6Onq8vP09fb3+Pn6/9oADAMBAAIRAxEAPwD9/KKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAK"
+                                        "KKKACiiigAooooAKKKKACiiigAooooAKKKKAP/2Q=="
+                                    )
+                                    probe_messages = self._convert_messages([{"role": "user", "content": "probe", "images": [dummy_b64_jpg]}])
+                                else:
+                                    probe_messages = [{"role": "user", "content": "1"}]
+
                                 loaded_llm.create_chat_completion(
-                                    messages=[{"role": "user", "content": "1"}],
+                                    messages=probe_messages,  # type: ignore[arg-type]
                                     max_tokens=1,
+                                    temperature=0.0,
                                 )
+                                if hasattr(loaded_llm, "reset") and callable(loaded_llm.reset):
+                                    try:
+                                        loaded_llm.reset()
+                                    except Exception:
+                                        pass
                             except Exception as probe_err:
                                 if cand != 0:
                                     logger.warning(
@@ -425,6 +448,9 @@ class _LlamaCppBackend(LLMBackend):
                                     except Exception:
                                         pass
                                     loaded_llm = None
+                                    # Recreate chat_handler cleanly to prevent corrupted C++ CLIP state
+                                    if mmproj_raw and os.path.isfile(mmproj_raw) and _is_valid_gguf(mmproj_raw, min_mb=50):
+                                        chat_handler = Qwen25VLChatHandler(clip_model_path=mmproj_raw, verbose=False)
                                     gc.collect()
                                     time.sleep(0.1)
                                     continue
