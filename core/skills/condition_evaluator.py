@@ -232,8 +232,8 @@ def evaluate_condition(
             actual = str(context.get(var_name, ""))
             if not pattern:
                 return False
-            if len(pattern) > 250:
-                logger.warning("[ConditionEvaluator] Regex pattern exceeds maximum allowed length (250 chars): %r", pattern[:50])
+            if len(pattern) > 150:
+                logger.warning("[ConditionEvaluator] Regex pattern exceeds maximum allowed length (150 chars): %r", pattern[:50])
                 return False
             # Validate character set for user-defined patterns
             if not re.match(r"^[\w\s\.\*\+\?\(\)\[\]\{\}\|\\/:^$#@!%&=;,~`'\"<>\\-]+$", pattern, re.UNICODE):
@@ -262,7 +262,7 @@ def evaluate_condition(
                 return False
             try:
                 compiled = re.compile(pattern)
-                return bool(compiled.search(actual))
+                return bool(compiled.search(actual[:500]))
             except re.error as e:
                 logger.warning("[ConditionEvaluator] Invalid regex pattern %r: %s", pattern, e)
                 return False

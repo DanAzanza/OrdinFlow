@@ -35,15 +35,18 @@ def pick_path_dialog(
 ) -> str | None:
     """Opens a native GUI picker dialog to choose a folder or file."""
     selected_path: str | None = None
+    BLOCKED_SYSTEM_DIRS = {"windows", "$recycle.bin", "system volume information", "recovery"}
     init_dir = os.getcwd()
     if initial_dir and isinstance(initial_dir, str):
         is_safe, clean_init = sanitize_safe_path(initial_dir)
         if is_safe and clean_init:
             p = Path(clean_init).resolve()
-            if p.is_dir():
-                init_dir = str(p)
-            elif p.is_file():
-                init_dir = str(p.parent)
+            path_parts = [part.lower() for part in p.parts]
+            if not any(blocked in path_parts for blocked in BLOCKED_SYSTEM_DIRS):
+                if p.is_dir():
+                    init_dir = str(p)
+                elif p.is_file():
+                    init_dir = str(p.parent)
 
     # 1. Try tkinter dialog
     try:

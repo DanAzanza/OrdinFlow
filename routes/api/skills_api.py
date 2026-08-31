@@ -23,7 +23,7 @@ from core.skills import (
 from core.skills.engines.export_engine import ExportEngine
 from core.skills.models import TaskProgress
 from core.skills.synthesizer import SkillSynthesizer
-from core.utils import sanitize_safe_path
+from core.utils import is_within_allowed_roots, sanitize_safe_path
 from routes.api.skills_crud_api import skills_crud_api_bp
 from routes.api.skills_queue_api import skills_queue_api_bp
 from routes.state import DashboardState
@@ -330,10 +330,10 @@ def test_run_skill():
     doc_path = ""
     if is_safe_doc and clean_doc:
         resolved_doc = Path(clean_doc).resolve()
-        if resolved_doc.is_file():
+        if resolved_doc.is_file() and is_within_allowed_roots(resolved_doc):
             doc_path = str(resolved_doc)
     if raw_doc_path and not doc_path:
-        return jsonify({"error": f"Provided document path is invalid or does not exist: {raw_doc_path}"}), 400
+        return jsonify({"error": f"Provided document path is invalid, unauthorized, or does not exist: {raw_doc_path}"}), 400
 
     # If the skill definition requires a source document but none was provided
     requires_doc = False

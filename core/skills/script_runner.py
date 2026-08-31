@@ -7,7 +7,9 @@ fail-fast variable validation, and UTF-8 encoding support.
 from __future__ import annotations
 
 import logging
+import os
 from pathlib import Path
+import re
 import shlex
 import shutil
 import subprocess
@@ -17,9 +19,16 @@ from collections.abc import Callable, Mapping
 from typing import Any
 
 from core.skills.models import TaskProgress
-from core.utils import sanitize_safe_path
+from core.utils import is_within_allowed_roots, sanitize_safe_path
 
 logger = logging.getLogger(__name__)
+
+
+def _sanitize_script_var(val: Any) -> str:
+    """Sanitizes context variable values inserted into script strings against dangerous shell characters."""
+    s = str(val or "")
+    s = re.sub(r"[\x00\r\n;`|&$]", "", s)
+    return s.strip()
 
 
 def execute_script_step(
@@ -37,22 +46,32 @@ def execute_script_step(
         resolved_doc = None
         if is_safe and clean_fp:
             candidate = Path(clean_fp).resolve()
-            if candidate.is_file():
+            if candidate.is_file() and is_within_allowed_roots(candidate):
                 resolved_doc = candidate
 
         if not resolved_doc:
             logger.error(
-                "  [!] SCRIPT aborted: Required variable 'document_fullpath' is missing or points to non-existent file: %r",
+                "  [!] SCRIPT aborted: Required variable 'document_fullpath' is missing, invalid, or points to non-existent file: %r",
                 raw_fp,
             )
             return False
 
-    cmd_to_run = substitute_fn(raw_cmd, context)
+    sanitized_context = {
+        k: (_sanitize_script_var(v) if k != "document_fullpath" else str(v)) for k, v in context.items()
+    }
+    cmd_to_run = substitute_fn(raw_cmd, sanitized_context)
     timeout_s = float(step.get("timeout_s", 60.0))
     shell_type = str(step.get("shell", "powershell")).lower()
 
     if not cmd_to_run:
         return True
+
+    # Prepare safe environment variables with context values for scripts
+    proc_env = dict(os.environ)
+    for k, v in context.items():
+        if isinstance(v, (str, int, float, bool)):
+            clean_k = re.sub(r"[^A-Za-z0-9_]", "_", str(k)).upper()
+            proc_env[f"ORDINFLOW_{clean_k}"] = str(v)
 
     try:
         if shell_type in ("powershell", "ps1", "pwsh") and sys.platform == "win32":
@@ -74,6 +93,7 @@ def execute_script_step(
                 encoding="utf-8",
                 errors="replace",
                 shell=False,
+                env=proc_env,
             )
         else:
             args = shlex.split(cmd_to_run, posix=(sys.platform != "win32"))
@@ -91,6 +111,7 @@ def execute_script_step(
                 encoding="utf-8",
                 errors="replace",
                 shell=False,
+                env=proc_env,
             )
 
         start_proc_t = time.time()

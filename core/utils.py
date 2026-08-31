@@ -422,11 +422,17 @@ def cleanup_empty_folder(folder_path: str, stop_at: str | None = None) -> None:
     if not is_safe or not clean_folder:
         return
 
+    if stop_at:
+        if not is_within_base(clean_folder, stop_at):
+            return
+        stop_p = Path(stop_at).resolve()
+    else:
+        stop_p = None
+
     cur_p = Path(clean_folder).resolve()
-    stop_p = Path(stop_at).resolve() if stop_at else None
 
     while cur_p.is_dir():
-        if stop_p and (cur_p == stop_p or stop_p not in cur_p.parents):
+        if stop_p and (cur_p == stop_p or not is_within_base(cur_p, stop_p)):
             break
         try:
             entries = list(cur_p.iterdir())
@@ -457,13 +463,42 @@ def is_sensitive_credential_text(text: str, description: str = "") -> bool:
 
 
 def is_within_base(path: str | Path, base_dir: str | Path) -> bool:
-    """Verifies that path resolves strictly inside base_dir, handling Win32 drive & case rules."""
-    try:
-        resolved_path = Path(path).resolve()
-        resolved_base = Path(base_dir).resolve()
-        return resolved_path.is_relative_to(resolved_base)
-    except (ValueError, TypeError, RuntimeError):
+    """Verifies that path resolves strictly inside base_dir, handling Win32 drive & case rules and UNC paths."""
+    if not path or not base_dir:
         return False
+    try:
+        p = os.path.normcase(os.path.abspath(os.path.realpath(str(path))))
+        base = os.path.normcase(os.path.abspath(os.path.realpath(str(base_dir))))
+        if p == base:
+            return True
+        return os.path.commonpath([p, base]) == base
+    except (ValueError, TypeError, OSError):
+        return False
+
+
+def is_within_allowed_roots(path: str | Path, allowed_roots: list[str | Path] | None = None) -> bool:
+    """Verifies that path is within any of the allowed application roots or tempdir."""
+    if not path:
+        return False
+    if allowed_roots is None:
+        import tempfile
+
+        roots: list[str | Path] = [tempfile.gettempdir(), os.getcwd()]
+        try:
+            from routes.state import DashboardState
+
+            if DashboardState.config:
+                if DashboardState.config.base_dir:
+                    roots.append(DashboardState.config.base_dir)
+                if DashboardState.config.watch_dir:
+                    roots.append(DashboardState.config.watch_dir)
+                if DashboardState.config.target_base_dir:
+                    roots.append(DashboardState.config.target_base_dir)
+        except (ImportError, AttributeError):
+            pass
+        allowed_roots = roots
+
+    return any(is_within_base(path, r) for r in allowed_roots if r)
 
 
 def safe_join_path(base_dir: str | Path, *subpaths: str) -> str | None:

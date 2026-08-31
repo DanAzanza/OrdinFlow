@@ -10,7 +10,7 @@ import time
 from typing import Any
 
 from core.routing import parse_folder_name
-from core.utils import sanitize_safe_path
+from core.utils import is_within_allowed_roots, sanitize_safe_path
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +26,7 @@ def filter_matching_files(
         return matching_files
 
     is_safe, clean_folder = sanitize_safe_path(folder_path)
-    if not is_safe or not clean_folder:
+    if not is_safe or not clean_folder or not is_within_allowed_roots(clean_folder):
         return matching_files
 
     folder_p = Path(clean_folder).resolve()
@@ -210,7 +210,7 @@ def mark_file_skill_executed(filepath: str, skill_id: str) -> bool:
     if not filepath or not isinstance(filepath, str):
         return False
     is_safe, clean_fp = sanitize_safe_path(filepath)
-    if not is_safe or not clean_fp:
+    if not is_safe or not clean_fp or not is_within_allowed_roots(clean_fp):
         return False
 
     fp = Path(clean_fp).resolve()

@@ -192,6 +192,12 @@ def ensure_window_ready(
                 return False
 
             base_name = os.path.basename(clean_exe)
+            ext = os.path.splitext(base_name)[1].lower()
+            # Enforce executable file extensions on Windows
+            if sys.platform == "win32" and ext not in (".exe", ".com", ""):
+                logger.warning("[WindowManager] Non-executable file type rejected in exe_path: %r", base_name)
+                return False
+
             resolved_bin = shutil.which(base_name)
             if not resolved_bin:
                 candidate = Path(clean_exe).resolve()

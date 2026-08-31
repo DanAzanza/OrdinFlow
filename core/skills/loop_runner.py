@@ -16,7 +16,7 @@ from typing import Any
 from core.skills.case_router import filter_matching_files, mark_file_skill_executed
 from core.skills.condition_evaluator import evaluate_condition
 from core.skills.models import TaskProgress
-from core.utils import sanitize_safe_path
+from core.utils import is_within_allowed_roots, sanitize_safe_path
 
 logger = logging.getLogger(__name__)
 
@@ -73,7 +73,7 @@ def execute_for_each_document(
     raw_folder = str(context.get("folder_path") or "").strip()
     is_safe_folder, clean_folder = sanitize_safe_path(raw_folder)
     folder_path = ""
-    if is_safe_folder and clean_folder:
+    if is_safe_folder and clean_folder and is_within_allowed_roots(clean_folder):
         resolved_folder = Path(clean_folder).resolve()
         if resolved_folder.is_dir():
             folder_path = str(resolved_folder)
@@ -82,7 +82,7 @@ def execute_for_each_document(
         # If single document was provided without folder, treat as single item iteration
         raw_doc = str(context.get("document_fullpath") or "").strip()
         is_safe_doc, clean_doc = sanitize_safe_path(raw_doc)
-        if is_safe_doc and clean_doc:
+        if is_safe_doc and clean_doc and is_within_allowed_roots(clean_doc):
             resolved_doc = Path(clean_doc).resolve()
             if resolved_doc.is_file():
                 folder_path = str(resolved_doc.parent)

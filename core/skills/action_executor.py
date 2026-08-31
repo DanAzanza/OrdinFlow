@@ -18,7 +18,7 @@ from typing import Any
 from core.skills.shield import input_shield
 from core.skills.text_helpers import paste_text_via_clipboard, type_unicode_text
 from core.skills.window_manager import ensure_window_ready, handle_known_dialog_popups, save_failure_screenshot
-from core.utils import is_sensitive_credential_text, sanitize_safe_path
+from core.utils import is_sensitive_credential_text, is_within_allowed_roots, sanitize_safe_path
 
 logger = logging.getLogger(__name__)
 
@@ -184,9 +184,9 @@ def execute_type_file_path(
         return False
 
     resolved_file = Path(clean_path).resolve()
-    if not resolved_file.is_file():
-        logger.error("  [!] TYPE_FILE_PATH aborted: Target file does not exist on disk: %s", resolved_file)
-        save_failure_screenshot(step_id, f"Missing File: {resolved_file}", target_window)
+    if not resolved_file.is_file() or not is_within_allowed_roots(resolved_file):
+        logger.error("  [!] TYPE_FILE_PATH aborted: Target file does not exist on disk or is outside allowed roots: %s", resolved_file)
+        save_failure_screenshot(step_id, f"Missing/Unauthorized File: {resolved_file}", target_window)
         return False
 
     final_path = str(resolved_file)
