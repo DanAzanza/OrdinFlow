@@ -469,7 +469,7 @@ class ExportEngine(BaseSkill):
                         step_id=step_id,
                         error_msg=err_msg,
                         context=context,
-                        save_screenshot_fn=lambda sid, msg: self._save_failure_screenshot(sid, msg, win),
+                        save_screenshot_fn=lambda sid, msg, target_win=win: self._save_failure_screenshot(sid, msg, target_win),
                     ):
                         return False
 
@@ -545,7 +545,7 @@ class ExportEngine(BaseSkill):
                     )
 
                 all_ok = True
-                for idx, c in enumerate(pending, 1):
+                for _idx, c in enumerate(pending, 1):
                     if not self.wait_for_queue(reporter, "Skill paused..."):
                         logger.info("[*] Batch case execution stopped by queue.")
                         all_ok = False

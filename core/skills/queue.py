@@ -407,10 +407,10 @@ class SkillQueueManager:
                     if not engine:
                         raise RuntimeError(f"Skill engine for '{current_task.skill_id}' not found.")
 
-                    def progress_reporter(prog: TaskProgress) -> None:
+                    def progress_reporter(prog: TaskProgress, task=current_task) -> None:
                         with self.lock:
-                            if current_task is not None:
-                                current_task.progress = prog
+                            if task is not None:
+                                task.progress = prog
 
                     res = engine.execute(current_task, reporter=progress_reporter)
                     success = res.success

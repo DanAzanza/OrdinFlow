@@ -39,8 +39,8 @@ def heartbeat_monitor() -> None:
             if qm.is_running and not qm.is_paused:
                 DashboardState.last_heartbeat = time.time()
                 continue
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("[Dashboard] Queue manager check failed: %s", e)
 
         # If background jobs exist (e.g. split/OCR jobs in job_queue), keep heartbeat alive
         try:
@@ -49,8 +49,8 @@ def heartbeat_monitor() -> None:
             if any(j.get("status") in ("RUNNING", "PENDING") for j in job_queue.list_jobs()):
                 DashboardState.last_heartbeat = time.time()
                 continue
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("[Dashboard] Job queue check failed: %s", e)
 
         # If background document processing exists, keep heartbeat alive
         try:
@@ -59,8 +59,8 @@ def heartbeat_monitor() -> None:
                     if len(DashboardState.processor.processing_files) > 0:
                         DashboardState.last_heartbeat = time.time()
                         continue
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("[Dashboard] Processor check failed: %s", e)
 
         # 300 seconds (5 minutes) inactivity timeout when browser tab is closed and no tasks are running
         if time.time() - DashboardState.last_heartbeat > 300:
@@ -79,7 +79,7 @@ def open_browser(port: int) -> None:
     for _ in range(40):
         time.sleep(0.5)
         try:
-            with urllib.request.urlopen(f"http://127.0.0.1:{port}/api/status", timeout=1) as resp:
+            with urllib.request.urlopen(f"http://127.0.0.1:{port}/api/status", timeout=1) as resp:  # noqa: S310
                 if resp.status == 200:
                     server_ready = True
                     break
@@ -92,7 +92,7 @@ def open_browser(port: int) -> None:
     opened = False
     if sys.platform == "win32":
         try:
-            subprocess.Popen(f'cmd /c start "" "{url}"', shell=True)
+            subprocess.Popen(["cmd", "/c", "start", "", url], shell=False)
             logger.info(f"[Dashboard] Browser opened via cmd start ({url})")
             opened = True
         except (OSError, RuntimeError, subprocess.SubprocessError) as e:
@@ -108,7 +108,7 @@ def open_browser(port: int) -> None:
 
     if not opened and hasattr(os, "startfile"):
         try:
-            os.startfile(url)
+            os.startfile(url)  # noqa: S606
             logger.info(f"[Dashboard] Browser opened via os.startfile({url})")
             opened = True
         except (OSError, RuntimeError) as e:

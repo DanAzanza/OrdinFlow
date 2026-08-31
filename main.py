@@ -142,7 +142,7 @@ def is_ordinflow_running(port: int) -> bool:
     url = f"http://127.0.0.1:{port}/api/status"
     req = urllib.request.Request(url, headers={"User-Agent": "OrdinFlow-Launcher"})
     try:
-        with urllib.request.urlopen(req, timeout=1.5) as resp:
+        with urllib.request.urlopen(req, timeout=1.5) as resp:  # noqa: S310
             return bool(resp.status == 200)
     except (URLError, TimeoutError, OSError):
         return False
@@ -153,26 +153,33 @@ def _cleanup_stale_instance(port: int) -> None:
     if sys.platform != "win32":
         return
     logger.warning("[!] Port %s is occupied by a stale process. Attempting cleanup...", port)
-    res = subprocess.run(
-        f"netstat -ano | findstr :{port}",
-        shell=True,
-        capture_output=True,
-        text=True,
-        check=False,
-    )
+    try:
+        res = subprocess.run(
+            ["netstat", "-ano"],
+            shell=False,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError) as e:
+        logger.debug("[Main] netstat execution failed: %s", e)
+        return
+
     pids = set()
+    port_str = f":{port}"
     for line in res.stdout.strip().splitlines():
         parts = line.split()
-        if len(parts) >= 5 and "LISTENING" in parts:
+        if len(parts) >= 5 and "LISTENING" in parts and any(port_str in p for p in parts):
             pids.add(parts[-1])
+
     for pid in pids:
         try:
             int_pid = int(pid)
             if int_pid != os.getpid():
                 logger.info("[*] Killing stale process with PID %s...", pid)
                 subprocess.run(
-                    f"taskkill /F /PID {pid}",
-                    shell=True,
+                    ["taskkill", "/F", "/PID", str(int_pid)],
+                    shell=False,
                     capture_output=True,
                     check=False,
                 )

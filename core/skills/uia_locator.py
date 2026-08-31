@@ -262,8 +262,8 @@ class UIALocator:
                     return res
                 child = walker.GetNextSiblingElement(child)
 
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("[UIALocator] Error walking COM tree: %s", e)
 
         return None
 
@@ -289,8 +289,8 @@ class UIALocator:
                     val_pattern = pattern.QueryInterface(core_mod.IUIAutomationValuePattern)
                     if val_pattern:
                         return str(val_pattern.CurrentValue or "").strip()
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("[UIALocator] COM ValuePattern get error: %s", e)
 
         # Try Win32 WM_GETTEXT
         hwnd = elem.get("hwnd", 0)
@@ -329,8 +329,8 @@ class UIALocator:
                     if val_pattern:
                         val_pattern.SetValue(str(text))
                         return True
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("[UIALocator] COM ValuePattern set error: %s", e)
 
         hwnd = elem.get("hwnd", 0)
         if hwnd and sys.platform == "win32":
@@ -363,8 +363,8 @@ class UIALocator:
                     if invoke_pattern:
                         invoke_pattern.Invoke()
                         return True
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("[UIALocator] COM InvokePattern click error: %s", e)
 
         hwnd = elem.get("hwnd", 0)
         if hwnd and sys.platform == "win32":

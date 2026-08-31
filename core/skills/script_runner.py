@@ -87,8 +87,8 @@ def execute_script_step(
             if wait_for_queue_fn and not wait_for_queue_fn(reporter, "Skill paused..."):
                 try:
                     proc.terminate()
-                except Exception:
-                    pass
+                except OSError as e:
+                    logger.debug("[ScriptRunner] Subprocess terminate error: %s", e)
                 return False
 
             remaining_t = timeout_s - (time.time() - start_proc_t)
@@ -96,8 +96,8 @@ def execute_script_step(
                 try:
                     proc.kill()
                     proc.communicate(timeout=1.0)
-                except Exception:
-                    pass
+                except OSError as e:
+                    logger.debug("[ScriptRunner] Subprocess kill error: %s", e)
                 logger.error("[ScriptRunner] Script timed out after %.1fs", timeout_s)
                 if step.get("on_failure", "stop") == "stop":
                     return False

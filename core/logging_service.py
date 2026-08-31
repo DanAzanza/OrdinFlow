@@ -117,7 +117,7 @@ def compute_log_stats(lines: list[str], valid_doc_types: list[str] | None = None
             if "\ufffd" in cat and valid_doc_types:
                 for valid_type in valid_doc_types:
                     if len(valid_type) == len(cat) and all(
-                        c1 == c2 for c1, c2 in zip(valid_type, cat) if c2 != "\ufffd"
+                        c1 == c2 for c1, c2 in zip(valid_type, cat, strict=False) if c2 != "\ufffd"
                     ):
                         cat = valid_type
                         break

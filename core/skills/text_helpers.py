@@ -217,8 +217,8 @@ def apply_string_modifier(val: str, modifier: str) -> str:
                     return f"{y}-{m}-{d}"
                 if fmt == "DD.MM.YY":
                     return f"{d}.{m}.{y[-2:]}"
-        except Exception:
-            pass
+        except (ValueError, TypeError, IndexError) as e:
+            logger.debug("[TextHelpers] Date formatting failed for '%s': %s", val, e)
 
     return val
 

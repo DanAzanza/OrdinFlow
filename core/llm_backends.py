@@ -42,8 +42,8 @@ def _is_nvidia_cuda_available() -> bool:
                 lib = ctypes.windll.LoadLibrary(nvcuda_path)
                 if lib:
                     return True
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("[LLMBackend] CUDA LoadLibrary check failed: %s", e)
         try:
             import winreg
 
@@ -60,8 +60,8 @@ def _is_nvidia_cuda_available() -> bool:
                                     return True
                     except OSError:
                         continue
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("[LLMBackend] Registry display adapter check failed: %s", e)
     elif sys.platform == "linux":
         return os.path.exists("/proc/driver/nvidia/version") or os.path.exists("/usr/local/cuda")
     return False
@@ -79,8 +79,8 @@ def _is_vulkan_available() -> bool:
                 lib = ctypes.windll.LoadLibrary(vulkan_path)
                 if lib:
                     return True
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("[LLMBackend] Vulkan LoadLibrary check failed: %s", e)
     elif sys.platform == "linux":
         return os.path.exists("/usr/lib/libvulkan.so.1") or os.path.exists("/usr/lib/x86_64-linux-gnu/libvulkan.so.1")
     return False
@@ -105,7 +105,7 @@ class LLMBackend(ABC):
 
     def unload(self) -> None:
         """Unloads model weights from memory."""
-        pass
+        logger.debug("[LLMBackend] Default unload no-op.")
 
 
 # Global module caching for the Llama instance
@@ -238,8 +238,8 @@ class _LlamaCppBackend(LLMBackend):
         n_threads = _get_optimal_cpu_threads(getattr(config, "n_threads", 0))
 
         cache_key = (
-            model_path,
-            mmproj_raw,
+            os.path.abspath(model_path),
+            os.path.abspath(mmproj_raw) if mmproj_raw else None,
             n_gpu_layers,
             n_ctx,
             n_batch,
@@ -247,6 +247,7 @@ class _LlamaCppBackend(LLMBackend):
             flash_attn,
             parsed_type_k,
             parsed_type_v,
+            n_threads,
         )
 
         with _LLM_LOCK:
@@ -262,8 +263,8 @@ class _LlamaCppBackend(LLMBackend):
                 try:
                     if hasattr(_GLOBAL_LLM_INSTANCE, "close"):
                         _GLOBAL_LLM_INSTANCE.close()  # type: ignore[attr-defined]
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug("[LLMBackend] Error closing LLM instance: %s", e)
                 _GLOBAL_LLM_INSTANCE = None
                 _GLOBAL_LLM_KEY = None
                 gc.collect()
@@ -293,7 +294,7 @@ class _LlamaCppBackend(LLMBackend):
                         for candidate in ["nvidia", "llama_cpp"]:
                             cand_dir = os.path.join(p, candidate)
                             if os.path.exists(cand_dir):
-                                for root, dirs, files in os.walk(cand_dir):
+                                for root, _dirs, files in os.walk(cand_dir):
                                     if any(f.endswith(".dll") for f in files):
                                         dll_dirs.append(root)
                                         try:
@@ -409,8 +410,8 @@ class _LlamaCppBackend(LLMBackend):
                                 if hasattr(loaded_llm, "reset") and callable(loaded_llm.reset):
                                     try:
                                         loaded_llm.reset()
-                                    except Exception:
-                                        pass
+                                    except Exception as reset_err:
+                                        logger.debug("[LLMBackend] Probe reset error: %s", reset_err)
                             except Exception as probe_err:
                                 if cand != 0:
                                     logger.warning(
@@ -422,8 +423,8 @@ class _LlamaCppBackend(LLMBackend):
                                     try:
                                         if hasattr(loaded_llm, "close"):
                                             loaded_llm.close()  # type: ignore[attr-defined]
-                                    except Exception:
-                                        pass
+                                    except Exception as close_err:
+                                        logger.debug("[LLMBackend] Probe close error: %s", close_err)
                                     loaded_llm = None
                                     # Recreate chat_handler cleanly to prevent corrupted C++ CLIP state
                                     if mmproj_raw and os.path.isfile(mmproj_raw) and _is_valid_gguf(mmproj_raw, min_mb=50):

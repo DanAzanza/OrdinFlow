@@ -256,11 +256,11 @@ class LLMExtractor:
                             "[!] Critical GPU backend error during inference (%s). Switching in-memory to pure CPU mode (n_gpu_layers=0)...",
                             e,
                         )
-                        setattr(self.config, "n_gpu_layers", 0)
+                        self.config.n_gpu_layers = 0
                         try:
                             self._backend.unload()
-                        except Exception:
-                            pass
+                        except Exception as unload_err:
+                            logger.debug("[Vision] Error during backend unload: %s", unload_err)
                 time.sleep(wait_time)
         if last_error:
             logger.error(f"[!] Vision API error after {retries} attempts: {last_error}")

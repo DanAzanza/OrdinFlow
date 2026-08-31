@@ -250,8 +250,8 @@ def pick_element_live():
             pt = ctypes.wintypes.POINT()  # type: ignore[attr-defined]
             ctypes.windll.user32.GetCursorPos(ctypes.byref(pt))  # type: ignore[union-attr]
             cur_x, cur_y = pt.x, pt.y
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("[skills_api] Failed to get cursor position: %s", e)
 
     screen = SoMGrounder.capture_screen(window_title)
     if not screen:
