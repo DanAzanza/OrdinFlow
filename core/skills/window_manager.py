@@ -4,15 +4,17 @@ from __future__ import annotations
 
 import logging
 import os
+from pathlib import Path
 import re
+import shutil
 import subprocess
 import sys
 import time
 from collections.abc import Callable, Mapping
-from pathlib import Path
 from typing import Any
 
 from core.skills.grounder import SoMGrounder
+from core.utils import sanitize_safe_path
 
 logger = logging.getLogger(__name__)
 
@@ -184,10 +186,23 @@ def ensure_window_ready(
         logger.info("[WindowManager] Window '%s' not found. Launching executable: '%s'", win_pattern, exe_path)
         try:
             exe_str = str(exe_path).strip('"\'' )
-            if os.path.isfile(exe_str):
-                subprocess.Popen([os.path.abspath(exe_str)])
+            is_safe, clean_exe = sanitize_safe_path(exe_str)
+            resolved_bin = None
+            if is_safe and clean_exe:
+                candidate = Path(clean_exe).resolve()
+                if candidate.is_file():
+                    resolved_bin = str(candidate)
+            if not resolved_bin:
+                base_name = os.path.basename(exe_str)
+                which_res = shutil.which(base_name)
+                if which_res:
+                    resolved_bin = which_res
+
+            if resolved_bin:
+                subprocess.Popen([resolved_bin], shell=False)
             else:
-                subprocess.Popen([exe_str])
+                logger.warning("[WindowManager] Could not resolve valid executable binary for: %r", exe_str)
+                return False
         except Exception as e:
             logger.error("[WindowManager] Failed to launch executable '%s': %s", exe_path, e)
             return False

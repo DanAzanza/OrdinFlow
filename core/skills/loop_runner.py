@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import logging
 import os
+from pathlib import Path
 import time
 from collections.abc import Callable, Mapping
 from typing import Any
@@ -71,18 +72,24 @@ def execute_for_each_document(
 
     raw_folder = str(context.get("folder_path") or "").strip()
     is_safe_folder, clean_folder = sanitize_safe_path(raw_folder)
-    folder_path = os.path.abspath(clean_folder) if (is_safe_folder and clean_folder) else ""
+    folder_path = ""
+    if is_safe_folder and clean_folder:
+        resolved_folder = Path(clean_folder).resolve()
+        if resolved_folder.is_dir():
+            folder_path = str(resolved_folder)
 
-    if not folder_path or not os.path.isdir(folder_path):
+    if not folder_path:
         # If single document was provided without folder, treat as single item iteration
         raw_doc = str(context.get("document_fullpath") or "").strip()
         is_safe_doc, clean_doc = sanitize_safe_path(raw_doc)
-        doc_path = os.path.abspath(clean_doc) if (is_safe_doc and clean_doc) else ""
-        if doc_path and os.path.exists(doc_path):
-            folder_path = os.path.dirname(doc_path)
-        else:
-            logger.error("[LoopRunner] FOR_EACH_DOCUMENT requires a valid folder_path or document_fullpath in context.")
-            return False
+        if is_safe_doc and clean_doc:
+            resolved_doc = Path(clean_doc).resolve()
+            if resolved_doc.is_file():
+                folder_path = str(resolved_doc.parent)
+
+    if not folder_path:
+        logger.error("[LoopRunner] FOR_EACH_DOCUMENT requires a valid folder_path or document_fullpath in context.")
+        return False
 
     allowed_types = step.get("document_types") or step.get("allowed_types") or ["*"]
     if isinstance(allowed_types, str):

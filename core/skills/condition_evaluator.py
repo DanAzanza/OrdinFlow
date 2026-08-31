@@ -236,7 +236,24 @@ def evaluate_condition(
                 logger.warning("[ConditionEvaluator] Regex pattern exceeds maximum allowed length (250 chars): %r", pattern[:50])
                 return False
             # Block nested quantifiers that induce catastrophic backtracking (e.g. (a+)+, (.*)*)
-            if re.search(r"\([^\)]*[\+\*][^\)]*\)[\+\*]", pattern):
+            has_nested = False
+            in_group = 0
+            group_has_quantifier = False
+            for i, char in enumerate(pattern):
+                if char == "\\":
+                    continue
+                if char == "(":
+                    in_group += 1
+                    group_has_quantifier = False
+                elif char == ")":
+                    in_group = max(0, in_group - 1)
+                    if group_has_quantifier and i + 1 < len(pattern) and pattern[i + 1] in ("+", "*"):
+                        has_nested = True
+                        break
+                elif in_group > 0 and char in ("+", "*"):
+                    group_has_quantifier = True
+
+            if has_nested:
                 logger.warning("[ConditionEvaluator] Rejected unsafe nested regex quantifier: %r", pattern)
                 return False
             try:

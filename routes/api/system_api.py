@@ -2,6 +2,7 @@
 
 import logging
 import os
+from pathlib import Path
 import threading
 import time
 from dataclasses import asdict
@@ -246,24 +247,19 @@ def api_system_fs_list():
     ext_filter = request.args.get("filter", "").strip().lower()
 
     base_dir = DashboardState.config.base_dir if DashboardState.config else os.getcwd()
+    base_resolved = Path(base_dir).resolve()
 
-    if not raw_path:
-        target_dir = os.path.abspath(base_dir)
-    else:
+    target_dir_path = base_resolved
+    if raw_path:
         is_safe, clean_path = sanitize_safe_path(raw_path)
         if is_safe and clean_path:
-            norm_path = os.path.abspath(clean_path)
-            if os.path.isfile(norm_path):
-                target_dir = os.path.dirname(norm_path)
-            elif os.path.isdir(norm_path):
-                target_dir = norm_path
-            else:
-                target_dir = os.path.abspath(base_dir)
-        else:
-            target_dir = os.path.abspath(base_dir)
+            p = Path(clean_path).resolve()
+            if p.is_file():
+                target_dir_path = p.parent
+            elif p.is_dir():
+                target_dir_path = p
 
-    if not os.path.exists(target_dir) or not os.path.isdir(target_dir):
-        target_dir = os.path.abspath(base_dir)
+    target_dir = str(target_dir_path)
 
     # Breadcrumbs
     parts: list[tuple[str, str]] = []

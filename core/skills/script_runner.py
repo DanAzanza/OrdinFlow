@@ -9,6 +9,7 @@ from __future__ import annotations
 import logging
 import os
 import shlex
+import shutil
 import subprocess
 import sys
 import time
@@ -50,8 +51,9 @@ def execute_script_step(
 
     try:
         if shell_type in ("powershell", "ps1", "pwsh") and sys.platform == "win32":
+            ps_bin = shutil.which("powershell.exe") or shutil.which("powershell") or "powershell"
             args = [
-                "powershell",
+                ps_bin,
                 "-NoProfile",
                 "-NonInteractive",
                 "-ExecutionPolicy",
@@ -70,14 +72,20 @@ def execute_script_step(
             )
         else:
             args = shlex.split(cmd_to_run, posix=(sys.platform != "win32"))
+            if not args:
+                logger.warning("[ScriptRunner] Empty command string provided.")
+                return False
+            bin_path = shutil.which(args[0])
+            if bin_path:
+                args[0] = bin_path
             proc = subprocess.Popen(
-                args if args else cmd_to_run,
+                args,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
                 encoding="utf-8",
                 errors="replace",
-                shell=False if args else True,
+                shell=False,
             )
 
         start_proc_t = time.time()

@@ -5,9 +5,12 @@ from __future__ import annotations
 import base64
 import logging
 import os
+from pathlib import Path
 import string
 import subprocess
 import sys
+
+from core.utils import sanitize_safe_path
 
 logger = logging.getLogger(__name__)
 
@@ -32,11 +35,15 @@ def pick_path_dialog(
 ) -> str | None:
     """Opens a native GUI picker dialog to choose a folder or file."""
     selected_path: str | None = None
-    init_dir = (
-        os.path.abspath(os.path.normpath(initial_dir.strip()))
-        if (initial_dir and isinstance(initial_dir, str) and os.path.exists(initial_dir))
-        else os.getcwd()
-    )
+    init_dir = os.getcwd()
+    if initial_dir and isinstance(initial_dir, str):
+        is_safe, clean_init = sanitize_safe_path(initial_dir)
+        if is_safe and clean_init:
+            p = Path(clean_init).resolve()
+            if p.is_dir():
+                init_dir = str(p)
+            elif p.is_file():
+                init_dir = str(p.parent)
 
     # 1. Try tkinter dialog
     try:

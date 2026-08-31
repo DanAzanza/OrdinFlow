@@ -5,10 +5,12 @@ from __future__ import annotations
 import json
 import logging
 import os
+from pathlib import Path
 import time
 from typing import Any
 
 from core.routing import parse_folder_name
+from core.utils import sanitize_safe_path
 
 logger = logging.getLogger(__name__)
 
@@ -23,8 +25,12 @@ def filter_matching_files(
     if not folder_path or not isinstance(folder_path, str):
         return matching_files
 
-    folder_clean = os.path.abspath(os.path.normpath(folder_path.strip()))
-    if not os.path.exists(folder_clean) or not os.path.isdir(folder_clean):
+    is_safe, clean_folder = sanitize_safe_path(folder_path)
+    if not is_safe or not clean_folder:
+        return matching_files
+
+    folder_p = Path(clean_folder).resolve()
+    if not folder_p.is_dir():
         return matching_files
 
     if not allowed_types or "*" in allowed_types or "ALL" in [t.upper() for t in allowed_types]:
@@ -32,16 +38,22 @@ def filter_matching_files(
     else:
         allowed_types_clean = [t.strip().lower() for t in allowed_types if t.strip()]
 
-    for fname in sorted(os.listdir(folder_clean)):
-        if fname.lower().endswith(".pdf"):
-            full_path = os.path.join(folder_clean, fname)
-            meta_path = full_path + ".meta"
+    try:
+        entries = sorted(folder_p.iterdir(), key=lambda p: p.name.lower())
+    except OSError:
+        return matching_files
+
+    for entry in entries:
+        if entry.is_file() and entry.name.lower().endswith(".pdf"):
+            fname = entry.name
+            full_path = str(entry)
+            meta_path = Path(str(entry) + ".meta")
             doc_type = "UNKNOWN"
             meta_data: dict[str, Any] = {}
 
-            if os.path.exists(meta_path):
+            if meta_path.is_file():
                 try:
-                    with open(meta_path, encoding="utf-8") as f:
+                    with meta_path.open("r", encoding="utf-8") as f:
                         loaded = json.load(f)
                         if isinstance(loaded, dict):
                             meta_data = loaded
@@ -197,12 +209,16 @@ def mark_file_skill_executed(filepath: str, skill_id: str) -> bool:
     """Updates the .meta sidecar file with the executed skill ID and timestamp using atomic file replacement."""
     if not filepath or not isinstance(filepath, str):
         return False
-    fp_clean = os.path.abspath(os.path.normpath(filepath.strip()))
-    meta_path = fp_clean + ".meta"
+    is_safe, clean_fp = sanitize_safe_path(filepath)
+    if not is_safe or not clean_fp:
+        return False
+
+    fp = Path(clean_fp).resolve()
+    meta_p = Path(str(fp) + ".meta")
     data: dict[str, Any] = {}
-    if os.path.exists(meta_path):
+    if meta_p.is_file():
         try:
-            with open(meta_path, encoding="utf-8") as f:
+            with meta_p.open("r", encoding="utf-8") as f:
                 data = json.load(f) or {}
         except (json.JSONDecodeError, OSError):
             data = {}
@@ -220,14 +236,14 @@ def mark_file_skill_executed(filepath: str, skill_id: str) -> bool:
     history[skill_id] = time.time()
     data["skill_execution_history"] = history
 
-    tmp_path = f"{meta_path}.tmp_{os.getpid()}_{int(time.time() * 1000)}"
+    tmp_p = Path(f"{meta_p}.tmp_{os.getpid()}_{int(time.time() * 1000)}")
     last_err: Exception | None = None
 
     for attempt in range(5):
         try:
-            with open(tmp_path, "w", encoding="utf-8") as f:
+            with tmp_p.open("w", encoding="utf-8") as f:
                 json.dump(data, f, ensure_ascii=False, indent=2)
-            os.replace(tmp_path, meta_path)
+            tmp_p.replace(meta_p)
             logger.info("[CaseRouter] Marked '%s' as executed by '%s'", filepath, skill_id)
             return True
         except OSError as e:
@@ -235,11 +251,11 @@ def mark_file_skill_executed(filepath: str, skill_id: str) -> bool:
             time.sleep(0.05 * (attempt + 1))
 
     # Clean up orphaned tmp file if present
-    if os.path.exists(tmp_path):
+    if tmp_p.is_file():
         try:
-            os.remove(tmp_path)
+            tmp_p.unlink(missing_ok=True)
         except OSError:
             pass
 
-    logger.error("[CaseRouter] Failed writing metadata to %s after 5 attempts: %s", meta_path, last_err)
+    logger.error("[CaseRouter] Failed writing metadata to %s after 5 attempts: %s", meta_p, last_err)
     return False

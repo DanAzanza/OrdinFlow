@@ -5,7 +5,7 @@ from __future__ import annotations
 import ctypes
 import json
 import logging
-import os
+from pathlib import Path
 import re
 import sys
 import time
@@ -124,7 +124,7 @@ def refine_step():
             ]
         ):
             refined["action_type"] = "VERIFY_SCREEN"
-            parts = re.split(r"(?i)\s*(?:,\s*)?(?:wenn nicht|falls nicht|if not)\s+", instruction, maxsplit=1)
+            parts = re.split(r"(?i)[,\s]+(?:wenn nicht|falls nicht|if not)\s+", instruction, maxsplit=1)
             target_part = parts[0]
             target = re.sub(r"(?i)^(prüfe ob|warten auf|verify|check if|suche nach|finde)\s*", "", target_part).strip(
                 "\"' "
@@ -311,8 +311,12 @@ def test_run_skill():
 
     raw_doc_path = str(test_context.get("document_fullpath", "") or "").strip()
     is_safe_doc, clean_doc = sanitize_safe_path(raw_doc_path)
-    doc_path = os.path.abspath(clean_doc) if (is_safe_doc and clean_doc) else ""
-    if raw_doc_path and (not is_safe_doc or not os.path.exists(doc_path)):
+    doc_path = ""
+    if is_safe_doc and clean_doc:
+        resolved_doc = Path(clean_doc).resolve()
+        if resolved_doc.is_file():
+            doc_path = str(resolved_doc)
+    if raw_doc_path and not doc_path:
         return jsonify({"error": f"Provided document path is invalid or does not exist: {raw_doc_path}"}), 400
 
     # If the skill definition requires a source document but none was provided
