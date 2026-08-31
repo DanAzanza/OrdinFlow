@@ -124,8 +124,24 @@ def refine_step():
             ]
         ):
             refined["action_type"] = "VERIFY_SCREEN"
-            parts = re.split(r"(?i)[,\s]+(?:wenn nicht|falls nicht|if not)\s+", instruction, maxsplit=1)
-            target_part = parts[0]
+            instruction_lower = instruction.lower()
+            split_idx = -1
+            match_len = 0
+            for marker in ("wenn nicht", "falls nicht", "if not"):
+                idx = instruction_lower.find(marker)
+                if idx != -1:
+                    split_idx = idx
+                    match_len = len(marker)
+                    break
+
+            if split_idx != -1:
+                target_part = instruction[:split_idx].rstrip(" ,")
+                fallback_part = instruction[split_idx + match_len:].lstrip(" :")
+                parts = [target_part, fallback_part]
+            else:
+                parts = [instruction]
+                target_part = instruction
+
             target = re.sub(r"(?i)^(prüfe ob|warten auf|verify|check if|suche nach|finde)\s*", "", target_part).strip(
                 "\"' "
             )

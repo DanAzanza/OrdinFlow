@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import ctypes
 import logging
-import os
+from pathlib import Path
 import re
 import sys
 import time
@@ -183,11 +183,13 @@ def execute_type_file_path(
         save_failure_screenshot(step_id, f"Security Block: {sub_path}", target_window)
         return False
 
-    final_path = os.path.abspath(clean_path)
-    if not os.path.exists(final_path):
-        logger.error("  [!] TYPE_FILE_PATH aborted: Target file does not exist on disk: %s", final_path)
-        save_failure_screenshot(step_id, f"Missing File: {final_path}", target_window)
+    resolved_file = Path(clean_path).resolve()
+    if not resolved_file.is_file():
+        logger.error("  [!] TYPE_FILE_PATH aborted: Target file does not exist on disk: %s", resolved_file)
+        save_failure_screenshot(step_id, f"Missing File: {resolved_file}", target_window)
         return False
+
+    final_path = str(resolved_file)
 
     if rdp_prefix and re.match(r"^[a-zA-Z]:", final_path):
         drive_letter = final_path[0].upper()

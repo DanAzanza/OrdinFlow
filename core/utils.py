@@ -415,31 +415,35 @@ def remove_source_with_meta(filepath: str) -> None:
 
 def cleanup_empty_folder(folder_path: str, stop_at: str | None = None) -> None:
     """Recursively deletes empty directory and parent directories upwards up to stop_at."""
-    if not os.path.exists(folder_path):
+    if not folder_path or not isinstance(folder_path, str):
         return
 
-    stop_abs = os.path.abspath(stop_at) if stop_at else None
-    cur_path = os.path.abspath(folder_path)
+    is_safe, clean_folder = sanitize_safe_path(folder_path)
+    if not is_safe or not clean_folder:
+        return
 
-    while cur_path and os.path.exists(cur_path):
-        if stop_abs and (cur_path == stop_abs or not cur_path.startswith(stop_abs)):
+    cur_p = Path(clean_folder).resolve()
+    stop_p = Path(stop_at).resolve() if stop_at else None
+
+    while cur_p.is_dir():
+        if stop_p and (cur_p == stop_p or stop_p not in cur_p.parents):
             break
         try:
-            entries = os.listdir(cur_path)
-            doc_files = [f for f in entries if not f.lower().endswith(".meta") and f.lower() != "desktop.ini"]
+            entries = list(cur_p.iterdir())
+            doc_files = [f for f in entries if not f.name.lower().endswith(".meta") and f.name.lower() != "desktop.ini"]
             if not doc_files:
                 for f in entries:
                     try:
-                        os.remove(os.path.join(cur_path, f))
+                        f.unlink(missing_ok=True)
                     except OSError as e:
                         logger.debug("[Utils] Could not remove auxiliary file %s: %s", f, e)
-                os.rmdir(cur_path)
-                logger.info(f"[+] Deleted empty folder: {cur_path}")
-                cur_path = os.path.dirname(cur_path)
+                cur_p.rmdir()
+                logger.info("[+] Deleted empty folder: %s", cur_p)
+                cur_p = cur_p.parent
             else:
                 break
         except OSError as e:
-            logger.debug("[Utils] Could not clean folder %s: %s", cur_path, e)
+            logger.debug("[Utils] Could not clean folder %s: %s", cur_p, e)
             break
 
 

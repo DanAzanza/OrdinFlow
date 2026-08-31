@@ -187,18 +187,18 @@ def ensure_window_ready(
         try:
             exe_str = str(exe_path).strip('"\'' )
             is_safe, clean_exe = sanitize_safe_path(exe_str)
-            resolved_bin = None
-            if is_safe and clean_exe:
+            if not is_safe or not clean_exe:
+                logger.warning("[WindowManager] Rejected unsafe executable path: %r", exe_str)
+                return False
+
+            base_name = os.path.basename(clean_exe)
+            resolved_bin = shutil.which(base_name)
+            if not resolved_bin:
                 candidate = Path(clean_exe).resolve()
                 if candidate.is_file():
                     resolved_bin = str(candidate)
-            if not resolved_bin:
-                base_name = os.path.basename(exe_str)
-                which_res = shutil.which(base_name)
-                if which_res:
-                    resolved_bin = which_res
 
-            if resolved_bin:
+            if resolved_bin and Path(resolved_bin).is_file():
                 subprocess.Popen([resolved_bin], shell=False)
             else:
                 logger.warning("[WindowManager] Could not resolve valid executable binary for: %r", exe_str)

@@ -235,6 +235,10 @@ def evaluate_condition(
             if len(pattern) > 250:
                 logger.warning("[ConditionEvaluator] Regex pattern exceeds maximum allowed length (250 chars): %r", pattern[:50])
                 return False
+            # Validate character set for user-defined patterns
+            if not re.match(r"^[\w\s\.\*\+\?\(\)\[\]\{\}\|\\/:^$#@!%&=;,~`'\"<>\\-]+$", pattern, re.UNICODE):
+                logger.warning("[ConditionEvaluator] Rejected disallowed regex characters in pattern: %r", pattern[:50])
+                return False
             # Block nested quantifiers that induce catastrophic backtracking (e.g. (a+)+, (.*)*)
             has_nested = False
             in_group = 0
@@ -257,7 +261,8 @@ def evaluate_condition(
                 logger.warning("[ConditionEvaluator] Rejected unsafe nested regex quantifier: %r", pattern)
                 return False
             try:
-                return bool(re.search(pattern, actual))
+                compiled = re.compile(pattern)
+                return bool(compiled.search(actual))
             except re.error as e:
                 logger.warning("[ConditionEvaluator] Invalid regex pattern %r: %s", pattern, e)
                 return False
