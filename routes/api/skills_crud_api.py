@@ -55,7 +55,7 @@ def save_skill():
         return jsonify({"status": "ok", "skill_id": saved_name, "name": saved_name})
     except ValueError as e:
         logger.warning("[SkillsCrudAPI] Validation error saving skill: %s", e)
-        return jsonify({"error": str(e)}), 400
+        return jsonify({"error": "Invalid skill configuration or name"}), 400
     except Exception as e:
         logger.error("[SkillsCrudAPI] Error saving skill: %s", e, exc_info=True)
         return jsonify({"error": "Failed to save skill"}), 400
@@ -150,7 +150,7 @@ def skill_yaml_file(skill_id: str):
         return jsonify({"status": "ok", "skill_id": saved_name, "name": saved_name, "skill": parsed})
     except ValueError as e:
         logger.warning("[SkillsCrudAPI] Validation error saving raw YAML: %s", e)
-        return jsonify({"error": str(e)}), 400
+        return jsonify({"error": "Invalid skill YAML configuration"}), 400
     except yaml.YAMLError:
         return jsonify({"error": "Invalid YAML syntax"}), 400
     except Exception as e:

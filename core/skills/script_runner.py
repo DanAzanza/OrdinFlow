@@ -7,7 +7,7 @@ fail-fast variable validation, and UTF-8 encoding support.
 from __future__ import annotations
 
 import logging
-import os
+from pathlib import Path
 import shlex
 import shutil
 import subprocess
@@ -34,8 +34,13 @@ def execute_script_step(
     if "{document_fullpath}" in raw_cmd:
         raw_fp = str(context.get("document_fullpath", "") or "").strip()
         is_safe, clean_fp = sanitize_safe_path(raw_fp)
-        doc_fp = os.path.abspath(clean_fp) if (is_safe and clean_fp) else ""
-        if not doc_fp or not os.path.exists(doc_fp):
+        resolved_doc = None
+        if is_safe and clean_fp:
+            candidate = Path(clean_fp).resolve()
+            if candidate.is_file():
+                resolved_doc = candidate
+
+        if not resolved_doc:
             logger.error(
                 "  [!] SCRIPT aborted: Required variable 'document_fullpath' is missing or points to non-existent file: %r",
                 raw_fp,

@@ -297,7 +297,8 @@ def api_system_fs_list():
     # List entries
     entries: list[dict[str, Any]] = []
     try:
-        scanned = sorted(os.scandir(target_dir), key=lambda e: (not e.is_dir(), e.name.lower()))
+        target_path_obj = Path(target_dir)
+        scanned = sorted(target_path_obj.iterdir(), key=lambda e: (not e.is_dir(), e.name.lower()))
         for e in scanned:
             if e.name.startswith("."):
                 continue
@@ -313,28 +314,21 @@ def api_system_fs_list():
             if is_directory:
                 entries.append({
                     "name": e.name,
-                    "path": os.path.abspath(e.path),
+                    "path": str(e.resolve()),
                     "is_dir": True,
+                    "type": "folder",
                     "size_str": "",
                     "modified_str": mtime_str,
                 })
             elif picker_type == "file":
                 if ext_filter and not e.name.lower().endswith(ext_filter):
                     continue
-                # Format size
-                if size_bytes >= 1024 * 1024 * 1024:
-                    sz_str = f"{size_bytes / (1024**3):.2f} GB"
-                elif size_bytes >= 1024 * 1024:
-                    sz_str = f"{size_bytes / (1024**2):.1f} MB"
-                elif size_bytes >= 1024:
-                    sz_str = f"{size_bytes / 1024:.0f} KB"
-                else:
-                    sz_str = f"{size_bytes} B"
-
+                sz_str = f"{size_bytes / 1024:.1f} KB" if size_bytes < 1048576 else f"{size_bytes / 1048576:.1f} MB"
                 entries.append({
                     "name": e.name,
-                    "path": os.path.abspath(e.path),
+                    "path": str(e.resolve()),
                     "is_dir": False,
+                    "type": "file",
                     "size_str": sz_str,
                     "modified_str": mtime_str,
                 })
