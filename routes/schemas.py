@@ -54,6 +54,9 @@ class ConfigUpdateSchema(BaseModel):
     folder_structure: list[Any] | None = None
     document_types: dict[str, Any] | None = None
 
+    def to_clean_dict(self) -> dict[str, Any]:
+        return self.model_dump(exclude_unset=True)
+
 
 class CaseApprovalSchema(BaseModel):
     """Schema for POST /api/cases/approve."""

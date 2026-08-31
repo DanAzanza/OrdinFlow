@@ -9,7 +9,7 @@ import urllib.parse
 
 from flask import Blueprint, jsonify, request, send_file
 
-from core.utils import send_to_trash
+from core.utils import safe_join_path, send_to_trash
 from routes.api.document_helpers import (
     _MIME_MAP,
     _deduplicate_filename,
@@ -120,7 +120,8 @@ def api_inbox_retry(filename: str):
         logger.info("[Dashboard] Released file for reprocessing via Skill Queue: %s (Task %s)", filename, task.id)
         return jsonify({"status": "ok", "task_id": task.id})
     except (AttributeError, TypeError, RuntimeError) as e:
-        return jsonify({"error": str(e)}), 500
+        logger.error("[Dashboard] Reprocess error for %s: %s", filename, e, exc_info=True)
+        return jsonify({"error": "Failed to release file for reprocessing"}), 500
 
 
 @inbox_api_bp.route("/api/inbox/<path:filename>", methods=["DELETE"])
@@ -144,7 +145,8 @@ def api_inbox_delete(filename: str):
         logger.info("[Dashboard] Moved inbox file (incl. .meta) to trash: %s", filepath)
         return jsonify({"status": "ok"})
     except OSError as e:
-        return jsonify({"error": str(e)}), 500
+        logger.error("[Dashboard] Failed to delete inbox file %s: %s", filepath, e, exc_info=True)
+        return jsonify({"error": "Failed to delete file"}), 500
 
 
 @inbox_api_bp.route("/api/inbox/<path:filename>/assign", methods=["POST"])
@@ -168,8 +170,8 @@ def api_inbox_assign(filename: str):
         return jsonify({"error": "File not found"}), 404
 
     folder_name = _render_target_folder(data, doc_type)
-    target_dir = os.path.abspath(os.path.join(DashboardState.config.target_base_dir, folder_name))
-    if not _is_within_base(target_dir, DashboardState.config.target_base_dir):
+    target_dir = safe_join_path(DashboardState.config.target_base_dir, folder_name)
+    if not target_dir or not _is_within_base(target_dir, DashboardState.config.target_base_dir):
         return jsonify({"error": "Target folder outside base directory"}), 403
     os.makedirs(target_dir, exist_ok=True)
 
@@ -191,7 +193,8 @@ def api_inbox_assign(filename: str):
         )
         return jsonify({"status": "ok", "folder": folder_name, "file": target_filename})
     except OSError as e:
-        return jsonify({"error": str(e)}), 500
+        logger.error("[Dashboard] Manual assignment move error %s -> %s: %s", src_path, target_path, e, exc_info=True)
+        return jsonify({"error": "Failed to assign file"}), 500
 
 
 @inbox_api_bp.route("/api/inbox/<path:filename>/auto_assign", methods=["POST"])
@@ -239,7 +242,9 @@ def api_inbox_auto_assign(filename: str):
             return jsonify({"error": "Filename or metadata does not contain sufficient data for auto-assign"}), 400
 
     target_folder = _render_target_folder(data, doc_type)
-    target_dir = os.path.join(DashboardState.config.target_base_dir, target_folder)
+    target_dir = safe_join_path(DashboardState.config.target_base_dir, target_folder)
+    if not target_dir or not _is_within_base(target_dir, DashboardState.config.target_base_dir):
+        return jsonify({"error": "Target folder outside base directory"}), 403
     os.makedirs(target_dir, exist_ok=True)
 
     ext = os.path.splitext(src_path)[1]
@@ -253,7 +258,8 @@ def api_inbox_auto_assign(filename: str):
         logger.info("[Dashboard] Auto-assign: %s → %s", filename, target_filename)
         return jsonify({"status": "ok"})
     except OSError as e:
-        return jsonify({"error": str(e)}), 500
+        logger.error("[Dashboard] Auto-assign move error %s -> %s: %s", src_path, target_path, e, exc_info=True)
+        return jsonify({"error": "Failed to auto-assign file"}), 500
 
 
 @inbox_api_bp.route("/api/inbox/preview/<path:subpath>")

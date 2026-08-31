@@ -6,6 +6,7 @@ import sys
 import threading
 import time
 from collections import deque
+from pathlib import Path
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -451,6 +452,39 @@ def is_sensitive_credential_text(text: str, description: str = "") -> bool:
     return bool(re.search(pattern, combined))
 
 
+def is_within_base(path: str | Path, base_dir: str | Path) -> bool:
+    """Verifies that path resolves strictly inside base_dir, handling Win32 drive & case rules."""
+    try:
+        resolved_path = Path(path).resolve()
+        resolved_base = Path(base_dir).resolve()
+        return resolved_path.is_relative_to(resolved_base)
+    except (ValueError, TypeError, RuntimeError):
+        return False
+
+
+def safe_join_path(base_dir: str | Path, *subpaths: str) -> str | None:
+    """Safely joins subpaths to base_dir, rejecting directory traversal and drive escapes."""
+    try:
+        base = Path(base_dir).resolve()
+        clean_parts: list[str] = []
+        for p in subpaths:
+            if not p or not isinstance(p, str):
+                continue
+            # Block null bytes and control chars
+            if "\x00" in p or "\r" in p or "\n" in p:
+                return None
+            # Strip drive specifiers and leading slashes/backslashes
+            p_clean = re.sub(r"^[a-zA-Z]:", "", p).lstrip("/\\")
+            clean_parts.append(p_clean)
+
+        target = (base.joinpath(*clean_parts)).resolve()
+        if target.is_relative_to(base):
+            return str(target)
+        return None
+    except (ValueError, TypeError, RuntimeError):
+        return None
+
+
 def sanitize_safe_path(path: str) -> tuple[bool, str]:
     """Validates and sanitizes a file path against null bytes, traversal, and dangerous characters.
 
@@ -460,8 +494,8 @@ def sanitize_safe_path(path: str) -> tuple[bool, str]:
         return True, ""
 
     # 1. Null byte check
-    if "\x00" in path:
-        logger.warning("[Security] Blocked path containing null bytes: %r", path)
+    if "\x00" in path or "\r" in path or "\n" in path:
+        logger.warning("[Security] Blocked path containing control characters: %r", path)
         return False, ""
 
     # 2. Directory traversal checks (reject '..' components)
@@ -473,4 +507,5 @@ def sanitize_safe_path(path: str) -> tuple[bool, str]:
     # 3. Clean and normalize
     normalized = os.path.normpath(path.strip())
     return True, normalized
+
 

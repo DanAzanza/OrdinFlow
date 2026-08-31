@@ -20,7 +20,11 @@ def filter_matching_files(
 ) -> list[dict[str, Any]]:
     """Filters PDF files in a case folder according to allowed document types and loads sidecar metadata."""
     matching_files: list[dict[str, Any]] = []
-    if not os.path.exists(folder_path) or not os.path.isdir(folder_path):
+    if not folder_path or not isinstance(folder_path, str):
+        return matching_files
+
+    folder_clean = os.path.abspath(os.path.normpath(folder_path.strip()))
+    if not os.path.exists(folder_clean) or not os.path.isdir(folder_clean):
         return matching_files
 
     if not allowed_types or "*" in allowed_types or "ALL" in [t.upper() for t in allowed_types]:
@@ -28,9 +32,9 @@ def filter_matching_files(
     else:
         allowed_types_clean = [t.strip().lower() for t in allowed_types if t.strip()]
 
-    for fname in sorted(os.listdir(folder_path)):
+    for fname in sorted(os.listdir(folder_clean)):
         if fname.lower().endswith(".pdf"):
-            full_path = os.path.join(folder_path, fname)
+            full_path = os.path.join(folder_clean, fname)
             meta_path = full_path + ".meta"
             doc_type = "UNKNOWN"
             meta_data: dict[str, Any] = {}
@@ -191,7 +195,10 @@ def extract_all_skill_document_types(skill_def: dict[str, Any]) -> list[str]:
 
 def mark_file_skill_executed(filepath: str, skill_id: str) -> bool:
     """Updates the .meta sidecar file with the executed skill ID and timestamp using atomic file replacement."""
-    meta_path = filepath + ".meta"
+    if not filepath or not isinstance(filepath, str):
+        return False
+    fp_clean = os.path.abspath(os.path.normpath(filepath.strip()))
+    meta_path = fp_clean + ".meta"
     data: dict[str, Any] = {}
     if os.path.exists(meta_path):
         try:

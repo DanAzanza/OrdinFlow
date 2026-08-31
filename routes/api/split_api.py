@@ -12,13 +12,14 @@ try:
 except ImportError:
     fitz = None
 
-from core.utils import cleanup_empty_folder
+from core.utils import cleanup_empty_folder, safe_join_path
 from routes.api.document_helpers import (
     _deduplicate_filename,
     _is_within_base,
     _remove_meta_sidecar,
     _render_target_filename,
     _render_target_folder,
+    _resolve_and_guard,
 )
 from routes.state import DashboardState
 
@@ -59,19 +60,10 @@ def _resolve_split_source(context: str, folder: str | None, filename: str) -> tu
     if context == "cases":
         if not folder:
             return None, (jsonify({"error": "Folder is required for cases context"}), 400)
-        src_path = os.path.abspath(os.path.join(DashboardState.config.target_base_dir, folder, filename))
-        if not _is_within_base(src_path, DashboardState.config.target_base_dir):
-            return None, (jsonify({"error": "Access denied"}), 403)
-        if not os.path.isfile(src_path):
-            return None, (jsonify({"error": "File not found"}), 404)
+        subpath = os.path.join(folder, filename)
+        return _resolve_and_guard(subpath, DashboardState.config.target_base_dir, require_type="file")
     else:
-        src_path = os.path.abspath(os.path.join(DashboardState.config.watch_dir, filename))
-        if not _is_within_base(src_path, DashboardState.config.watch_dir):
-            return None, (jsonify({"error": "Access denied"}), 403)
-        if not os.path.isfile(src_path):
-            return None, (jsonify({"error": "File not found"}), 404)
-
-    return src_path, None
+        return _resolve_and_guard(filename, DashboardState.config.watch_dir, require_type="file")
 
 
 def _slice_or_move_document(
@@ -91,8 +83,8 @@ def _slice_or_move_document(
     data["Document"] = doc_type
 
     target_folder = _render_target_folder(data, doc_type)
-    target_dir = os.path.abspath(os.path.join(DashboardState.config.target_base_dir, target_folder))
-    if not _is_within_base(target_dir, DashboardState.config.target_base_dir):
+    target_dir = safe_join_path(DashboardState.config.target_base_dir, target_folder)
+    if not target_dir or not _is_within_base(target_dir, DashboardState.config.target_base_dir):
         raise PermissionError(f"Access denied: Target directory outside base '{target_folder}'")
     os.makedirs(target_dir, exist_ok=True)
 
@@ -247,4 +239,4 @@ def api_split_inspector_submit():
         )
     except (OSError, RuntimeError, ValueError, TypeError) as e:
         logger.error("Error in split inspector submit: %s", e, exc_info=True)
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": "Failed to process split documents"}), 500

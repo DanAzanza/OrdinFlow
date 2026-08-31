@@ -10,7 +10,7 @@ from typing import Any
 from flask import Blueprint, jsonify, request, send_file
 
 from core.skills import get_skill_manager
-from core.utils import cleanup_empty_folder, send_to_trash
+from core.utils import cleanup_empty_folder, safe_join_path, send_to_trash
 from routes.api.document_helpers import (
     _MIME_MAP,
     _deduplicate_filename,
@@ -209,8 +209,8 @@ def api_cases_approve():
             }
         )
     except OSError as e:
-        logger.error("[Dashboard] Failed to toggle approval for %s: %s", folder_name, e)
-        return jsonify({"error": str(e)}), 500
+        logger.error("[Dashboard] Failed to toggle approval for %s: %s", folder_name, e, exc_info=True)
+        return jsonify({"error": "Failed to update approval status"}), 500
 
 
 def _safe_rename_dir(src: str, dst: str, retries: int = 5, delay: float = 0.15) -> None:
@@ -229,16 +229,18 @@ def _safe_rename_dir(src: str, dst: str, retries: int = 5, delay: float = 0.15) 
 def api_cases_detail(folder_name: str):
     if not DashboardState.config:
         return jsonify({"error": "Config not available"}), 503
-    folder_path = os.path.join(DashboardState.config.target_base_dir, folder_name)
-    if not _is_within_base(folder_path, DashboardState.config.target_base_dir):
-        return jsonify({"error": "Access denied"}), 403
-    if not os.path.isdir(folder_path):
+    folder_path, guard_err = _resolve_and_guard(
+        folder_name, DashboardState.config.target_base_dir, require_type="dir"
+    )
+    if guard_err is not None:
+        return guard_err[0], guard_err[1]
+    if not folder_path:
         return jsonify({"error": "Folder not found"}), 404
 
     files = []
     for f in sorted(os.listdir(folder_path)):
-        fp = os.path.join(folder_path, f)
-        if os.path.isfile(fp):
+        fp = safe_join_path(folder_path, f)
+        if fp and os.path.isfile(fp):
             if f.startswith(".") or f.lower().endswith(".jpg") or f.lower().endswith(".meta"):
                 continue
 
@@ -298,10 +300,12 @@ def api_cases_edit(folder_name: str):
     if not DashboardState.config:
         return jsonify({"error": "Config not available"}), 503
 
-    folder_path = os.path.join(DashboardState.config.target_base_dir, folder_name)
-    if not _is_within_base(folder_path, DashboardState.config.target_base_dir):
-        return jsonify({"error": "Access denied"}), 403
-    if not os.path.isdir(folder_path):
+    folder_path, guard_err = _resolve_and_guard(
+        folder_name, DashboardState.config.target_base_dir, require_type="dir"
+    )
+    if guard_err is not None:
+        return guard_err[0], guard_err[1]
+    if not folder_path:
         return jsonify({"error": "Folder not found"}), 404
 
     validated, err = validate_schema(FolderEditSchema, request.get_json())
@@ -317,8 +321,8 @@ def api_cases_edit(folder_name: str):
     if new_folder_name == folder_name:
         return jsonify({"status": "ok", "folder": folder_name})
 
-    new_path = os.path.join(DashboardState.config.target_base_dir, new_folder_name)
-    if not _is_within_base(new_path, DashboardState.config.target_base_dir):
+    new_path = safe_join_path(DashboardState.config.target_base_dir, new_folder_name)
+    if not new_path or not _is_within_base(new_path, DashboardState.config.target_base_dir):
         return jsonify({"error": "Access denied"}), 403
     if os.path.exists(new_path):
         return jsonify({"error": "Target folder already exists"}), 409
@@ -328,7 +332,8 @@ def api_cases_edit(folder_name: str):
         logger.info("[Dashboard] Renamed folder: %s -> %s", folder_name, new_folder_name)
         return jsonify({"status": "ok", "folder": new_folder_name})
     except OSError as e:
-        return jsonify({"error": str(e)}), 500
+        logger.error("[Dashboard] Failed to rename folder %s -> %s: %s", folder_name, new_folder_name, e, exc_info=True)
+        return jsonify({"error": "Failed to rename folder"}), 500
 
 
 @cases_api_bp.route("/api/file/meta/cases/<folder>/<filename>")
@@ -373,7 +378,9 @@ def api_cases_edit_file(folder_name: str, filename: str):
     else:
         new_folder_name = folder_name
 
-    target_dir = os.path.join(DashboardState.config.target_base_dir, new_folder_name)
+    target_dir = safe_join_path(DashboardState.config.target_base_dir, new_folder_name)
+    if not target_dir or not _is_within_base(target_dir, DashboardState.config.target_base_dir):
+        return jsonify({"error": "Access denied"}), 403
     os.makedirs(target_dir, exist_ok=True)
 
     ext = os.path.splitext(src_path)[1]
@@ -394,7 +401,8 @@ def api_cases_edit_file(folder_name: str, filename: str):
         cleanup_empty_folder(os.path.dirname(src_path), stop_at=DashboardState.config.target_base_dir)
         return jsonify({"status": "ok", "folder": new_folder_name, "file": target_filename})
     except OSError as e:
-        return jsonify({"error": str(e)}), 500
+        logger.error("[Dashboard] Failed to edit file %s: %s", src_path, e, exc_info=True)
+        return jsonify({"error": "Failed to edit file"}), 500
 
 
 @cases_api_bp.route("/api/cases/<path:folder_name>/<filename>", methods=["DELETE"])
@@ -414,7 +422,8 @@ def api_cases_delete_file(folder_name: str, filename: str):
         logger.info("[Dashboard] Moved file to trash: %s", filepath)
         return jsonify({"status": "ok"})
     except OSError as e:
-        return jsonify({"error": str(e)}), 500
+        logger.error("[Dashboard] Failed to delete file %s: %s", filepath, e, exc_info=True)
+        return jsonify({"error": "Failed to delete file"}), 500
 
 
 @cases_api_bp.route("/api/cases/<path:folder_name>", methods=["DELETE"])
@@ -437,7 +446,8 @@ def api_cases_delete_folder(folder_name: str):
         logger.info("[Dashboard] Moved process folder to trash: %s", folder_path)
         return jsonify({"status": "ok"})
     except OSError as e:
-        return jsonify({"error": str(e)}), 500
+        logger.error("[Dashboard] Failed to delete folder %s: %s", folder_path, e, exc_info=True)
+        return jsonify({"error": "Failed to delete folder"}), 500
 
 
 

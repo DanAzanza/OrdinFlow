@@ -15,6 +15,7 @@ from typing import Any
 from core.skills.case_router import filter_matching_files, mark_file_skill_executed
 from core.skills.condition_evaluator import evaluate_condition
 from core.skills.models import TaskProgress
+from core.utils import sanitize_safe_path
 
 logger = logging.getLogger(__name__)
 
@@ -68,10 +69,15 @@ def execute_for_each_document(
         logger.error("[LoopRunner] Maximum loop/recursion depth (%d) exceeded.", MAX_BRANCH_DEPTH)
         return False
 
-    folder_path = str(context.get("folder_path") or "").strip()
+    raw_folder = str(context.get("folder_path") or "").strip()
+    is_safe_folder, clean_folder = sanitize_safe_path(raw_folder)
+    folder_path = os.path.abspath(clean_folder) if (is_safe_folder and clean_folder) else ""
+
     if not folder_path or not os.path.isdir(folder_path):
         # If single document was provided without folder, treat as single item iteration
-        doc_path = str(context.get("document_fullpath") or "").strip()
+        raw_doc = str(context.get("document_fullpath") or "").strip()
+        is_safe_doc, clean_doc = sanitize_safe_path(raw_doc)
+        doc_path = os.path.abspath(clean_doc) if (is_safe_doc and clean_doc) else ""
         if doc_path and os.path.exists(doc_path):
             folder_path = os.path.dirname(doc_path)
         else:

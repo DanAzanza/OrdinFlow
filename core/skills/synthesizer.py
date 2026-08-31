@@ -159,7 +159,7 @@ class SkillSynthesizer:
             elif act_type == "TYPE_TEXT":
                 raw_t = str(s.get("text", ""))
                 # Detect file path in text
-                if re.search(r"[a-zA-Z]:[\\/].*\.(pdf|png|jpg|cdr|tif)", raw_t, re.IGNORECASE):
+                if re.search(r"^[a-zA-Z]:[\\/][^\r\n\x00\"<>|:*?]+\.(?:pdf|png|jpg|jpeg|cdr|tif|tiff)$", raw_t, re.IGNORECASE):
                     act["action_type"] = "TYPE_FILE_PATH"
                     act["file_path"] = "{document_fullpath}"
                     act["press_enter"] = bool(s.get("press_enter", True))
@@ -457,7 +457,7 @@ class SkillSynthesizer:
 
         # Check for closing application/window (e.g. "Schließe am ende CorelDraw")
         if any(k in lower for k in ["schließe", "schließen", "beende", "beenden", "close", "exit", "quit"]):
-            target_app = re.sub(r"(?i).*(schließe am ende|schließe|schließen|beende|beenden|close|exit|quit)\s*", "", instruction_clean).strip("\"' .")
+            target_app = re.sub(r"(?i)^.*?\b(?:schließe am ende|schließe|schließen|beende|beenden|close|exit|quit)\s*", "", instruction_clean).strip("\"' .")
             target_app = target_app or "Application"
             last_task["actions"].append({
                 "id": f"act_{int(time.time())}_close",
@@ -489,7 +489,7 @@ class SkillSynthesizer:
             if m_quote:
                 target = m_quote.group(1).strip()
             else:
-                target = re.sub(r"(?i).*(klicke auf|klick auf|click on|klicke|click|klick ein auf|klick ein)\s*", "", instruction_clean).strip("\"' .")
+                target = re.sub(r"(?i)^.*?\b(?:klicke auf|klick auf|click on|klicke|click|klick ein auf|klick ein)\s*", "", instruction_clean).strip("\"' .")
             last_task["actions"].append({
                 "id": f"act_{int(time.time())}_click",
                 "action_type": "CLICK",

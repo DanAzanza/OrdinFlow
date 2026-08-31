@@ -21,6 +21,8 @@ from core.routing import (
 from core.utils import (
     deduplicate_path,
     is_missing_value,
+    is_within_base,
+    safe_join_path,
     safe_move,
     send_to_trash,
 )
@@ -37,15 +39,7 @@ _MIME_MAP = {
     ".tiff": "image/tiff",
 }
 
-
-def _is_within_base(path: str, base_dir: str) -> bool:
-    """Security check against directory traversal attacks."""
-    try:
-        p = Path(path).resolve()
-        b = Path(base_dir).resolve()
-        return p.is_relative_to(b)
-    except (ValueError, TypeError, RuntimeError):
-        return False
+_is_within_base = is_within_base
 
 
 def load_meta_sidecar(filepath: str) -> dict[str, Any] | None:
@@ -114,8 +108,11 @@ def resolve_and_guard(
     allow_root: bool = False,
 ) -> tuple[str | None, tuple[Any, int] | None]:
     """Resolves subpath against base_dir and applies security and existence guards."""
-    full_path = os.path.abspath(os.path.join(base_dir, subpath))
-    if not _is_within_base(full_path, base_dir):
+    if not base_dir:
+        return None, (jsonify({"error": "Base directory not configured"}), 500)
+
+    full_path = safe_join_path(base_dir, subpath)
+    if not full_path or not _is_within_base(full_path, base_dir):
         return None, (jsonify({"error": "Access denied"}), 403)
 
     if not allow_root and Path(full_path).resolve() == Path(base_dir).resolve():
@@ -231,7 +228,8 @@ def _generate_pdf_thumbnail(full_path: str):
         mtime = os.path.getmtime(full_path)
         size = os.path.getsize(full_path)
     except OSError as e:
-        return jsonify({"error": f"File error: {e}"}), 404
+        logger.warning("[DocumentHelpers] File error accessing %s for thumbnail: %s", full_path, e)
+        return jsonify({"error": "File not found or inaccessible"}), 404
 
     etag = f'"{int(mtime)}-{size}"'
     if request.headers.get("If-None-Match") == etag:
@@ -265,5 +263,6 @@ def _generate_pdf_thumbnail(full_path: str):
         res.headers["ETag"] = etag
         res.headers["Cache-Control"] = "public, max-age=86400"
         return res
-    except (OSError, RuntimeError, ValueError, TypeError, IndexError) as e:
-        return jsonify({"error": f"Preview error: {e}"}), 500
+    except Exception as e:
+        logger.error("[DocumentHelpers] Error generating PDF preview for %s: %s", full_path, e, exc_info=True)
+        return jsonify({"error": "Failed to generate PDF preview"}), 500

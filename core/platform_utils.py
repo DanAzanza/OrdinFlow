@@ -32,7 +32,11 @@ def pick_path_dialog(
 ) -> str | None:
     """Opens a native GUI picker dialog to choose a folder or file."""
     selected_path: str | None = None
-    init_dir = initial_dir if (initial_dir and os.path.exists(initial_dir)) else os.getcwd()
+    init_dir = (
+        os.path.abspath(os.path.normpath(initial_dir.strip()))
+        if (initial_dir and isinstance(initial_dir, str) and os.path.exists(initial_dir))
+        else os.getcwd()
+    )
 
     # 1. Try tkinter dialog
     try:

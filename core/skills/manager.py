@@ -15,7 +15,7 @@ import yaml
 from core.skills.base import BaseSkill
 from core.skills.engines.export_engine import ExportEngine
 from core.skills.engines.import_engine import ImportEngine
-from core.utils import sanitize_safe_path
+from core.utils import safe_join_path, sanitize_safe_path
 
 logger = logging.getLogger(__name__)
 
@@ -134,11 +134,11 @@ class SkillManager:
         # Fallback to direct file lookup
         for ext in (".yaml", ".yml"):
             sanitized = self.sanitize_name(query)
-            for candidate_name in (query, sanitized, query_slug):
+            for candidate_name in (sanitized, query_slug):
                 if not candidate_name:
                     continue
-                target = os.path.join(self.skills_dir, f"{candidate_name}{ext}")
-                if os.path.isfile(target):
+                target = safe_join_path(self.skills_dir, f"{candidate_name}{ext}")
+                if target and os.path.isfile(target):
                     try:
                         with open(target, encoding="utf-8") as f:
                             data = yaml.safe_load(f)
@@ -230,7 +230,10 @@ class SkillManager:
         skill_data["id"] = name
 
         os.makedirs(self.skills_dir, exist_ok=True)
-        filepath = os.path.join(self.skills_dir, f"{clean_filename}.yaml")
+        filepath = safe_join_path(self.skills_dir, f"{clean_filename}.yaml")
+        if not filepath:
+            raise ValueError(f"Invalid skill name: '{name}'")
+
         tmp_filepath = f"{filepath}.tmp_{os.getpid()}"
         try:
             with open(tmp_filepath, "w", encoding="utf-8") as f:
@@ -259,18 +262,20 @@ class SkillManager:
         query = str(skill_id_or_name or "").strip()
         clean_name = self.sanitize_name(query)
         query_slug = self.slugify_name(query)
-        candidates = [
-            os.path.join(self.skills_dir, f"{query}.yaml"),
-            os.path.join(self.skills_dir, f"{query}.yml"),
-            os.path.join(self.skills_dir, f"{clean_name}.yaml"),
-            os.path.join(self.skills_dir, f"{clean_name}.yml"),
-            os.path.join(self.skills_dir, f"{query_slug}.yaml"),
-            os.path.join(self.skills_dir, f"{query_slug}.yml"),
-        ]
+        candidate_names = [clean_name, query_slug]
         existing = self.get_skill(query)
         if existing and existing.get("name"):
             cand_name = self.sanitize_name(existing["name"])
-            candidates.insert(0, os.path.join(self.skills_dir, f"{cand_name}.yaml"))
+            candidate_names.insert(0, cand_name)
+
+        candidates: list[str] = []
+        for cname in candidate_names:
+            if not cname:
+                continue
+            for ext in (".yaml", ".yml"):
+                p = safe_join_path(self.skills_dir, f"{cname}{ext}")
+                if p:
+                    candidates.append(p)
 
         deleted = False
         for filepath in set(candidates):

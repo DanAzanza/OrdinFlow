@@ -232,6 +232,13 @@ def evaluate_condition(
             actual = str(context.get(var_name, ""))
             if not pattern:
                 return False
+            if len(pattern) > 250:
+                logger.warning("[ConditionEvaluator] Regex pattern exceeds maximum allowed length (250 chars): %r", pattern[:50])
+                return False
+            # Block nested quantifiers that induce catastrophic backtracking (e.g. (a+)+, (.*)*)
+            if re.search(r"\([^\)]*[\+\*][^\)]*\)[\+\*]", pattern):
+                logger.warning("[ConditionEvaluator] Rejected unsafe nested regex quantifier: %r", pattern)
+                return False
             try:
                 return bool(re.search(pattern, actual))
             except re.error as e:

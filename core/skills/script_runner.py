@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import logging
 import os
+import shlex
 import subprocess
 import sys
 import time
@@ -15,6 +16,7 @@ from collections.abc import Callable, Mapping
 from typing import Any
 
 from core.skills.models import TaskProgress
+from core.utils import sanitize_safe_path
 
 logger = logging.getLogger(__name__)
 
@@ -29,11 +31,13 @@ def execute_script_step(
     """Executes a PowerShell / Shell / CLI command step with bounded timeouts."""
     raw_cmd = str(step.get("command", "") or step.get("script", "") or step.get("code", ""))
     if "{document_fullpath}" in raw_cmd:
-        doc_fp = str(context.get("document_fullpath", "") or "").strip()
+        raw_fp = str(context.get("document_fullpath", "") or "").strip()
+        is_safe, clean_fp = sanitize_safe_path(raw_fp)
+        doc_fp = os.path.abspath(clean_fp) if (is_safe and clean_fp) else ""
         if not doc_fp or not os.path.exists(doc_fp):
             logger.error(
                 "  [!] SCRIPT aborted: Required variable 'document_fullpath' is missing or points to non-existent file: %r",
-                doc_fp,
+                raw_fp,
             )
             return False
 
@@ -62,16 +66,18 @@ def execute_script_step(
                 text=True,
                 encoding="utf-8",
                 errors="replace",
+                shell=False,
             )
         else:
+            args = shlex.split(cmd_to_run, posix=(sys.platform != "win32"))
             proc = subprocess.Popen(
-                cmd_to_run,
-                shell=True,
+                args if args else cmd_to_run,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
                 encoding="utf-8",
                 errors="replace",
+                shell=False if args else True,
             )
 
         start_proc_t = time.time()

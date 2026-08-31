@@ -183,10 +183,11 @@ def ensure_window_ready(
     elif exe_path:
         logger.info("[WindowManager] Window '%s' not found. Launching executable: '%s'", win_pattern, exe_path)
         try:
-            if os.path.exists(str(exe_path)):
-                subprocess.Popen([str(exe_path)])
+            exe_str = str(exe_path).strip('"\'' )
+            if os.path.isfile(exe_str):
+                subprocess.Popen([os.path.abspath(exe_str)])
             else:
-                subprocess.Popen(f'"{exe_path}"', shell=True)
+                subprocess.Popen([exe_str])
         except Exception as e:
             logger.error("[WindowManager] Failed to launch executable '%s': %s", exe_path, e)
             return False

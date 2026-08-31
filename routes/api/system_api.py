@@ -12,7 +12,7 @@ from flask import Blueprint, jsonify, request
 from core.jobs import job_queue
 from core.logging_service import compute_log_stats, get_empty_log_stats
 from core.platform_utils import get_system_drives, pick_path_dialog
-from core.utils import memory_log_handler
+from core.utils import memory_log_handler, sanitize_safe_path
 from routes.schemas import (
     ConfigUpdateSchema,
     validate_schema,
@@ -198,22 +198,23 @@ def api_get_log_stats():
 
 
 @system_api_bp.route("/api/config", methods=["GET"])
-def api_config_get():
+def api_system_config_get():
     if not DashboardState.config:
         return jsonify({"error": "Config not available"}), 503
     cfg = asdict(DashboardState.config)
-    return jsonify({k: cfg[k] for k in _CONFIG_SAFE_KEYS if k in cfg})
+    safe = {k: cfg.get(k) for k in _CONFIG_SAFE_KEYS if k in cfg}
+    return jsonify(safe)
 
 
 @system_api_bp.route("/api/config", methods=["PUT"])
-def api_config_put():
+def api_system_config():
     if not DashboardState.config:
         return jsonify({"error": "Config not available"}), 503
 
     validated, err = validate_schema(ConfigUpdateSchema, request.get_json())
     if not validated or err:
         return jsonify({"error": err}), 400
-    data = validated.model_dump(exclude_unset=True)
+    data = validated.to_clean_dict()
 
     changed = []
     for k, v in data.items():
@@ -231,8 +232,8 @@ def api_config_put():
                 DashboardState.processor.llm_extractor.invalidate_cache()
             logging.info(f"[Dashboard] Configuration updated: {', '.join(changed)}")
         except Exception as e:
-            logging.error(f"[Dashboard] Error saving config: {e}")
-            return jsonify({"error": str(e)}), 500
+            logging.error(f"[Dashboard] Error saving config: {e}", exc_info=True)
+            return jsonify({"error": "Failed to save configuration"}), 500
 
     return jsonify({"status": "ok", "changed": changed})
 
@@ -248,10 +249,18 @@ def api_system_fs_list():
 
     if not raw_path:
         target_dir = os.path.abspath(base_dir)
-    elif os.path.isfile(raw_path):
-        target_dir = os.path.dirname(os.path.abspath(raw_path))
     else:
-        target_dir = os.path.abspath(raw_path)
+        is_safe, clean_path = sanitize_safe_path(raw_path)
+        if is_safe and clean_path:
+            norm_path = os.path.abspath(clean_path)
+            if os.path.isfile(norm_path):
+                target_dir = os.path.dirname(norm_path)
+            elif os.path.isdir(norm_path):
+                target_dir = norm_path
+            else:
+                target_dir = os.path.abspath(base_dir)
+        else:
+            target_dir = os.path.abspath(base_dir)
 
     if not os.path.exists(target_dir) or not os.path.isdir(target_dir):
         target_dir = os.path.abspath(base_dir)

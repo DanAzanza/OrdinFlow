@@ -23,6 +23,7 @@ from core.skills import (
 from core.skills.engines.export_engine import ExportEngine
 from core.skills.models import TaskProgress
 from core.skills.synthesizer import SkillSynthesizer
+from core.utils import sanitize_safe_path
 from routes.api.skills_crud_api import skills_crud_api_bp
 from routes.api.skills_queue_api import skills_queue_api_bp
 from routes.state import DashboardState
@@ -123,7 +124,7 @@ def refine_step():
             ]
         ):
             refined["action_type"] = "VERIFY_SCREEN"
-            parts = re.split(r"(?i)\s*(?:wenn nicht|falls nicht|if not)\s*,?\s*", instruction, maxsplit=1)
+            parts = re.split(r"(?i)\s*(?:,\s*)?(?:wenn nicht|falls nicht|if not)\s+", instruction, maxsplit=1)
             target_part = parts[0]
             target = re.sub(r"(?i)^(prüfe ob|warten auf|verify|check if|suche nach|finde)\s*", "", target_part).strip(
                 "\"' "
@@ -171,8 +172,8 @@ def synthesize_skill():
         )
         return jsonify({"status": "ok", "synthesis": synthesis})
     except Exception as e:
-        logger.error("[synthesize_skill] Failed to synthesize skill: %s", e)
-        return jsonify({"error": str(e)}), 500
+        logger.error("[synthesize_skill] Failed to synthesize skill: %s", e, exc_info=True)
+        return jsonify({"error": "Failed to synthesize skill"}), 500
 
 
 @skills_api_bp.route("/api/skills/ai_modify", methods=["POST"])
@@ -194,8 +195,8 @@ def ai_modify_skill():
         )
         return jsonify({"status": "ok", "skill": updated, "reply": reply})
     except Exception as e:
-        logger.error("[ai_modify_skill] Failed to modify skill: %s", e)
-        return jsonify({"error": str(e)}), 500
+        logger.error("[ai_modify_skill] Failed to modify skill: %s", e, exc_info=True)
+        return jsonify({"error": "Failed to modify skill"}), 500
 
 
 @skills_api_bp.route("/api/skills/recorder/start", methods=["POST"])
@@ -210,7 +211,8 @@ def start_skill_recorder():
         res = recorder.start_recording(skill_name=skill_name)
         return jsonify(res)
     except (OSError, RuntimeError, ValueError, TypeError) as e:
-        return jsonify({"error": str(e)}), 400
+        logger.warning("[start_skill_recorder] Error starting recorder: %s", e)
+        return jsonify({"error": "Failed to start skill recorder"}), 400
 
 
 @skills_api_bp.route("/api/skills/recorder/stop", methods=["POST"])
@@ -307,9 +309,11 @@ def test_run_skill():
     if not isinstance(test_context, dict):
         test_context = {}
 
-    doc_path = str(test_context.get("document_fullpath", "") or "").strip()
-    if doc_path and not os.path.exists(doc_path):
-        return jsonify({"error": f"Provided document path does not exist: {doc_path}"}), 400
+    raw_doc_path = str(test_context.get("document_fullpath", "") or "").strip()
+    is_safe_doc, clean_doc = sanitize_safe_path(raw_doc_path)
+    doc_path = os.path.abspath(clean_doc) if (is_safe_doc and clean_doc) else ""
+    if raw_doc_path and (not is_safe_doc or not os.path.exists(doc_path)):
+        return jsonify({"error": f"Provided document path is invalid or does not exist: {raw_doc_path}"}), 400
 
     # If the skill definition requires a source document but none was provided
     requires_doc = False
@@ -357,7 +361,7 @@ def test_run_skill():
         return jsonify({
             "status": "error",
             "success": False,
-            "error": str(e),
+            "error": "An error occurred during skill test execution",
             "duration_seconds": duration_s,
             "progress_log": progress_log,
         }), 500

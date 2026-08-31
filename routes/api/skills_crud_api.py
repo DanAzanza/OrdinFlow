@@ -9,6 +9,7 @@ import yaml
 from flask import Blueprint, jsonify, request
 
 from core.skills import SkillManager, get_skill_manager
+from core.utils import safe_join_path
 from routes.state import DashboardState
 
 skills_crud_api_bp = Blueprint("api_skills_crud", __name__)
@@ -52,9 +53,12 @@ def save_skill():
         else:
             saved_name = mgr.save_skill(data)
         return jsonify({"status": "ok", "skill_id": saved_name, "name": saved_name})
-    except Exception as e:
-        logger.error("[SkillsCrudAPI] Error saving skill: %s", e)
+    except ValueError as e:
+        logger.warning("[SkillsCrudAPI] Validation error saving skill: %s", e)
         return jsonify({"error": str(e)}), 400
+    except Exception as e:
+        logger.error("[SkillsCrudAPI] Error saving skill: %s", e, exc_info=True)
+        return jsonify({"error": "Failed to save skill"}), 400
 
 
 @skills_crud_api_bp.route("/api/skills/<skill_id>", methods=["DELETE"])
@@ -86,7 +90,8 @@ def skill_to_yaml():
         yaml_str = yaml.dump(skill_data, Dumper=_SkillYamlDumper, allow_unicode=True, sort_keys=False)
         return jsonify({"status": "ok", "yaml": yaml_str})
     except Exception as e:
-        return jsonify({"error": str(e)}), 400
+        logger.error("[SkillsCrudAPI] Error serializing YAML: %s", e, exc_info=True)
+        return jsonify({"error": "Failed to serialize skill to YAML"}), 400
 
 
 @skills_crud_api_bp.route("/api/skills/from_yaml", methods=["POST"])
@@ -99,8 +104,11 @@ def skill_from_yaml():
         if not isinstance(parsed, dict):
             return jsonify({"error": "YAML must represent a mapping/dictionary"}), 400
         return jsonify({"status": "ok", "skill": parsed})
+    except yaml.YAMLError:
+        return jsonify({"error": "Invalid YAML syntax"}), 400
     except Exception as e:
-        return jsonify({"error": f"Invalid YAML syntax: {e}"}), 400
+        logger.error("[SkillsCrudAPI] Error parsing YAML: %s", e, exc_info=True)
+        return jsonify({"error": "Failed to parse YAML"}), 400
 
 
 @skills_crud_api_bp.route("/api/skills/<skill_id>/yaml", methods=["GET", "POST"])
@@ -108,16 +116,17 @@ def skill_yaml_file(skill_id: str):
     """Fetches or saves a skill definition directly in raw YAML text format."""
     mgr = _get_skill_manager()
     clean_name = mgr.sanitize_name(skill_id)
-    filepath = os.path.join(mgr.skills_dir, f"{clean_name}.yaml")
+    filepath = safe_join_path(mgr.skills_dir, f"{clean_name}.yaml")
 
     if request.method == "GET":
-        if os.path.exists(filepath):
+        if filepath and os.path.exists(filepath):
             try:
                 with open(filepath, "r", encoding="utf-8") as f:
                     content = f.read()
                 return jsonify({"status": "ok", "yaml": content})
             except Exception as e:
-                return jsonify({"error": str(e)}), 500
+                logger.error("[SkillsCrudAPI] Error reading skill file %s: %s", filepath, e, exc_info=True)
+                return jsonify({"error": "Failed to read skill file"}), 500
         else:
             skill = mgr.get_skill(skill_id)
             if skill:
@@ -139,8 +148,14 @@ def skill_yaml_file(skill_id: str):
         parsed["id"] = name
         saved_name = mgr.save_skill(parsed)
         return jsonify({"status": "ok", "skill_id": saved_name, "name": saved_name, "skill": parsed})
+    except ValueError as e:
+        logger.warning("[SkillsCrudAPI] Validation error saving raw YAML: %s", e)
+        return jsonify({"error": str(e)}), 400
+    except yaml.YAMLError:
+        return jsonify({"error": "Invalid YAML syntax"}), 400
     except Exception as e:
-        return jsonify({"error": f"YAML validation error: {e}"}), 400
+        logger.error("[SkillsCrudAPI] Error saving raw YAML for skill %s: %s", skill_id, e, exc_info=True)
+        return jsonify({"error": "Failed to save skill definition"}), 400
 
 
 @skills_crud_api_bp.route("/api/skills/<import_skill_id>/documents", methods=["GET"])
