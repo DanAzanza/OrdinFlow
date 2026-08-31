@@ -1,3 +1,10 @@
+[project]
+name = "ordinflow"
+version = "1.0.0"
+description = "Local AI-powered document management and RPA workflow engine"
+readme = "README.md"
+requires-python = ">=3.10"
+
 [tool.ruff]
 target-version = "py310"
 line-length = 120
@@ -7,9 +14,15 @@ select = ["E", "F", "W", "S", "B"]
 ignore = ["E501", "E402", "S603", "S607"]  # E501: line length, E402: logger init imports, S603/S607: controlled subprocess invocations
 
 [tool.ruff.lint.per-file-ignores]
-"tests/*" = ["S101", "S105", "S106", "S108", "S311"]
+"tests/*" = ["S101", "S105", "S106", "S108", "S311", "S314"]
 "scripts/*" = ["S101", "S108", "S110", "S310", "S311", "S602", "S603", "S607"]
 
 [tool.pytest.ini_options]
 pythonpath = ["."]
 testpaths = ["tests"]
+python_files = ["test_*.py"]
+
+[tool.pyright]
+include = ["core", "routes"]
+exclude = ["**/__pycache__", ".pytest_cache", "venv"]
+pythonVersion = "3.10"
