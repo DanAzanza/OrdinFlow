@@ -67,6 +67,32 @@ def _is_nvidia_cuda_available() -> bool:
     return False
 
 
+def _is_vulkan_available() -> bool:
+    """Checks if Vulkan runtime and GPU support are present on the current machine."""
+    if sys.platform == "win32":
+        system_root = os.environ.get("SystemRoot", r"C:\Windows")
+        vulkan_path = os.path.join(system_root, "System32", "vulkan-1.dll")
+        if os.path.exists(vulkan_path):
+            try:
+                import ctypes
+
+                lib = ctypes.windll.LoadLibrary(vulkan_path)
+                if lib:
+                    return True
+            except Exception:
+                pass
+    elif sys.platform == "linux":
+        return os.path.exists("/usr/lib/libvulkan.so.1") or os.path.exists("/usr/lib/x86_64-linux-gnu/libvulkan.so.1")
+    return False
+
+
+def _is_gpu_acceleration_available() -> bool:
+    """Checks if GPU acceleration (CUDA, Vulkan, or Metal) is available."""
+    if sys.platform == "darwin":
+        return True  # Metal is universally available on modern macOS
+    return _is_nvidia_cuda_available() or _is_vulkan_available()
+
+
 class LLMBackend(ABC):
     """Interface for all LLM backends."""
 
@@ -205,7 +231,7 @@ class _LlamaCppBackend(LLMBackend):
         n_ctx = getattr(config, "n_ctx", 4096) or 4096
         n_batch = getattr(config, "n_batch", 512) or 512
         n_ubatch = getattr(config, "n_ubatch", 512) or 512
-        flash_attn = _is_nvidia_cuda_available()
+        flash_attn = _is_gpu_acceleration_available()
         parsed_type_k = _parse_ggml_type(getattr(config, "type_k", 8))
         parsed_type_v = _parse_ggml_type(getattr(config, "type_v", 8))
 

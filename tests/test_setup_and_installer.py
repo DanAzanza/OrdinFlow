@@ -208,3 +208,22 @@ def test_is_nvidia_cuda_available():
 
     res = _is_nvidia_cuda_available()
     assert isinstance(res, bool)
+
+
+def test_is_vulkan_available():
+    from core.llm_backends import _is_vulkan_available
+
+    res = _is_vulkan_available()
+    assert isinstance(res, bool)
+
+
+def test_is_gpu_acceleration_available(monkeypatch):
+    from core.llm_backends import _is_gpu_acceleration_available
+
+    res = _is_gpu_acceleration_available()
+    assert isinstance(res, bool)
+
+    # Test darwin override
+    monkeypatch.setattr("sys.platform", "darwin")
+    assert _is_gpu_acceleration_available() is True
+
