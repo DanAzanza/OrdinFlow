@@ -360,7 +360,7 @@ class SkillManager:
 
         # 5. Cascade updates to system config.yaml / DashboardState.config
         try:
-            from routes.state import DashboardState
+            from core.state import DashboardState
 
             if DashboardState.config:
                 cfg_modified = False
@@ -381,7 +381,7 @@ class SkillManager:
 
         # 6. Cascade updates to .meta case files
         try:
-            from routes.state import DashboardState
+            from core.state import DashboardState
 
             if DashboardState.config and DashboardState.config.target_base_dir:
                 base_dir = DashboardState.config.target_base_dir
@@ -452,7 +452,7 @@ def get_skill_manager(skills_dir: str | None = None) -> SkillManager:
         return SkillManager(skills_dir=skills_dir)
 
     with _GLOBAL_SM_LOCK:
-        from routes.state import DashboardState
+        from core.state import DashboardState
 
         base_dir = (
             getattr(DashboardState.config, "base_dir", os.getcwd())

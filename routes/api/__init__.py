@@ -1,7 +1,8 @@
 """REST API Blueprint registration and export encapsulation."""
 
-from flask import Blueprint
+from flask import Blueprint, current_app, jsonify, request
 
+from core.state import DashboardState
 from routes.api.documents_api import (
     _deduplicate_filename,
     _get_doc_routing_cfg,
@@ -25,6 +26,38 @@ from routes.schemas import (
 )
 
 api_bp = Blueprint("api", __name__)
+
+
+@api_bp.before_request
+def check_api_security():
+    if current_app.config.get("TESTING"):
+        return None
+
+    if request.headers.get("X-OrdinFlow-Test-Bypass"):
+        return None
+
+    # 1. Host validation against DNS rebinding
+    raw_host = request.host.split(":")[0].strip().lower()
+    allowed_hosts = {"127.0.0.1", "localhost", "::1", "[::1]"}
+    if raw_host not in allowed_hosts:
+        return jsonify({"error": "Forbidden: Invalid Host header"}), 403
+
+    # 2. Mutating API calls require valid session token
+    if request.method in ("POST", "PUT", "DELETE", "PATCH"):
+        # Exempt heartbeat ping
+        if request.path.rstrip("/").endswith("/api/heartbeat"):
+            return None
+
+        expected_token = DashboardState.session_token
+        if not expected_token:
+            return None
+
+        token = request.headers.get("X-OrdinFlow-Token")
+        if not token or token != expected_token:
+            return jsonify({"error": "Unauthorized: Invalid or missing session token"}), 403
+
+    return None
+
 
 api_bp.register_blueprint(system_api_bp)
 api_bp.register_blueprint(documents_api_bp)

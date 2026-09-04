@@ -254,7 +254,7 @@ class SkillQueueManager:
             self._stop_event.clear()
             self._pause_event.set()
 
-        from routes.state import DashboardState
+        from core.state import DashboardState
 
         if DashboardState.processor and hasattr(DashboardState.processor, "resume"):
             DashboardState.processor.resume()
@@ -277,7 +277,7 @@ class SkillQueueManager:
             self._pause_event.clear()
             self._save_state()
 
-        from routes.state import DashboardState
+        from core.state import DashboardState
 
         if DashboardState.processor and hasattr(DashboardState.processor, "pause"):
             DashboardState.processor.pause()
@@ -294,7 +294,7 @@ class SkillQueueManager:
             self._pause_event.set()
             self._save_state()
 
-        from routes.state import DashboardState
+        from core.state import DashboardState
 
         if DashboardState.processor and hasattr(DashboardState.processor, "resume"):
             DashboardState.processor.resume()
@@ -331,7 +331,7 @@ class SkillQueueManager:
                 self._stop_event.clear()
             self._save_state()
 
-        from routes.state import DashboardState
+        from core.state import DashboardState
 
         if DashboardState.processor and hasattr(DashboardState.processor, "resume"):
             DashboardState.processor.resume()
@@ -395,7 +395,7 @@ class SkillQueueManager:
                 result_data: dict[str, Any] = {}
 
                 try:
-                    from routes.state import DashboardState
+                    from core.state import DashboardState
 
                     extractor = DashboardState.processor.llm_extractor if DashboardState.processor else None
                     processor = DashboardState.processor

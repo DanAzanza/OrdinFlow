@@ -77,21 +77,22 @@ def test_sandbox():
 
 @pytest.fixture
 def app(test_sandbox):
-    """Erstellt eine isolierte Flask-App mit registriertem API Blueprint und Sandbox-Konfiguration."""
+    """Creates an isolated Flask test application with registered API Blueprint and sandbox configuration."""
     app = Flask(__name__)
+    app.config["TESTING"] = True
     app.register_blueprint(api_bp)
     return app
 
 
 @pytest.fixture
 def client(app):
-    """Flask Test Client für API-Tests."""
+    """Flask test client fixture for API tests."""
     return app.test_client()
 
 
 @pytest.fixture
 def processor(test_sandbox):
-    """DocumentProcessor mit isolierter Sandbox-Konfiguration."""
+    """DocumentProcessor fixture configured with isolated sandbox environment."""
     from core.processor import DocumentProcessor
 
     _, config, _ = test_sandbox

@@ -57,3 +57,40 @@ def test_cross_platform_safety_guards_in_core():
                     assert "sys.platform == \"win32\"" in content or "sys.platform != \"win32\"" in content, (
                         f"File {file_path.name} uses ctypes.windll but is missing a cross-platform `sys.platform == 'win32'` guard."
                     )
+
+
+def test_core_never_imports_routes():
+    """Enforces strict architectural layer isolation: core/ must NEVER import from routes/.
+
+    Routes depend on core, never the reverse. Circular dependencies from core to routes
+    are strictly forbidden and blocked by this AST gate.
+    """
+    import ast
+
+    core_dir = BASE_DIR / "core"
+    violations: list[tuple[str, int, str]] = []
+
+    for root, _, files in os.walk(core_dir):
+        for file in files:
+            if file.endswith(".py"):
+                file_path = Path(root) / file
+                rel_path = file_path.relative_to(BASE_DIR).as_posix()
+                try:
+                    tree = ast.parse(file_path.read_text(encoding="utf-8", errors="replace"), filename=str(file_path))
+                except SyntaxError:
+                    continue
+
+                for node in ast.walk(tree):
+                    if isinstance(node, ast.Import):
+                        for alias in node.names:
+                            if alias.name == "routes" or alias.name.startswith("routes."):
+                                violations.append((rel_path, node.lineno, alias.name))
+                    elif isinstance(node, ast.ImportFrom):
+                        if node.module == "routes" or (node.module and node.module.startswith("routes.")):
+                            violations.append((rel_path, node.lineno, node.module))
+
+    assert not violations, (
+        f"Architecture violation! {len(violations)} import(s) from 'routes' found in 'core/':\n"
+        + "\n".join(f"  - {path}:{line} imports '{mod}'" for path, line, mod in violations)
+        + "\n\nPer AGENTS.md Layer Separation, core/ must be completely independent of routes/."
+    )

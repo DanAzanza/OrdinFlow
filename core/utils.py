@@ -46,31 +46,39 @@ class MemoryLogHandler(logging.Handler):
             if os.path.exists(candidate):
                 log_path = candidate
             else:
+                self._initialized_from_file = True
                 return
         try:
             with open(log_path, encoding="utf-8", errors="replace") as f:
                 recent = list(deque(f, maxlen=limit))
+            parsed: list[dict[str, Any]] = []
             for line in recent:
                 line_str = line.strip()
                 if not line_str:
                     continue
-                self.seq_id += 1
                 p = line_str.split(" ", 3)
                 if len(p) >= 4 and p[2].startswith("[") and p[2].endswith("]"):
                     tm = p[1].split(",")[0]
                     lvl = p[2][1:-1]
                     msg = p[3]
-                    self.records.append({"id": self.seq_id, "level": lvl, "message": msg, "time": tm})
+                    parsed.append({"level": lvl, "message": msg, "time": tm})
                 else:
-                    self.records.append({"id": self.seq_id, "level": "INFO", "message": line_str, "time": ""})
-            self._initialized_from_file = True
+                    parsed.append({"level": "INFO", "message": line_str, "time": ""})
+
+            with self._lock:
+                for item in parsed:
+                    self.seq_id += 1
+                    item["id"] = self.seq_id
+                    self.records.append(item)
+                self._initialized_from_file = True
         except Exception as e:
             logger.debug("Could not pre-load logs from file: %s", e)
+            self._initialized_from_file = True
 
     def get_logs(self, since_id: int = 0, limit: int = 300) -> tuple[list[dict[str, Any]], int]:
+        if not self._initialized_from_file:
+            self.load_initial_from_file()
         with self._lock:
-            if not self._initialized_from_file and not self.records:
-                self.load_initial_from_file()
             if since_id == 0:
                 logs = list(self.records)[-limit:]
             else:
@@ -236,15 +244,26 @@ def format_result(res: dict, include_missing: bool = True) -> str:
 
 
 def is_file_locked(filepath: str) -> bool:
-    """Checks whether a file is exclusively locked by another process or unreadable."""
+    """Checks whether a file is exclusively locked by another process, unreadable, or actively being written."""
     if not os.path.exists(filepath):
         return False
     try:
         with open(filepath, "rb"):
             pass
-        return False
     except (OSError, PermissionError):
         return True
+
+    # On Windows, check for active write handles / sharing violations if file is writable
+    if sys.platform == "win32" and os.access(filepath, os.W_OK):
+        try:
+            fd = os.open(filepath, os.O_RDWR | os.O_BINARY)
+            os.close(fd)
+        except PermissionError:
+            return True
+        except OSError:
+            pass
+
+    return False
 
 
 def wait_until_unlocked(filepath: str, retries: int = 6, delay: float = 0.5) -> bool:
@@ -485,7 +504,7 @@ def is_within_allowed_roots(path: str | Path, allowed_roots: list[str | Path] | 
 
         roots: list[str | Path] = [tempfile.gettempdir(), os.getcwd()]
         try:
-            from routes.state import DashboardState
+            from core.state import DashboardState
 
             if DashboardState.config:
                 if DashboardState.config.base_dir:

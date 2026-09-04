@@ -189,6 +189,7 @@ class FileService:
         extracted_base: dict[str, Any],
         find_doc_type_cfg_fn: Any,
         optional_fields: set | None = None,
+        save_empty_pages: bool = False,
     ) -> bool:
         """Splits a batch PDF into multiple partial PDFs based on page groups."""
         if not self.can_split_pdf:
@@ -202,12 +203,38 @@ class FileService:
 
         logger.info(f"[*] Splitting batch PDF '{filename}' into {len(page_results)} separate files...")
         optional_fields = optional_fields or set()
+        saved_files: list[str] = []
 
         try:
             with fitz.open(filepath) as doc:  # type: ignore[assignment]
+                # Pre-flight page coverage assertion to prevent silent data loss
+                total_doc_pages = set(range(1, len(doc) + 1))
+                covered_pages: set[int] = set()
+                for group_res in page_results:
+                    for p in group_res.get("pages", []):
+                        if isinstance(p, int):
+                            covered_pages.add(p)
+
+                uncovered_pages = total_doc_pages - covered_pages
+                if uncovered_pages:
+                    logger.error(
+                        f"[!] PDF Split Pre-Flight Check failed for '{filename}': Missing coverage for pages "
+                        f"{sorted(uncovered_pages)} of {len(doc)}. Aborting split to prevent data loss."
+                    )
+                    self.mark_for_review(
+                        filepath,
+                        reason=f"Incomplete page coverage during split (uncovered pages {sorted(uncovered_pages)})",
+                        extracted=extracted_base,
+                    )
+                    return False
+
                 for group_res in page_results:
                     g_type = group_res.get("Document", "UNKNOWN")
                     g_pages = group_res.get("pages", [])
+
+                    if g_type.upper() in ("LEER", "BLANK") and not save_empty_pages:
+                        logger.info(f"[-] Skipping empty/blank pages {g_pages} in split output.")
+                        continue
 
                     part_extracted = dict(group_res)
                     part_extracted["Document"] = g_type
@@ -253,13 +280,22 @@ class FileService:
 
                         target_filepath = deduplicate_path(os.path.join(target_dir, target_filename))
                         new_doc.save(target_filepath, garbage=4, deflate=True, clean=True)
+                        saved_files.append(target_filepath)
+
                     logger.info(
                         f"[+] Partial PDF '{os.path.basename(target_filepath)}' (pages {g_pages}) saved successfully."
                     )
+
             remove_source_with_meta(filepath)
             return True
         except Exception as e:
             logger.error(f"[!] Error reading or splitting '{filepath}': {e}")
+            for sf in saved_files:
+                try:
+                    if os.path.exists(sf):
+                        os.remove(sf)
+                except OSError:
+                    pass
             return False
 
     def save_filtered_pdf(self, src_path: str, dst_path: str, kept_pages: list[int]) -> bool:

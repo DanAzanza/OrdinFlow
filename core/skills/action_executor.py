@@ -152,6 +152,7 @@ def execute_type_text(
     is_secret = bool(step.get("is_secret", False)) or is_sensitive_credential_text(raw_text, str(step.get("description", "")))
     if is_secret:
         logger.info("  [Action %s] %s: [PROTECTED SENSITIVE CREDENTIAL MASKED]", step_id, action_type)
+        use_clipboard = False
 
     with input_shield():
         if use_clipboard and sys.platform == "win32":

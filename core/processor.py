@@ -21,7 +21,7 @@ from core.utils import (
     cleanup_empty_folder,
     format_result,
     is_missing_value,
-    remove_source_with_meta,
+    trash_source_with_meta,
     wait_until_unlocked,
 )
 from core.vision import LLMExtractor
@@ -97,29 +97,35 @@ class DocumentProcessor:
     def get_stats(self) -> dict[str, Any]:
         """Returns a thread-safe snapshot of processing statistics."""
         with self._stats_lock:
-            avg = (self.stats_total_duration / self.stats_total) if self.stats_total > 0 else 0.0
-            queue_count = 0
-            try:
-                if os.path.exists(self.config.watch_dir):
-                    valid_exts = {".pdf", ".png", ".jpg", ".jpeg", ".tif", ".tiff"}
-                    queue_count = sum(
-                        1
-                        for _, _, files in os.walk(self.config.watch_dir)
-                        for f in files
-                        if os.path.splitext(f.lower())[1] in valid_exts
-                    )
-            except (OSError, ValueError) as e:
-                logger.debug("Error retrieving queue size: %s", e)
+            total = self.stats_total
+            success = self.stats_success
+            failed = self.stats_failed
+            skipped = self.stats_skipped
+            duration = self.stats_total_duration
 
-            return {
-                "total": self.stats_total,
-                "success": self.stats_success,
-                "failed": self.stats_failed,
-                "skipped": self.stats_skipped,
-                "avg_duration": round(avg, 1),
-                "paused": self.is_paused(),
-                "queue_size": queue_count,
-            }
+        avg = (duration / total) if total > 0 else 0.0
+        queue_count = 0
+        try:
+            if os.path.exists(self.config.watch_dir):
+                valid_exts = {".pdf", ".png", ".jpg", ".jpeg", ".tif", ".tiff"}
+                queue_count = sum(
+                    1
+                    for _, _, files in os.walk(self.config.watch_dir)
+                    for f in files
+                    if os.path.splitext(f.lower())[1] in valid_exts
+                )
+        except (OSError, ValueError) as e:
+            logger.debug("Error retrieving queue size: %s", e)
+
+        return {
+            "total": total,
+            "success": success,
+            "failed": failed,
+            "skipped": skipped,
+            "avg_duration": round(avg, 1),
+            "paused": self.is_paused(),
+            "queue_size": queue_count,
+        }
 
     def log_stats(self):
         """Logs processing statistics."""
@@ -345,8 +351,11 @@ class DocumentProcessor:
                         extracted_base=extracted,
                         find_doc_type_cfg_fn=self.llm_extractor.find_doc_type_config,
                         optional_fields=optional_fields,
+                        save_empty_pages=save_empty_pages,
                     )
                     if not success:
+                        if not os.path.exists(filepath) or os.path.exists(f"{filepath}.meta"):
+                            return False
                         target_dir, target_filename = _route_single_file()
                         self._move_and_compress_file(filepath, target_dir, target_filename)
                 else:
@@ -400,8 +409,8 @@ class DocumentProcessor:
                     logger.debug(f"[-] Raw extracted data: {format_result(extracted)}")
                 return False
         except AllPagesEmptyError:
-            logger.info(f"[-] '{filename}' consists only of empty pages and will be deleted.")
-            remove_source_with_meta(filepath)
+            logger.info(f"[-] '{filename}' consists only of empty pages and will be moved to trash.")
+            trash_source_with_meta(filepath)
             with self._stats_lock:
                 self.stats_total += 1
                 self.stats_skipped += 1

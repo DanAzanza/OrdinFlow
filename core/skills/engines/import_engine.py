@@ -35,7 +35,7 @@ class ImportEngine(BaseSkill):
     def _get_processor(self):
         if self.processor is not None:
             return self.processor
-        from routes.state import DashboardState
+        from core.state import DashboardState
 
         return DashboardState.processor
 

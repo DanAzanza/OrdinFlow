@@ -155,9 +155,16 @@ function toast(message, type = "success") {
 
 async function api(url, options = {}) {
 	try {
+		const tokenMeta = document.querySelector('meta[name="ordinflow-token"]');
+		const token = tokenMeta ? tokenMeta.getAttribute("content") : "";
+		const headers = {
+			"Content-Type": "application/json",
+			...(token ? { "X-OrdinFlow-Token": token } : {}),
+			...(options.headers || {}),
+		};
 		const res = await fetch(url, {
-			headers: { "Content-Type": "application/json" },
 			...options,
+			headers,
 		});
 		if (!res.ok) {
 			let errorMsg = `HTTP ${res.status}`;

@@ -152,7 +152,7 @@ def _cleanup_stale_instance(port: int) -> None:
     """Attempts to kill stale processes occupying the port (Windows only)."""
     if sys.platform != "win32":
         return
-    logger.warning("[!] Port %s is occupied by a stale process. Attempting cleanup...", port)
+    logger.warning("[!] Port %s is occupied by an unresponsive process. Inspecting...", port)
     try:
         res = subprocess.run(
             ["netstat", "-ano"],
@@ -175,14 +175,41 @@ def _cleanup_stale_instance(port: int) -> None:
     for pid in pids:
         try:
             int_pid = int(pid)
-            if int_pid != os.getpid():
-                logger.info("[*] Killing stale process with PID %s...", pid)
-                subprocess.run(
-                    ["taskkill", "/F", "/PID", str(int_pid)],
+            if int_pid == os.getpid():
+                continue
+
+            # Verify process image name before issuing taskkill
+            image_name = ""
+            try:
+                t_res = subprocess.run(
+                    ["tasklist", "/FI", f"PID eq {int_pid}", "/FO", "CSV", "/NH"],
                     shell=False,
                     capture_output=True,
+                    text=True,
                     check=False,
                 )
+                if t_res.returncode == 0 and t_res.stdout.strip():
+                    image_name = t_res.stdout.strip().split(",")[0].strip('"').lower()
+            except Exception as e:
+                logger.debug("Failed to query process image name for PID %s: %s", int_pid, e)
+
+            allowed_images = ("python.exe", "pythonw.exe")
+            if image_name and not (any(img in image_name for img in allowed_images) or "ordinflow" in image_name):
+                logger.warning(
+                    "[!] Port %s is occupied by third-party process '%s' (PID %s). Skipping taskkill. Please configure a different dashboard_port.",
+                    port,
+                    image_name,
+                    pid,
+                )
+                continue
+
+            logger.info("[*] Killing stale process '%s' (PID %s)...", image_name or "unknown", pid)
+            subprocess.run(
+                ["taskkill", "/F", "/PID", str(int_pid)],
+                shell=False,
+                capture_output=True,
+                check=False,
+            )
             time.sleep(1)
         except (OSError, RuntimeError, ValueError, subprocess.SubprocessError) as e:
             logger.error("[!] Error killing process on port %s: %s", port, e)

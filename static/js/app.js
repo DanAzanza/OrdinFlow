@@ -342,9 +342,8 @@ function renderLegend() {
 let _hadActiveJobs = false;
 async function pollJobs() {
 	try {
-		const res = await fetch("/api/jobs");
-		if (!res.ok) return;
-		const data = await res.json();
+		const data = await api("/api/jobs").catch(() => null);
+		if (!data) return;
 		const jobs = data.jobs || [];
 		const activeJobs = jobs.filter(
 			(j) => j.status === "RUNNING" || j.status === "PENDING",
@@ -457,13 +456,13 @@ function debouncedSyncAppState() {
 
 // Dedicated heartbeat keepalive every 12s - runs continuously even when tab is backgrounded
 setInterval(() => {
-	fetch("/api/heartbeat", { method: "POST" }).catch(() => {});
+	api("/api/heartbeat", { method: "POST" }).catch(() => {});
 }, 12000);
 
 // On tab visibility change (pause UI polling when hidden, resume & sync immediately on return)
 document.addEventListener("visibilitychange", () => {
 	if (document.visibilityState === "visible") {
-		fetch("/api/heartbeat", { method: "POST" }).catch(() => {});
+		api("/api/heartbeat", { method: "POST" }).catch(() => {});
 		startUiPolling();
 		debouncedSyncAppState();
 		const activeTab = document.querySelector(".nav-item.active")?.dataset?.tab;
@@ -482,7 +481,7 @@ document.addEventListener("visibilitychange", () => {
 
 // On window focus force debounced sync
 window.addEventListener("focus", () => {
-	fetch("/api/heartbeat", { method: "POST" }).catch(() => {});
+	api("/api/heartbeat", { method: "POST" }).catch(() => {});
 	debouncedSyncAppState();
 });
 

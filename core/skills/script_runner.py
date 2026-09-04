@@ -28,6 +28,7 @@ def _sanitize_script_var(val: Any) -> str:
     """Sanitizes context variable values inserted into script strings against dangerous shell characters."""
     s = str(val or "")
     s = re.sub(r"[\x00\r\n;`|&$]", "", s)
+    s = s.replace("'", "''")
     return s.strip()
 
 

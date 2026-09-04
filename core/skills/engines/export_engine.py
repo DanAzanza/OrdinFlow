@@ -512,7 +512,7 @@ class ExportEngine(BaseSkill):
         folder_name = context.get("folder_name")
         folder_path = context.get("folder_path")
 
-        from routes.state import DashboardState
+        from core.state import DashboardState
 
         target_base = DashboardState.config.target_base_dir if DashboardState.config else "./Cases"
 
@@ -596,7 +596,7 @@ class ExportEngine(BaseSkill):
 
     def filter_matching_files(self, folder_path: str, allowed_types: list[str] | None = None) -> list[dict[str, Any]]:
         """Filters PDF files in a case folder according to the skill's allowed document types and loads metadata."""
-        from routes.state import DashboardState
+        from core.state import DashboardState
 
         delimiter = DashboardState.config.folder_delimiter if DashboardState.config else "__"
         types_to_use = allowed_types or self.get_target_document_types()
@@ -608,7 +608,7 @@ class ExportEngine(BaseSkill):
             return []
         folder_struct = None
         delimiter = "__"
-        from routes.state import DashboardState
+        from core.state import DashboardState
 
         if DashboardState.config:
             folder_struct = DashboardState.config.folder_structure

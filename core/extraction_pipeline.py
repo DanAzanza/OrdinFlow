@@ -379,7 +379,7 @@ class ExtractionPipeline:
             logger.info(
                 f"[+] All {len(all_keys_after_t1)} field(s) validated with >= 2 measurements (evidence weight >= {MIN_EVIDENCE_WEIGHT}). Finalizing document."
             )
-            if "Signed" not in group_final:
+            if "Signed" not in group_final and needs_signature:
                 group_final["Signed"] = any(
                     _to_bool_value(res.get("Signed", False)) for res in t1_vision_results if isinstance(res, dict)
                 )
@@ -458,7 +458,7 @@ class ExtractionPipeline:
             group_final.update(t3_final)
             confidences.update(t3_conf)
 
-        if "Signed" not in group_final:
+        if "Signed" not in group_final and needs_signature:
             group_final["Signed"] = any(
                 _to_bool_value(res.get("Signed", False))
                 for res_list in (t1_vision_results, t2_page_results)

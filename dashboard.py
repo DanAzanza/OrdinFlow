@@ -12,7 +12,8 @@ import urllib.error
 import urllib.request
 import webbrowser
 
-from flask import Flask
+import secrets
+from flask import Flask, jsonify, request
 from werkzeug.serving import make_server
 
 from core.config import AppConfig
@@ -24,6 +25,21 @@ from routes.ui import ui_bp
 app = Flask(__name__, template_folder="templates", static_folder="static")
 app.register_blueprint(api_bp)
 app.register_blueprint(ui_bp)
+
+if not DashboardState.session_token:
+    DashboardState.session_token = secrets.token_urlsafe(32)
+
+
+@app.before_request
+def check_host_header():
+    if app.config.get("TESTING"):
+        return None
+    raw_host = request.host.split(":")[0].strip().lower()
+    allowed_hosts = {"127.0.0.1", "localhost", "::1", "[::1]"}
+    if raw_host not in allowed_hosts:
+        return jsonify({"error": "Forbidden: Invalid Host header"}), 403
+    return None
+
 
 logger = logging.getLogger(__name__)
 
@@ -41,16 +57,6 @@ def heartbeat_monitor() -> None:
                 continue
         except Exception as e:
             logger.debug("[Dashboard] Queue manager check failed: %s", e)
-
-        # If background jobs exist (e.g. split/OCR jobs in job_queue), keep heartbeat alive
-        try:
-            from core.jobs import job_queue
-
-            if any(j.get("status") in ("RUNNING", "PENDING") for j in job_queue.list_jobs()):
-                DashboardState.last_heartbeat = time.time()
-                continue
-        except Exception as e:
-            logger.debug("[Dashboard] Job queue check failed: %s", e)
 
         # If background document processing exists, keep heartbeat alive
         try:

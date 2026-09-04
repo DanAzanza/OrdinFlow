@@ -2,12 +2,14 @@ import os
 
 from flask import Blueprint, jsonify, render_template
 
+from core.state import DashboardState
+
 ui_bp = Blueprint("ui", __name__)
 
 
 @ui_bp.route("/")
 def index():
-    return render_template("index.html")
+    return render_template("index.html", session_token=DashboardState.session_token)
 
 
 @ui_bp.route("/favicon.ico")

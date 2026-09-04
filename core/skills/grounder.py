@@ -89,7 +89,7 @@ class SoMGrounder:
         origin_x, origin_y = getattr(screen, "_screen_origin", (0, 0))
 
         # 1. Fast OCR Exact/Contains Match (RapidOCR)
-        if loc_type in ("auto", "smart", "ocr_exact", "ocr_contains") and search_term:
+        if loc_type in ("auto", "smart", "ocr_exact", "ocr_contains", "ocr_text") and search_term:
             from core.image_processing import run_rapid_ocr
 
             try:
@@ -111,20 +111,20 @@ class SoMGrounder:
                                 offset = cast(list[int], locator.get("offset", [0, 0]))
                                 return origin_x + cx + offset[0], origin_y + cy + offset[1]
 
-                            # Pass 2: Contains match (only for non-exact locator types)
-                            if loc_type != "ocr_exact":
-                                for line in res:
-                                    box, text, _ = line
-                                    t = text.strip()
-                                    if not t:
-                                        continue
-                                    if search_term.lower() in t.lower():
-                                        xs = [float(p[0]) for p in box]
-                                        ys = [float(p[1]) for p in box]
-                                        cx = int(sum(xs) / len(xs))
-                                        cy = int(sum(ys) / len(ys))
-                                        offset = cast(list[int], locator.get("offset", [0, 0]))
-                                        return origin_x + cx + offset[0], origin_y + cy + offset[1]
+                        # Pass 2: Contains match (only for non-exact locator types)
+                        if loc_type != "ocr_exact":
+                            for line in res:
+                                box, text, _ = line
+                                t = text.strip()
+                                if not t:
+                                    continue
+                                if search_term.lower() in t.lower():
+                                    xs = [float(p[0]) for p in box]
+                                    ys = [float(p[1]) for p in box]
+                                    cx = int(sum(xs) / len(xs))
+                                    cy = int(sum(ys) / len(ys))
+                                    offset = cast(list[int], locator.get("offset", [0, 0]))
+                                    return origin_x + cx + offset[0], origin_y + cy + offset[1]
             except Exception as e:
                 logger.warning("[SoMGrounder] RapidOCR Locator error: %s", e)
 

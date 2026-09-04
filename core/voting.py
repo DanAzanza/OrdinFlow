@@ -127,16 +127,28 @@ def pick_best_representative(members: list[tuple[str, float]]) -> str:
     """Selects the cleanest/most canonical spelling from cluster members.
 
     Priority order:
-    1. Vote weight count (the most frequently extracted spelling wins)
-    2. String length (longest name breaks ties between equal vote counts)
-    3. Casing score (prefer natural mixed case over screaming ALL CAPS)
+    1. Subsumption: If a complete string subsumes shorter abbreviations/tokens
+       with substantial support (>= 25% of cluster weight), favor the complete form.
+    2. Vote weight count (the most frequently extracted spelling wins)
+    3. String length (longest candidate breaks ties)
+    4. Casing score (prefer natural mixed case over screaming ALL CAPS)
     """
     counts: dict[str, float] = {}
     for val, w in members:
         counts[val] = counts.get(val, 0.0) + w
 
-    def score(v: str) -> tuple[float, int, int]:
-        return (counts[v], len(v), casing_score(v))
+    total_w = sum(counts.values())
+
+    def score(v: str) -> tuple[int, float, int, int]:
+        norm_v = normalize_for_clustering(v)
+        subsumes = 0
+        for other in counts:
+            if other != v:
+                norm_o = normalize_for_clustering(other)
+                if norm_o and (norm_o in norm_v or set(norm_o.split()).issubset(set(norm_v.split()))):
+                    subsumes += 1
+        informative_bonus = 1 if (subsumes > 0 and counts[v] >= 0.25 * total_w) else 0
+        return (informative_bonus, counts[v], len(v), casing_score(v))
 
     return max(counts.keys(), key=score)
 
@@ -180,24 +192,37 @@ def evaluate_field_consensus(
 
     Logic:
     1. Collects all votes with resolution weighting (incl. explicit True/False for booleans)
-    2. Fuzzy clustering (Levenshtein >= 0.85) with canonical representative
+    2. Fuzzy clustering (Ratcliff-Obershelp / SequenceMatcher >= 0.80) with canonical representative
     3. Calculates K(f) = sum_w_top / sum_w_total
     """
     weighted_votes: list[tuple[str, float]] = []
     is_boolean_field = False
 
-    for tier_idx, res_list in enumerate(page_results_lists):
-        weight = TIER_WEIGHTS.get(tier_resolutions[tier_idx], 1.0)
-        for res in res_list:
-            if not isinstance(res, dict):
-                continue
-            v = res.get(field)
-            if is_bool_value(v):
-                is_boolean_field = True
-                bool_str = "True" if to_bool_value(v) else "False"
-                weighted_votes.append((bool_str, weight))
-            elif not is_missing_value(v):
-                weighted_votes.append((str(v), weight))
+    if field == "Signed":
+        is_boolean_field = True
+        for tier_idx, res_list in enumerate(page_results_lists):
+            weight = TIER_WEIGHTS.get(tier_resolutions[tier_idx], 1.0)
+            tier_bools = [
+                to_bool_value(res.get(field))
+                for res in res_list
+                if isinstance(res, dict) and is_bool_value(res.get(field))
+            ]
+            if tier_bools:
+                tier_val = any(tier_bools)
+                weighted_votes.append(("True" if tier_val else "False", weight))
+    else:
+        for tier_idx, res_list in enumerate(page_results_lists):
+            weight = TIER_WEIGHTS.get(tier_resolutions[tier_idx], 1.0)
+            for res in res_list:
+                if not isinstance(res, dict):
+                    continue
+                v = res.get(field)
+                if is_bool_value(v):
+                    is_boolean_field = True
+                    bool_str = "True" if to_bool_value(v) else "False"
+                    weighted_votes.append((bool_str, weight))
+                elif not is_missing_value(v):
+                    weighted_votes.append((str(v), weight))
 
     if not weighted_votes:
         return (False, 1.0, {}) if is_boolean_field else (MISSING_PLACEHOLDER, 0.0, {})

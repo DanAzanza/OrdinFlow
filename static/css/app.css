@@ -2832,11 +2832,6 @@ color: #fff;
     }
 }
 
-@media (max-width: 768px) {
-    .app-inspector {
-        display: none;
-    }
-}
 
 /* ── Standardized Component Utilities ──────────────────────────────── */
 .skeleton-cell-name {
@@ -4972,4 +4967,56 @@ color: #fff;
     clip: rect(0, 0, 0, 0);
     white-space: nowrap;
     border: 0;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   RESPONSIVE LAYOUT & MOBILE/TABLET BREAKPOINTS
+   ═══════════════════════════════════════════════════════════════════════ */
+
+@media (max-width: 1024px) {
+    .app-inspector {
+        width: 340px;
+    }
+}
+
+@media (max-width: 768px) {
+    .app-shell {
+        position: relative;
+    }
+
+    .app-sidebar {
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        left: 0;
+        z-index: var(--z-drawer);
+        box-shadow: 4px 0 24px rgba(0, 0, 0, 0.5);
+    }
+
+    .app-sidebar.collapsed {
+        transform: translateX(-100%);
+        width: 200px;
+    }
+
+    .app-inspector {
+        display: flex;
+        position: fixed;
+        top: 0;
+        bottom: 0;
+        right: 0;
+        width: 90vw;
+        max-width: 420px;
+        z-index: var(--z-drawer);
+        box-shadow: -4px 0 24px rgba(0, 0, 0, 0.5);
+        transition: transform 0.25s cubic-bezier(0.2, 0.8, 0.2, 1);
+    }
+
+    .app-inspector.hidden-inspector {
+        transform: translateX(100%);
+    }
+
+    .inspector-dock-toggle,
+    .inspector-close-btn {
+        display: flex !important;
+    }
 }

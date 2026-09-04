@@ -124,28 +124,18 @@ def api_split_inspector_submit():
 
     validated, schema_err = validate_schema(SplitInspectorSubmitSchema, raw_data)
     if not validated or schema_err:
-        context = str(raw_data.get("context", "inbox"))
-        filename = raw_data.get("filename")
-        folder = raw_data.get("folder")
-        if not filename or not isinstance(filename, str):
-            return jsonify({"error": schema_err or "Filename is required"}), 400
-        single_doc = {
+        return jsonify({"error": schema_err or "Invalid request payload"}), 400
+
+    context = validated.context
+    filename = validated.filename
+    folder = validated.folder
+    documents_input = validated.documents or [
+        {
             k: (v.strip() if isinstance(v, str) else v)
             for k, v in raw_data.items()
             if k not in ("context", "filename", "folder", "documents")
         }
-        documents_input = [single_doc]
-    else:
-        context = validated.context
-        filename = validated.filename
-        folder = validated.folder
-        documents_input = validated.documents or [
-            {
-                k: (v.strip() if isinstance(v, str) else v)
-                for k, v in raw_data.items()
-                if k not in ("context", "filename", "folder", "documents")
-            }
-        ]
+    ]
 
     src_path, err_resp = _resolve_split_source(context, folder, filename)
     if err_resp is not None:

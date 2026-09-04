@@ -1,5 +1,5 @@
 {
-  "include": ["core", "routes"],
+  "include": ["core", "routes", "dashboard.py", "main.py"],
   "pythonVersion": "3.10",
   "venvPath": ".",
   "venv": "venv",

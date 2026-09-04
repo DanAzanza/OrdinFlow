@@ -23,6 +23,6 @@ testpaths = ["tests"]
 python_files = ["test_*.py"]
 
 [tool.pyright]
-include = ["core", "routes"]
+include = ["core", "routes", "dashboard.py", "main.py"]
 exclude = ["**/__pycache__", ".pytest_cache", "venv"]
 pythonVersion = "3.10"

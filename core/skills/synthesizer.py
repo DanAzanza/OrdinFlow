@@ -8,7 +8,7 @@ import re
 import time
 from typing import Any
 
-from routes.state import DashboardState
+from core.state import DashboardState
 
 logger = logging.getLogger(__name__)
 

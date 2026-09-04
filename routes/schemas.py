@@ -41,18 +41,51 @@ class FolderEditSchema(BaseModel):
 
     model_config = ConfigDict(extra="allow")
 
+    Datum: str | None = None
+    Produkt: str | None = None
+    Person: str | None = None
+    folder_name: str | None = None
+
     def to_clean_dict(self) -> dict[str, Any]:
-        return {k: v.strip() if isinstance(v, str) else v for k, v in self.model_dump().items()}
+        return {k: (v.strip() if isinstance(v, str) else v) for k, v in self.model_dump().items() if v is not None}
 
 
 class ConfigUpdateSchema(BaseModel):
     """Schema for PUT /api/config."""
 
-    model_config = ConfigDict(extra="allow")
+    model_config = ConfigDict(extra="ignore")
 
+    watch_dir: str | None = None
+    target_base_dir: str | None = None
+    dashboard_port: int | None = None
     folder_delimiter: str | None = None
     folder_structure: list[Any] | None = None
+    match_folder_by: str | None = None
     document_types: dict[str, Any] | None = None
+    llm_backend: str | None = None
+    server_url: str | None = None
+    server_api_key: str | None = None
+    llm_model_path: str | None = None
+    mmproj_path: str | None = None
+    n_gpu_layers: int | None = None
+    n_batch: int | None = None
+    n_ubatch: int | None = None
+    type_k: int | None = None
+    type_v: int | None = None
+    max_tokens: int | None = None
+    n_threads: int | None = None
+    render_dpi: int | None = None
+    vision_api_timeout: int | float | None = None
+    vision_api_retries: int | None = None
+    crop_edge_threshold: int | None = None
+    min_contour_area: int | None = None
+    crop_padding: int | None = None
+    white_border: int | None = None
+    contrast_limit: int | float | None = None
+    classify_dimension: int | None = None
+    tier1_dimension: int | None = None
+    tier2_dimension: int | None = None
+    tier3_dimension: int | None = None
 
     def to_clean_dict(self) -> dict[str, Any]:
         return self.model_dump(exclude_unset=True)
