@@ -21,6 +21,10 @@ ignore = ["E501", "E402", "S603", "S607"]  # E501: line length, E402: logger ini
 pythonpath = ["."]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
+markers = [
+    "integration: slow integration tests relying on sample files and full document pipelines (deselected by default in fast local dev)",
+]
+addopts = "-m 'not integration'"
 
 [tool.pyright]
 include = ["core", "routes", "dashboard.py", "main.py"]

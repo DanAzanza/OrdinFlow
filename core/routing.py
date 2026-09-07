@@ -72,14 +72,26 @@ def render_folder_name(
     delimiter: str = "--",
 ) -> str:
     """Generically generates a folder name based on configuration and structure."""
+    routing_cfg = routing_cfg or {}
     safe_ctx = SafeTemplateDict(
         data,
         optional_fields=optional_fields,
     )
 
+    folder_template = routing_cfg.get("folder_template")
+    if folder_template and isinstance(folder_template, str) and folder_template.strip():
+        delim = delimiter
+        if "__" in folder_template:
+            delim = "__"
+        elif "--" in folder_template:
+            delim = "--"
+        elif "++" in folder_template:
+            delim = "++"
+        return clean_template_result(folder_template.format_map(safe_ctx), delimiter=delim)
+
     if folder_structure is not None:
         effective_structure = folder_structure
-    elif routing_cfg and isinstance(routing_cfg, dict) and "folder_structure" in routing_cfg:
+    elif isinstance(routing_cfg, dict) and "folder_structure" in routing_cfg:
         effective_structure = routing_cfg["folder_structure"] or []
     else:
         effective_structure = []
