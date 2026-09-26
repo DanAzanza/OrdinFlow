@@ -45,4 +45,7 @@ crash.log
 Thumbs.db
 ehthumbs.db
 Desktop.ini
+# Distribution & release bundles
+dist/
+*.tar.gz
 

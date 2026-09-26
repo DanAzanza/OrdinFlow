@@ -117,7 +117,18 @@ def build_release_archive(
     normalized_version = version.lstrip("v")
     toml_version = get_pyproject_version()
 
-    if normalized_version != toml_version and not allow_version_mismatch:
+    def versions_match(v1: str, v2: str) -> bool:
+        if v1 == v2:
+            return True
+        p1 = [int(x) for x in v1.split(".") if x.isdigit()]
+        p2 = [int(x) for x in v2.split(".") if x.isdigit()]
+        while len(p1) < 3:
+            p1.append(0)
+        while len(p2) < 3:
+            p2.append(0)
+        return p1 == p2
+
+    if not versions_match(normalized_version, toml_version) and not allow_version_mismatch:
         raise ValueError(
             f"Version mismatch: Specified version is '{version}' (normalized '{normalized_version}') "
             f"but pyproject.toml defines version '{toml_version}'. "

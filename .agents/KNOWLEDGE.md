@@ -46,9 +46,36 @@
   ```
   *(Runs Ruff linter, Pyright type checker on `core/` and `routes/`, and full test suite).*
 
+* **Release Packaging & Adversarial Verification**:
+  ```bash
+  python scripts/build_release.py --version vX.Y.Z --output-dir dist/
+  python scripts/verify_release.py --archive dist/OrdinFlow-vX.Y.Z.zip --checksum-file dist/OrdinFlow-vX.Y.Z-checksums.sha256
+  ```
+
 ---
 
 ## 3. Specialized Multi-Agent Quality Subagents
 
 * **`plan_critic` ("Grill Me" Sparring Panel)**: Multi-perspective architectural reviewer before writing implementation plans. Actively attacks assumptions, validates against real codebase APIs, and enforces KISS/YAGNI.
 * **`pre_commit_auditor` ("Grill Me" Code & Goal Auditor)**: Adversarial auditor before commit approval. Scrutinizes `git diff` against Plan Fidelity (no cut corners) and `AGENTS.md` standards (zero placeholders, cross-platform guards, SRP limits).
+
+---
+
+## 4. Release Automation & Packaging Quirks
+
+### 📦 Clean Extraction Sandbox & `_bootstrap_venv` Trap
+* **Constraint**: Executing `main.py` directly inside an unzipped release bundle triggers `_bootstrap_venv()`, which checks for `venv/Scripts/python.exe`. In fresh unzipped environments without `venv/`, this exits with code 1.
+* **Rule**: Release smoke tests in `scripts/verify_release.py` MUST NOT execute `main.py` directly. Instead, test bytecode syntax (`py_compile`) and run isolated subprocess imports setting `PYTHONPATH` with `os.environ['_ORDINFLOW_REEXEC'] = '1'` to bypass bootstrap logic.
+
+### 🧹 Packaging Path Sanitation
+* **Constraint**: Local development sets absolute test paths in `settings/config.yaml` (`watch_dir: C:\OrdinFlowTest\Inbox`, etc.).
+* **Rule**: `scripts/build_release.py` must sanitize `settings/config.yaml` on-the-fly (`watch_dir: ""`, `target_base_dir: ""`), allowing `AppConfig.setup_paths()` to auto-provision `./Inbox` and `./Cases` locally on the user's machine.
+
+### 📜 Windows Batch CRLF Line Endings
+* **Constraint**: Windows `cmd.exe` crashes or misparses batch scripts (`setlocal enabledelayedexpansion`) if line endings are Unix `LF` (`\n`).
+* **Rule**: `scripts/build_release.py` must normalize all `.bat` files to `\r\n` (CRLF) before storing in the release zip.
+
+### 🏷️ Fail-Fast Version Synchronization
+* **Constraint**: Tagging a release (e.g. `v0.9.0`) while `pyproject.toml` contains a different version produces desynchronized releases.
+* **Rule**: `scripts/build_release.py` strictly checks the target version tag against `pyproject.toml` (allowing standard 2-part and 3-part semver equivalence, e.g. `v0.9` $\leftrightarrow$ `0.9.0`), failing fast if they disagree.
+
