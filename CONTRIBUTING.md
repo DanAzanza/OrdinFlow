@@ -93,8 +93,23 @@ Introduce test cases verifying tier escalation when confidence falls below the 0
 
 1. Create a feature branch: `git checkout -b feature/my-new-feature`
 2. Commit your changes following the commit message guidelines.
-3. Run and verify all local CI checks (`ruff`, `pyright`, `pytest`).
+3. Run and verify all local CI checks (`python scripts/verify_ci.py`).
 4. Push your branch to GitHub: `git push origin feature/my-new-feature`
 5. Open a Pull Request against the `main` branch with a clear description of your changes.
+
+---
+
+## 📦 Release Workflow
+
+OrdinFlow uses an automated GitHub Actions release pipeline:
+
+1. **Update Version:** Ensure `version` in `pyproject.toml` is bumped to the target version (e.g. `1.0.1`).
+2. **Push Version Tag:**
+   ```bash
+   git tag v1.0.1
+   git push origin v1.0.1
+   ```
+   *(Alternatively, trigger the release manually via GitHub Actions `workflow_dispatch` with the version input).*
+3. **Automated Verification & Publishing:** GitHub Actions automatically runs the full CI quality gate, builds the sanitized release archive (`scripts/build_release.py`), executes adversarial verification tests on the unzipped bundle (`scripts/verify_release.py`), and publishes the GitHub Release with SHA256 checksums and automated release notes.
 
 Thank you for helping make OrdinFlow better!
