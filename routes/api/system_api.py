@@ -118,7 +118,7 @@ def api_resume():
 
 @system_api_bp.route("/api/router/shutdown", methods=["POST"])
 def api_shutdown():
-    logging.info("[Dashboard] Shutdown requested...")
+    logger.info("[Dashboard] Shutdown requested...")
 
     def delayed_trigger():
         time.sleep(0.5)
@@ -171,8 +171,8 @@ def api_clear_logs():
             try:
                 with open(log_name, "w", encoding="utf-8"):
                     pass
-            except OSError:
-                pass
+            except OSError as e:
+                logger.warning("Could not clear log file %s: %s", log_name, e)
 
     return jsonify({"status": "cleared"})
 
@@ -231,9 +231,9 @@ def api_system_config():
             DashboardState.config.save_to_yaml()
             if DashboardState.processor and hasattr(DashboardState.processor, "llm_extractor"):
                 DashboardState.processor.llm_extractor.invalidate_cache()
-            logging.info(f"[Dashboard] Configuration updated: {', '.join(changed)}")
+            logger.info("[Dashboard] Configuration updated: %s", ", ".join(changed))
         except Exception as e:
-            logging.error(f"[Dashboard] Error saving config: {e}", exc_info=True)
+            logger.error("[Dashboard] Error saving config: %s", e, exc_info=True)
             return jsonify({"error": "Failed to save configuration"}), 500
 
     return jsonify({"status": "ok", "changed": changed})

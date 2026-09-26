@@ -263,11 +263,12 @@ function getDocTypeEmoji(name) {
 	return (cfg && cfg.emoji) || "📄";
 }
 
-function getDokArtOptions() {
+function getDocTypeOptions() {
 	const docTypes = getEffectiveDocTypes();
 	const keys = Object.keys(docTypes);
 	return keys.length > 0 ? keys.sort() : [];
 }
+const getDokArtOptions = getDocTypeOptions;
 
 async function fetchConfig() {
 	try {

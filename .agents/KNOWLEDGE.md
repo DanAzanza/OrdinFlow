@@ -79,3 +79,34 @@
 * **Constraint**: Tagging a release (e.g. `v0.9.0`) while `pyproject.toml` contains a different version produces desynchronized releases.
 * **Rule**: `scripts/build_release.py` strictly checks the target version tag against `pyproject.toml` (allowing standard 2-part and 3-part semver equivalence, e.g. `v0.9` $\leftrightarrow$ `0.9.0`), failing fast if they disagree.
 
+---
+
+## 5. OrdinFlow Architectural Invariants & Component Layers
+
+### 🏗️ Repository Component Mapping (Git Commit Scopes)
+* `[Core]`: Core orchestration, document triage engine, state evaluation, domain models (`core/`).
+* `[Vision]`: Vision models (Qwen3-VL), 28px patch alignment, multi-tier extraction (`core/ocr_vision.py`, `models/`).
+* `[RPA]`: Windows UI automation, Win32 UIA locators, GDI screen captures (`core/skills/engines/rpa_engine.py`, `core/uia_locator.py`).
+* `[Skills]`: Skill recorder, executor engine, queue management (`core/skills/`).
+* `[API]`: Flask REST endpoints and request/response validation schemas (`routes/api/`, `routes/schemas.py`).
+* `[UI]`: Web dashboard, frontend JS modules, and styling (`templates/`, `static/`).
+* `[CI]`: Quality gate scripts, build pipelines, release automation (`scripts/`, `.github/`).
+
+### 🛡️ Layer Invariants & Forbidden Dependencies
+* **Core $\to$ Routes Prohibition**: `core/` must NEVER import from `routes/`. Routes depend on core, never the reverse. Strictly enforced by AST inspection in `tests/test_architecture_guard.py::test_core_never_imports_routes`.
+* **Context Agnosticism**: Document routing, classification, and OCR pipelines must accept explicit parameters and never access Flask request or session objects.
+
+### 🌐 Frontend Module Partitioning (`static/js/`)
+* **SRP Split**: Frontend logic is separated into:
+  * `*_api.js`: Network requests, error handling, and backend communication.
+  * `*_views.js`: DOM rendering, template creation, and HTML updates.
+  * `*_events.js`: Event listeners, DOM bindings, and user action dispatching.
+
+### 🧹 Heavy Resource & Memory Cleanup Protocols
+* **Vision & OCR Passes**: Explicitly deallocate large image buffers and trigger `gc.collect()` after multi-tier OCR or token extraction passes to prevent host RAM / VRAM exhaustion.
+* **GDI Automation Buffers**: Win32 GDI Device Contexts (`DeleteDC`, `ReleaseDC`, `DeleteObject`) must be deterministically released immediately following `BitBlt` screen captures.
+
+### 📏 Architectural Line Limits
+* **800 LOC Ceiling**: No single file in `core/`, `routes/`, or `static/js/` may exceed 800 lines of code. Enforced by `tests/test_architecture_guard.py::test_source_file_line_limits`.
+
+

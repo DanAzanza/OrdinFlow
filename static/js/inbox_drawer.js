@@ -270,14 +270,14 @@ function formatPageRange(pages) {
 }
 
 function initDrawerDocSections(docType, extractedData = {}) {
-	const dokArtOptions = getDokArtOptions();
+	const docTypeOptions = getDocTypeOptions();
 	const pageResults = (extractedData && Array.isArray(extractedData.page_results) && extractedData.page_results.length > 0)
 		? extractedData.page_results
 		: null;
 
 	if (pageResults) {
 		return pageResults.map((pr, idx) => {
-			const prType = pr.Document || pr.document || pr.DocumentType || docType || dokArtOptions[0] || "Document";
+			const prType = pr.Document || pr.document || pr.DocumentType || docType || docTypeOptions[0] || "Document";
 			const prPages = formatPageRange(pr.pages || (pageResults.length === 1 ? "all" : (idx + 1)));
 			const mergedExtracted = Object.assign({}, extractedData, pr);
 			return {
@@ -320,9 +320,9 @@ function saveCurrentDrawerFormState() {
 		const secId = card.dataset.secid;
 		const sec = state.drawerDocSections.find(s => String(s.id) === String(secId));
 		if (!sec) return;
-		const dokArt = card.querySelector(".sec-dok-art")?.value;
+		const docType = card.querySelector(".sec-doc-type, .sec-dok-art")?.value;
 		const pagesVal = card.querySelector(".sec-pages")?.value;
-		if (dokArt) sec.docType = dokArt;
+		if (docType) sec.docType = docType;
 		if (pagesVal !== undefined) sec.pages = pagesVal;
 		if (!sec.extracted) sec.extracted = {};
 		card.querySelectorAll(".drawer-field").forEach((el) => {
@@ -335,7 +335,7 @@ function saveCurrentDrawerFormState() {
 function addDrawerDocSection() {
 	saveCurrentDrawerFormState();
 	if (!state.drawerDocSections) state.drawerDocSections = [];
-	const options = getDokArtOptions();
+	const options = getDocTypeOptions();
 	const defaultType = options[0] || "Document";
 	state.drawerDocSections.push({
 		id: "sec_" + Date.now() + "_" + Math.floor(Math.random() * 1000),
@@ -353,15 +353,16 @@ function removeDrawerDocSection(secId) {
 	renderDrawerSections();
 }
 
-function onSectionDokArtChange(secId, newDokArt) {
+function onSectionDocTypeChange(secId, newDocType) {
 	saveCurrentDrawerFormState();
 	if (!state.drawerDocSections) return;
 	const sec = state.drawerDocSections.find(s => String(s.id) === String(secId));
 	if (sec) {
-		sec.docType = newDokArt;
+		sec.docType = newDocType;
 		renderDrawerSections();
 	}
 }
+const onSectionDokArtChange = onSectionDocTypeChange;
 
 function renderDrawerSections() {
 	const wrapper = document.getElementById("drawerFormWrapper");
@@ -375,14 +376,14 @@ function buildGenericInspectorForm(docType = null, extractedData = {}) {
 		state.drawerDocSections = initDrawerDocSections(docType, extractedData);
 	}
 
-	const dokArtOptions = getDokArtOptions();
+	const docTypeOptions = getDocTypeOptions();
 	const isMulti = state.drawerDocSections.length > 1;
 	const isPdf = (state.inspectorFile || "").toLowerCase().endsWith(".pdf");
 
 	let html = `<div id="drawerSectionsList" class="drawer-sections-flex">`;
 
 	state.drawerDocSections.forEach((sec, idx) => {
-		const curDokArt = sec.docType;
+		const curDocType = sec.docType;
 		const docTypes = getImportSkillsDocTypes();
 		const docCfg = docTypes[curDokArt] || (state.config && state.config.document_types ? state.config.document_types[curDokArt] : null);
 		const extractionFieldsConfig = (docCfg && docCfg.extraction_fields) ? docCfg.extraction_fields : null;
@@ -447,7 +448,7 @@ function buildGenericInspectorForm(docType = null, extractedData = {}) {
 			<div class="drawer-section-card" data-secid="${escapeHtml(String(sec.id))}">
 				<div class="drawer-section-header">
 					<span class="inbox-drawer-title-accent">
-						📄 Section ${idx + 1} (${escapeHtml(curDokArt)})
+						📄 Section ${idx + 1} (${escapeHtml(curDocType)})
 					</span>
 					${isMulti ? `<button type="button" class="btn btn-sm btn-danger inbox-drawer-btn-remove" data-secid="${escapeHtml(String(sec.id))}" onclick="removeDrawerDocSection(this.dataset.secid)">🗑️ Remove section</button>` : ""}
 				</div>
@@ -455,9 +456,9 @@ function buildGenericInspectorForm(docType = null, extractedData = {}) {
 				<div class="grid-2col">
 					<div class="form-group zero-margin">
 						<label for="${sanitizeDomId("sec", sec.id, "dok_art")}" class="doc-editor-label">Document Type *</label>
-						<select id="${sanitizeDomId("sec", sec.id, "dok_art")}" class="doc-editor-input sec-dok-art inbox-drawer-field-select-lg" aria-label="Document Type" data-secid="${escapeHtml(String(sec.id))}" onchange="onSectionDokArtChange(this.dataset.secid, this.value)">
+						<select id="${sanitizeDomId("sec", sec.id, "dok_art")}" class="doc-editor-input sec-doc-type sec-dok-art inbox-drawer-field-select-lg" aria-label="Document Type" data-secid="${escapeHtml(String(sec.id))}" onchange="onSectionDocTypeChange(this.dataset.secid, this.value)">
 							${optionsList.length > 0
-								? optionsList.map(opt => `<option value="${escapeHtml(opt)}" ${opt === curDokArt ? "selected" : ""}>${escapeHtml(opt)}</option>`).join("")
+								? optionsList.map(opt => `<option value="${escapeHtml(opt)}" ${opt === curDocType ? "selected" : ""}>${escapeHtml(opt)}</option>`).join("")
 								: `<option value="">Empty</option>`
 							}
 						</select>
@@ -624,12 +625,12 @@ async function submitDrawerInspector() {
 	const documentsPayload = [];
 
 	sectionCards.forEach((card) => {
-		const dokArt = card.querySelector(".sec-dok-art")?.value || "Document";
+		const docType = card.querySelector(".sec-doc-type, .sec-dok-art")?.value || "Document";
 		const pagesVal = card.querySelector(".sec-pages")?.value || "all";
 
 		const secData = {
-			Document: dokArt,
-			document: dokArt,
+			Document: docType,
+			document: docType,
 			pages: pagesVal
 		};
 

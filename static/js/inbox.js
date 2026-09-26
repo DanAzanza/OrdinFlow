@@ -1,13 +1,13 @@
 async function fetchInbox() {
 	try {
 		state.inbox = await api("/api/inbox");
-		const pruefCount = state.inbox.filter((f) => Boolean(f.is_review ?? f.is_pruefen)).length;
+		const reviewCount = state.inbox.filter((f) => Boolean(f.is_review ?? f.is_pruefen)).length;
 		const bIn = document.getElementById("badgeInbox");
 		if (bIn) bIn.textContent = state.inbox.length;
 		const bp = document.getElementById("badgePruefen");
 		if (bp) {
-			if (pruefCount > 0) {
-				bp.textContent = pruefCount + " ⚠";
+			if (reviewCount > 0) {
+				bp.textContent = reviewCount + " ⚠";
 				bp.style.display = "";
 			} else {
 				bp.style.display = "none";
@@ -27,12 +27,14 @@ function filterInbox() {
 	renderInbox();
 }
 
-function togglePruefenFilter() {
-	state.pruefenOnly = !state.pruefenOnly;
+function toggleReviewFilter() {
+	state.reviewOnly = !state.reviewOnly;
+	state.pruefenOnly = state.reviewOnly;
 	const btn = document.getElementById("filterPruefen");
-	btn.classList.toggle("btn-warning", state.pruefenOnly);
+	if (btn) btn.classList.toggle("btn-warning", state.reviewOnly);
 	renderInbox();
 }
+const togglePruefenFilter = toggleReviewFilter;
 
 let inboxThumbObserver = null;
 let inboxSentinelObserver = null;
@@ -213,7 +215,7 @@ function renderInbox() {
 	const searchEl = document.getElementById("searchInbox");
 	const q = searchEl ? searchEl.value.toLowerCase() : "";
 	let data = state.inbox || [];
-	if (state.pruefenOnly) data = data.filter((f) => Boolean(f.is_review ?? f.is_pruefen));
+	if (state.reviewOnly || state.pruefenOnly) data = data.filter((f) => Boolean(f.is_review ?? f.is_pruefen));
 	if (q) data = data.filter((f) => (f.name || "").toLowerCase().includes(q));
 
 	currentInboxData = data;

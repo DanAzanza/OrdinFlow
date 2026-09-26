@@ -171,18 +171,10 @@ class DocumentProcessor:
     ) -> None:
         self.file_service.mark_for_review(filepath, reason, extracted)
 
-    def _mark_as_pruefen(
-        self,
-        filepath: str,
-        grund: str = "Extraction failed",
-        extracted: dict[str, Any] | None = None,
-    ) -> None:
-        self.file_service.mark_for_review(filepath, grund, extracted)
-
     # --- Extraction & Hybrid Voting ---
     def extract_hybrid_voting(self, filepath: str, save_empty_pages: bool = False) -> dict[str, Any] | None:
         """Analyses and extracts data across all pages of a document."""
-        raw_images = self.image_preprocessor.create_source_images(filepath, return_raw=True)
+        raw_images = self.image_preprocessor.create_raw_source_images(filepath)
         if not raw_images:
             return None
 
@@ -242,8 +234,8 @@ class DocumentProcessor:
             page_results.append(g_res)
 
         final_doc = dict(doc_res)
-        dok_arten = [g[0] for g in groups if not is_missing_value(g[0])]
-        final_doc["Document"] = "+".join(dok_arten) if dok_arten else MISSING_PLACEHOLDER
+        doc_types = [g[0] for g in groups if not is_missing_value(g[0])]
+        final_doc["Document"] = "+".join(doc_types) if doc_types else MISSING_PLACEHOLDER
         final_doc["page_results"] = page_results
 
         logger.debug(f"[+] Consolidated final result: {format_result(final_doc)}")
@@ -285,11 +277,11 @@ class DocumentProcessor:
             extraction_fields = set()
             is_valid, reason = False, "No data extracted"
             matched_type = ""
-            dok_art_raw = ""
+            raw_doc_type = ""
 
             if extracted:
-                dok_art_raw = clean_path_component(extracted.get("Document", ""))
-                matched_type, matched_info = self.llm_extractor.find_doc_type_config(dok_art_raw)
+                raw_doc_type = clean_path_component(extracted.get("Document", ""))
+                matched_type, matched_info = self.llm_extractor.find_doc_type_config(raw_doc_type)
 
                 if matched_info:
                     routing_cfg = matched_info.get("routing") or {}
@@ -299,7 +291,7 @@ class DocumentProcessor:
 
                 if not routing_cfg.get("archive", True):
                     logger.warning(f"[-] '{matched_type}' has archive=False and will not be archived.")
-                    self._mark_as_pruefen(filepath, f"{matched_type} – manual assignment required")
+                    self._mark_for_review(filepath, f"{matched_type} – manual assignment required")
                     return False
 
                 is_dependent_doc = bool(matched_info.get("dependent", False))
@@ -339,7 +331,7 @@ class DocumentProcessor:
                         routing_cfg=routing_cfg,
                         ext=orig_ext,
                         optional_fields=optional_fields,
-                        fallbacks={"Document": matched_type if matched_type else dok_art_raw},
+                        fallbacks={"Document": matched_type if matched_type else raw_doc_type},
                     )
                     return td, tf
 

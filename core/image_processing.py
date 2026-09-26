@@ -340,7 +340,8 @@ class ImagePreprocessor:
         pdf_path: str,
         return_raw: bool = False,
     ) -> list[Image.Image] | None:
-        """Reads the document and creates prepared base images using standardized DPI rendering.
+        """Reads document and creates prepared base images using standardized DPI rendering.
+
         Uses PyMuPDF (fitz) for PDFs and Pillow for image files.
         """
         _, ext = os.path.splitext(pdf_path.lower())
@@ -372,3 +373,7 @@ class ImagePreprocessor:
         except (OSError, RuntimeError, ValueError) as ex:
             logger.warning("[!] Error loading source images: %s", ex)
             return None
+
+    def create_raw_source_images(self, pdf_path: str) -> list[Image.Image] | None:
+        """Reads document and extracts raw RGB Pillow images without preprocessing."""
+        return self.create_source_images(pdf_path, return_raw=True)

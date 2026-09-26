@@ -51,7 +51,7 @@ function renderDocTypesSidebar() {
 				return `
 					<div class="category-item ${isSelected ? "active" : ""}" data-type="${escapeHtml(key)}" onclick="selectDocType(this.dataset.type)">
 						<div class="category-item-name">
-							<span class="category-emoji">${emoji}</span>
+							<span class="category-emoji">${escapeHtml(emoji)}</span>
 							<span class="category-label" title="${escapeHtml(key)}">
 								${escapeHtml(key)}
 							</span>
@@ -185,7 +185,7 @@ function renderDocTypeForm(typeName) {
 	container.innerHTML = `
 		<div class="doc-form-header-card">
 			<div class="doc-form-header-title">
-				<div class="doc-form-header-emoji">${emoji}</div>
+				<div class="doc-form-header-emoji">${escapeHtml(emoji)}</div>
 				<div>
 					<h3 class="doc-header-name">${escapeHtml(typeName)}</h3>
 				</div>

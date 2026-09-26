@@ -270,8 +270,8 @@ def api_cases_detail(folder_name: str):
                                 or loaded.get("document_type")
                                 or "UNKNOWN"
                             )
-                except (json.JSONDecodeError, OSError):
-                    pass
+                except (json.JSONDecodeError, OSError) as e:
+                    logger.debug("Failed reading meta JSON for %s: %s", f, e)
 
             if doc_type == "UNKNOWN" and "__" in f:
                 parts = f.split("__")

@@ -147,7 +147,7 @@ function renderCases() {
 		const dots = sortedTypes
 			.map(
 				(d) =>
-					`<span class="doc-emoji" title="${escapeHtml(docLabel(d))}">${getDocTypeEmoji(d)}</span>`,
+					`<span class="doc-emoji" title="${escapeHtml(docLabel(d))}">${escapeHtml(getDocTypeEmoji(d))}</span>`,
 			)
 			.join("");
 
@@ -230,10 +230,10 @@ function initCasesDelegation() {
 			return;
 		}
 
-		const inspectEl = e.target.closest("[data-inspectvorgang]");
+		const inspectEl = e.target.closest("[data-inspect-case], [data-inspectvorgang]");
 		if (inspectEl) {
 			e.stopPropagation();
-			const filename = decodeURIComponent(inspectEl.dataset.inspectvorgang);
+			const filename = decodeURIComponent(inspectEl.dataset.inspectCase || inspectEl.dataset.inspectvorgang);
 			openSplitInspector("cases", state.expandedFolder, filename);
 			return;
 		}
@@ -265,7 +265,7 @@ function renderDetailFiles() {
 				}
 
 				return `<div class="file-card ${f.executed_skills && f.executed_skills.length > 0 ? "file-card-exported" : ""}">
-      <div class="preview clickable file-card-preview-clickable" data-inspectvorgang="${encodeURIComponent(f.name)}">
+      <div class="preview clickable file-card-preview-clickable" data-inspect-case="${encodeURIComponent(f.name)}" data-inspectvorgang="${encodeURIComponent(f.name)}">
         ${
 					f.has_preview
 						? `<img src="${escapeHtml(f.preview_url)}" alt="Preview" loading="lazy" onerror="this.parentElement.innerHTML='<span class=no-preview>Preview unavailable</span>'">`
@@ -273,11 +273,11 @@ function renderDetailFiles() {
 				}
       </div>
       <div class="file-card-body file-card-body-flex">
-        <div class="file-info file-info-flex" data-inspectvorgang="${encodeURIComponent(f.name)}">
+        <div class="file-info file-info-flex" data-inspect-case="${encodeURIComponent(f.name)}" data-inspectvorgang="${encodeURIComponent(f.name)}">
           <div class="file-name clickable" title="${escapeHtml(f.name)}">${escapeHtml(f.name)}</div>
           <div class="file-meta">${formatSize(f.size)} · ${escapeHtml(f.modified || "")}</div>
           <div class="file-skill-badges file-skill-badges-flex">
-              <span class="badge file-doctype-badge">${getDocTypeEmoji(f.doc_type)} ${escapeHtml(docLabel(f.doc_type || "Document"))}</span>
+              <span class="badge file-doctype-badge">${escapeHtml(getDocTypeEmoji(f.doc_type))} ${escapeHtml(docLabel(f.doc_type || "Document"))}</span>
               ${skillBadgesHtml}
           </div>
         </div>

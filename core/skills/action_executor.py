@@ -79,6 +79,11 @@ def send_native_click(x: int, y: int, button: str = "left", double: bool = False
         return False
 
 
+def send_native_double_click(x: int, y: int) -> bool:
+    """Dispatches physical double click to Windows OS desktop coordinates with 64-bit safety."""
+    return send_native_click(x, y, button="left", double=True)
+
+
 def execute_mouse_click(
     step: Mapping[str, Any],
     step_id: str,
@@ -118,7 +123,7 @@ def execute_mouse_click(
 
     with input_shield():
         if action_type == "DOUBLE_CLICK":
-            send_native_click(coords[0], coords[1], double=True)
+            send_native_double_click(coords[0], coords[1])
         elif action_type == "RIGHT_CLICK":
             send_native_click(coords[0], coords[1], button="right")
         else:

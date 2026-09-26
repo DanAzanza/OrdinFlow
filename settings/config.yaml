@@ -25,8 +25,8 @@ tier3_dimension: 1568
 vision_api_timeout: 120
 vision_api_retries: 3
 base_dir: .
-watch_dir: C:\OrdinFlowTest\Inbox
-target_base_dir: C:\OrdinFlowTest\Cases
+watch_dir: ""
+target_base_dir: ""
 folder_delimiter: __
 folder_structure:
 - '{Datum}'

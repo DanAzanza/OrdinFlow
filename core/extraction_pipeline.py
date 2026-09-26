@@ -203,7 +203,7 @@ class ExtractionPipeline:
 
         Optionally queries only specific conflict fields via target_fields.
         """
-        logging.info(f"[*] Starting {label}...")
+        logger.info("[*] Starting %s...", label)
         tier_page_results = []
         for p in group_pages:
             p_num = p.get("page_num", 1)
@@ -212,21 +212,24 @@ class ExtractionPipeline:
             p_fields = p_info.get("extraction_fields", {})
             p_sig = p_info.get("validation", {}).get("signature_required", False)
 
-            # Skip KI request if page type has no extraction fields and no signature required
+            # Skip AI request if page type has no extraction fields and no signature required
             if not p_fields and not p_sig:
-                logging.info(f"[*] Page {p_num} ({p_type}): No extraction fields configured. Skipping KI request.")
+                logger.info("[*] Page %s (%s): No extraction fields configured. Skipping AI request.", p_num, p_type)
                 tier_page_results.append({})
                 continue
 
-            # Skip KI request if target_fields is set and page has none of the target fields
+            # Skip AI request if target_fields is set and page has none of the target fields
             if target_fields is not None:
                 target_set_lower = {f.lower() for f in target_fields}
                 page_fields_lower = {f.lower() for f in p_fields.keys()}
                 if p_sig:
                     page_fields_lower.add("signed")
                 if not (page_fields_lower & target_set_lower):
-                    logging.debug(
-                        f"[*] Page {p_num} ({p_type}) {label}: Skipped (no matching target fields for this page type)."
+                    logger.debug(
+                        "[*] Page %s (%s) %s: Skipped (no matching target fields for this page type).",
+                        p_num,
+                        p_type,
+                        label,
                     )
                     tier_page_results.append({})
                     continue
@@ -237,7 +240,7 @@ class ExtractionPipeline:
             )
             res = ext if isinstance(ext, dict) else {}
             tier_page_results.append(res)
-            logging.info(f"[*] Page {p_num} ({p_type}) {label} result: {res}")
+            logger.info("[*] Page %s (%s) %s result: %s", p_num, p_type, label, res)
 
         return tier_page_results
 
@@ -249,7 +252,7 @@ class ExtractionPipeline:
         target_fields: list[str] | None = None,
     ) -> list[dict[str, Any]]:
         """Runs an extraction pass over layout-aware spatial text for all pages."""
-        logging.info(f"[*] Starting {label}...")
+        logger.info("[*] Starting %s...", label)
         tier_page_results = []
         for p in group_pages:
             p_num = p.get("page_num", 1)
@@ -319,11 +322,13 @@ class ExtractionPipeline:
         if needs_signature:
             expected_fields.add("Signed")
 
-        # ── Fast path: No extraction fields AND no signature check needed → skip KI requests ──
+        # ── Fast path: No extraction fields AND no signature check needed → skip AI requests ──
         if not expected_fields and not needs_signature:
             d_type = document_pages[0].get("matched_name") or "UNKNOWN"
-            logging.info(
-                f"[+] Document '{d_type}' (pages {page_nums}): No extraction fields configured and no signature required. Skipping KI requests."
+            logger.info(
+                "[+] Document '%s' (pages %s): No extraction fields configured and no signature required. Skipping AI requests.",
+                d_type,
+                page_nums,
             )
             desc = next((p.get("vision_description") for p in document_pages if p.get("vision_description")), "")
             res: dict[str, Any] = {
@@ -480,20 +485,20 @@ class ExtractionPipeline:
         if not extracted:
             return False, "No data extracted"
 
-        dok_art_raw = str(extracted.get("Document", "")).strip()
-        if not dok_art_raw or is_missing_value(dok_art_raw) or dok_art_raw.upper() in ("UNKNOWN", "EMPTY"):
+        raw_doc_type = str(extracted.get("Document", "")).strip()
+        if not raw_doc_type or is_missing_value(raw_doc_type) or raw_doc_type.upper() in ("UNKNOWN", "EMPTY"):
             return False, "Document unknown or missing"
 
         page_results = extracted.get("page_results") or [extracted]
         for idx, res in enumerate(page_results, 1):
-            d_art = str(res.get("Document", "")).strip()
-            if not d_art or is_missing_value(d_art) or d_art.upper() in ("UNKNOWN", "EMPTY"):
+            doc_type_item = str(res.get("Document", "")).strip()
+            if not doc_type_item or is_missing_value(doc_type_item) or doc_type_item.upper() in ("UNKNOWN", "EMPTY"):
                 page_info = f"on page group {idx}" if len(page_results) > 1 else "on the document"
                 return False, f"Document unknown or missing {page_info}"
 
-            matched_type, matched_info = self.llm_extractor.find_doc_type_config(d_art)
+            matched_type, matched_info = self.llm_extractor.find_doc_type_config(doc_type_item)
             if not matched_type or matched_type.upper() == "UNKNOWN":
-                return False, f"Document type '{d_art}' unknown or missing"
+                return False, f"Document type '{doc_type_item}' unknown or missing"
 
             extraction_fields = matched_info.get("extraction_fields", {})
             validation_cfg: dict[str, Any] = matched_info.get("validation") or {}

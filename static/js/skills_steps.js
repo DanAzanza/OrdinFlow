@@ -395,7 +395,7 @@ function renderEditorSteps() {
 										<div class="action-row-item ${act._editing ? 'action-row-editing' : ''}" id="actionItem_${act.id || actIdx}">
 											<div class="action-item-left">
 												<span class="action-type-pill ${badgeStyle.badgeClass || "action-pill-focus"}">
-													${badgeStyle.label || act.action_type}
+													${escapeHtml(badgeStyle.label || act.action_type || "")}
 												</span>
 												${isSensitive ? `<span class="action-type-pill action-pill-secret" title="Security Warning: Sensitive credential or password detected. Plaintext inputs are executed on screen.">🔒 Sensitive</span>` : ""}
 												<div class="step-action-desc-col">

@@ -9,10 +9,8 @@ Instructor + Pydantic enforce error-free data structure – invalid JSON tokens 
 
 from __future__ import annotations
 
-import inspect
 import logging
 import os
-import sys
 import threading
 from abc import ABC, abstractmethod
 from typing import Any
@@ -20,77 +18,18 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 
-def _filter_supported_kwargs(cls: type, kwargs: dict[str, Any]) -> dict[str, Any]:
-    """Filters kwargs against class constructor parameters to prevent TypeErrors."""
-    try:
-        sig = inspect.signature(cls.__init__)
-        valid_keys = set(sig.parameters.keys())
-        return {k: v for k, v in kwargs.items() if k in valid_keys}
-    except (ValueError, TypeError):
-        return kwargs
-
-
-def _is_nvidia_cuda_available() -> bool:
-    """Checks if NVIDIA CUDA acceleration is present on the current machine."""
-    if sys.platform == "win32":
-        system_root = os.environ.get("SystemRoot", r"C:\Windows")
-        nvcuda_path = os.path.join(system_root, "System32", "nvcuda.dll")
-        if os.path.exists(nvcuda_path):
-            try:
-                import ctypes
-
-                lib = ctypes.windll.LoadLibrary(nvcuda_path)
-                if lib:
-                    return True
-            except Exception as e:
-                logger.debug("[LLMBackend] CUDA LoadLibrary check failed: %s", e)
-        try:
-            import winreg
-
-            key_path = r"SYSTEM\CurrentControlSet\Control\Class\{4d36e968-e325-11ce-bfc1-08002be10318}"
-            with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, key_path) as root_key:
-                subkeys_count, _, _ = winreg.QueryInfoKey(root_key)
-                for i in range(subkeys_count):
-                    try:
-                        subkey_name = winreg.EnumKey(root_key, i)
-                        if subkey_name.isdigit():
-                            with winreg.OpenKey(root_key, subkey_name) as subkey:
-                                desc, _ = winreg.QueryValueEx(subkey, "DriverDesc")
-                                if "nvidia" in str(desc).lower():
-                                    return True
-                    except OSError:
-                        continue
-        except Exception as e:
-            logger.debug("[LLMBackend] Registry display adapter check failed: %s", e)
-    elif sys.platform == "linux":
-        return os.path.exists("/proc/driver/nvidia/version") or os.path.exists("/usr/local/cuda")
-    return False
-
-
-def _is_vulkan_available() -> bool:
-    """Checks if Vulkan runtime and GPU support are present on the current machine."""
-    if sys.platform == "win32":
-        system_root = os.environ.get("SystemRoot", r"C:\Windows")
-        vulkan_path = os.path.join(system_root, "System32", "vulkan-1.dll")
-        if os.path.exists(vulkan_path):
-            try:
-                import ctypes
-
-                lib = ctypes.windll.LoadLibrary(vulkan_path)
-                if lib:
-                    return True
-            except Exception as e:
-                logger.debug("[LLMBackend] Vulkan LoadLibrary check failed: %s", e)
-    elif sys.platform == "linux":
-        return os.path.exists("/usr/lib/libvulkan.so.1") or os.path.exists("/usr/lib/x86_64-linux-gnu/libvulkan.so.1")
-    return False
-
-
-def _is_gpu_acceleration_available() -> bool:
-    """Checks if GPU acceleration (CUDA, Vulkan, or Metal) is available."""
-    if sys.platform == "darwin":
-        return True  # Metal is universally available on modern macOS
-    return _is_nvidia_cuda_available() or _is_vulkan_available()
+from core.llm_hardware import (
+    _filter_supported_kwargs,
+    _generate_layer_candidates,
+    _get_optimal_cpu_threads,
+    _is_gpu_acceleration_available,
+    _is_nvidia_cuda_available,
+    _is_valid_gguf,
+    _is_vulkan_available,
+    _parse_ggml_type,
+    _resolve_model_paths,
+    _setup_win32_dll_directories,
+)
 
 
 class LLMBackend(ABC):
@@ -114,69 +53,6 @@ _GLOBAL_LLM_KEY: tuple[Any, ...] | None = None
 _LLM_LOCK = threading.RLock()
 
 
-def _is_valid_gguf(path_str: str, min_mb: int = 10) -> bool:
-    """Verifies file exists, meets minimum size floor, and starts with b'GGUF'."""
-    if not path_str or not os.path.isfile(path_str):
-        return False
-    try:
-        if os.path.getsize(path_str) < min_mb * 1024 * 1024:
-            return False
-        with open(path_str, "rb") as f:
-            return f.read(4) == b"GGUF"
-    except (OSError, PermissionError):
-        return False
-
-
-_KV_QUANT_MAP: dict[str, int] = {
-    "8": 8, "q8_0": 8, "q8": 8, "8bit": 8, "int8": 8, "q8_1": 9,
-    "1": 1, "f16": 1, "fp16": 1, "16bit": 1, "half": 1,
-    "0": 0, "f32": 0, "fp32": 0, "32bit": 0, "float": 0,
-    "2": 2, "q4_0": 2, "q4": 2, "4bit": 2, "q4_1": 3,
-    "6": 6, "q5_0": 6, "q5": 6, "5bit": 6, "q5_1": 7,
-}
-
-_SUPPORTED_KV_TYPES = {0, 1, 2, 3, 6, 7, 8, 9}
-
-
-def _parse_ggml_type(val: Any, default: int = 8) -> int:
-    """Parses and sanitizes GGML KV cache quantization types, preventing C-level aborts."""
-    if val is None or isinstance(val, bool):
-        return default
-    if isinstance(val, int):
-        if val in _SUPPORTED_KV_TYPES:
-            return val
-        logger.warning("[-] Unsupported GGML KV type integer '%s'. Falling back to %s.", val, default)
-        return default
-    if isinstance(val, str):
-        normalized = val.strip().lower()
-        if normalized in _KV_QUANT_MAP:
-            return _KV_QUANT_MAP[normalized]
-        # Intercept common user mistake: K-quants / IQ for KV cache
-        if any(k in normalized for k in ["q4_k", "q5_k", "q6_k", "q8_k", "iq"]):
-            logger.warning(
-                "[-] KV cache does not support '%s' (K-quants/IQ). Using Q8_0 (8) fallback.", val
-            )
-            return default
-    return default
-
-
-def _get_optimal_cpu_threads(configured_threads: int = 0) -> int:
-    """Returns configured thread count, or all available CPU cores when <= 0."""
-    if configured_threads and configured_threads > 0:
-        return configured_threads
-    return max(1, os.cpu_count() or 4)
-
-
-def _generate_layer_candidates(requested: int) -> list[int]:
-    """Generates a strictly decreasing layer ladder for dynamic VRAM fitting."""
-    standard_steps = [36, 20, 10, 5, 0]
-    if requested < 0:
-        return [-1, 20, 10, 5, 0]
-    if requested == 0:
-        return [0]
-    return [requested] + [s for s in standard_steps if s < requested]
-
-
 class _LlamaCppBackend(LLMBackend):
     """Direct llama.cpp-python backend with singleton caching and grammar constraints."""
 
@@ -186,43 +62,9 @@ class _LlamaCppBackend(LLMBackend):
     def _ensure_loaded(self) -> bool:
         """Lazy init with singleton caching: Model is loaded once and reused."""
         global _GLOBAL_LLM_INSTANCE, _GLOBAL_LLM_KEY
-        import gc
-        import time
 
-        config = self.config  # type: ignore[attr-defined]
-        base_dir = os.path.abspath(str(getattr(config, "base_dir", ".")))
-
-        raw_path = getattr(config, "llm_model_path", None) or ""
-        if raw_path and not os.path.isabs(raw_path):
-            raw_path = os.path.normpath(os.path.join(base_dir, raw_path))
-
-        if not raw_path or not os.path.isfile(raw_path):
-            models_dir = os.path.join(base_dir, "models")
-            if os.path.isdir(models_dir):
-                candidates = [
-                    os.path.join(models_dir, f)
-                    for f in os.listdir(models_dir)
-                    if f.endswith(".gguf") and not f.startswith("mmproj")
-                ]
-                if candidates:
-                    raw_path = candidates[0]
-
-        model_path = raw_path
-
-        mmproj_raw = getattr(config, "mmproj_path", None) or ""
-        if mmproj_raw and not os.path.isabs(mmproj_raw):
-            mmproj_raw = os.path.normpath(os.path.join(base_dir, mmproj_raw))
-
-        if not mmproj_raw or not os.path.isfile(mmproj_raw):
-            models_dir = os.path.join(base_dir, "models")
-            if os.path.isdir(models_dir):
-                candidates = [
-                    os.path.join(models_dir, f)
-                    for f in os.listdir(models_dir)
-                    if f.endswith(".gguf") and f.startswith("mmproj")
-                ]
-                if candidates:
-                    mmproj_raw = candidates[0]
+        model_path, mmproj_raw = _resolve_model_paths(self.config)
+        config = self.config
 
         n_gpu_layers = getattr(config, "n_gpu_layers", -1)
         if n_gpu_layers is None:
@@ -234,7 +76,6 @@ class _LlamaCppBackend(LLMBackend):
         flash_attn = _is_gpu_acceleration_available()
         parsed_type_k = _parse_ggml_type(getattr(config, "type_k", 8))
         parsed_type_v = _parse_ggml_type(getattr(config, "type_v", 8))
-
         n_threads = _get_optimal_cpu_threads(getattr(config, "n_threads", 0))
 
         cache_key = (
@@ -251,225 +92,59 @@ class _LlamaCppBackend(LLMBackend):
         )
 
         with _LLM_LOCK:
-            # Check if global instance is already loaded (Double-checked locking)
             if _GLOBAL_LLM_INSTANCE is not None:
                 if _GLOBAL_LLM_KEY == cache_key:
                     self._llm = _GLOBAL_LLM_INSTANCE
                     self._loaded = True
                     logger.debug("[+] Using LLM model instance already cached in VRAM.")
                     return True
-                # Explicitly unload stale instance before allocating a new model with changed parameters
                 logger.info("[*] LLM configuration changed. Unloading stale model from memory...")
-                try:
-                    if hasattr(_GLOBAL_LLM_INSTANCE, "close"):
-                        _GLOBAL_LLM_INSTANCE.close()  # type: ignore[attr-defined]
-                except Exception as e:
-                    logger.debug("[LLMBackend] Error closing LLM instance: %s", e)
-                _GLOBAL_LLM_INSTANCE = None
-                _GLOBAL_LLM_KEY = None
-                gc.collect()
+                self._unload_cached_instance()
 
             if getattr(self, "_load_failed", False):
                 return False
 
-            if sys.platform == "win32":
-                dll_dirs = []
-                sys32 = os.path.join(os.environ.get("SystemRoot", r"C:\Windows"), "System32")
-                if os.path.exists(sys32):
-                    dll_dirs.append(sys32)
-                    try:
-                        os.add_dll_directory(sys32)
-                    except OSError:
-                        pass
+            _setup_win32_dll_directories()
 
-                for p in sys.path:
-                    if "site-packages" in p and os.path.exists(p):
-                        bin_dir = os.path.join(p, "bin")
-                        if os.path.exists(bin_dir):
-                            dll_dirs.append(bin_dir)
-                            try:
-                                os.add_dll_directory(bin_dir)
-                            except OSError:
-                                pass
-                        for candidate in ["nvidia", "llama_cpp"]:
-                            cand_dir = os.path.join(p, candidate)
-                            if os.path.exists(cand_dir):
-                                for root, _dirs, files in os.walk(cand_dir):
-                                    if any(f.endswith(".dll") for f in files):
-                                        dll_dirs.append(root)
-                                        try:
-                                            os.add_dll_directory(root)
-                                        except OSError:
-                                            pass
-                if dll_dirs:
-                    os.environ["PATH"] = os.pathsep.join(dll_dirs) + os.pathsep + os.environ.get("PATH", "")
-
-            try:
-                from llama_cpp import Llama  # type: ignore[import-untyped]
-                from llama_cpp.llama_chat_format import (  # type: ignore[import-untyped]
-                    Qwen25VLChatHandler,  # type: ignore[import-untyped]
-                )
-            except (ImportError, RuntimeError) as _e:
-                logger.error(
-                    "[!] Could not load 'llama-cpp-python': %s\n    Please run Install_OrdinFlow.bat.",
-                    _e,
-                )
+            if not os.path.isfile(model_path):
                 self._load_failed = True
-                return False
+                raise FileNotFoundError(f"Model file not found: {model_path}")
+
+            if not _is_valid_gguf(model_path, min_mb=100):
+                self._load_failed = True
+                raise ValueError(
+                    f"Model file at '{model_path}' is corrupted or incomplete. "
+                    "Please run 'python scripts/download_models.py --yes' to download a clean model copy."
+                )
+
+            logger.info("[*] Initializing local VL model from '%s' ...", os.path.basename(model_path))
+
+            chat_handler = self._init_chat_handler(mmproj_raw)
+            candidates = _generate_layer_candidates(n_gpu_layers)
+
+            load_params: dict[str, Any] = {
+                "model_path": model_path,
+                "n_ctx": n_ctx,
+                "n_batch": n_batch,
+                "n_ubatch": n_ubatch,
+                "n_threads": n_threads,
+                "flash_attn": flash_attn,
+                "type_k": parsed_type_k,
+                "type_v": parsed_type_v,
+                "n_gpu_layers": n_gpu_layers,
+            }
 
             try:
-                if not os.path.isfile(model_path):
-                    raise FileNotFoundError(f"Model file not found: {model_path}")
-
-                if not _is_valid_gguf(model_path, min_mb=100):
-                    raise ValueError(
-                        f"Model file at '{model_path}' is corrupted or incomplete. "
-                        "Please run 'python scripts/download_models.py --yes' to download a clean model copy."
-                    )
-
-                logger.info("[*] Initializing local VL model from '%s' ...", os.path.basename(model_path))
-
-                chat_handler = None
-                if mmproj_raw and os.path.isfile(mmproj_raw):
-                    if _is_valid_gguf(mmproj_raw, min_mb=50):
-                        logger.info(
-                            "[*] Enabling Vision Projector (%s) via Qwen25VLChatHandler...",
-                            os.path.basename(mmproj_raw),
-                        )
-                        chat_handler = Qwen25VLChatHandler(clip_model_path=mmproj_raw, verbose=False)
-                    else:
-                        logger.warning(
-                            "[-] mmproj file at '%s' is corrupted or incomplete. Running without vision support.",
-                            mmproj_raw,
-                        )
-                else:
-                    logger.warning("[-] No valid mmproj path found. Model loading without vision support.")
-
-                candidates = _generate_layer_candidates(n_gpu_layers)
-                loaded_llm = None
-
-                for cand in candidates:
-                    flash_options = [flash_attn] if cand != 0 else [False]
-                    if flash_attn and cand != 0:
-                        flash_options.append(False)
-
-                    for try_flash in flash_options:
-                        logger.info(
-                            "[*] Attempting to load LLM with n_gpu_layers=%s, flash_attn=%s...",
-                            "ALL" if cand < 0 else str(cand),
-                            try_flash,
-                        )
-                        kwargs: dict[str, Any] = {
-                            "model_path": model_path,
-                            "n_ctx": n_ctx,
-                            "n_batch": n_batch,
-                            "n_ubatch": n_ubatch,
-                            "chat_handler": chat_handler,
-                            "verbose": False,
-                            "n_gpu_layers": cand,
-                            "n_threads": n_threads,
-                            "flash_attn": try_flash,
-                            "offload_kqv": (cand != 0),
-                            "no_perf": True,
-                        }
-                        if try_flash:
-                            if parsed_type_k is not None:
-                                kwargs["type_k"] = parsed_type_k
-                            if parsed_type_v is not None:
-                                kwargs["type_v"] = parsed_type_v
-                        try:
-                            gc.collect()
-                            clean_kwargs = _filter_supported_kwargs(Llama, kwargs)
-                            try:
-                                loaded_llm = Llama(**clean_kwargs)  # type: ignore[assignment]
-                            except TypeError:
-                                clean_kwargs.pop("flash_attn", None)
-                                clean_kwargs.pop("n_ubatch", None)
-                                clean_kwargs.pop("type_k", None)
-                                clean_kwargs.pop("type_v", None)
-                                clean_kwargs.pop("offload_kqv", None)
-                                clean_kwargs.pop("no_perf", None)
-                                loaded_llm = Llama(**clean_kwargs)  # type: ignore[assignment]
-
-                            # Probe lightweight execution to confirm the GPU / context is functioning
-                            try:
-                                if chat_handler is not None:
-                                    dummy_b64 = (
-                                        "/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAP////////////////////////////////////////////////////"
-                                        "//////////////////////////////////wgALCAABAAEBAREA/8QAFBABAAAAAAAAAAAAAAAAAAAAAP/aAAgBAQABPxA="
-                                    )
-                                    probe_messages = self._convert_messages([{"role": "user", "content": "probe", "images": [dummy_b64]}])
-                                else:
-                                    probe_messages = [{"role": "user", "content": "1"}]
-
-                                loaded_llm.create_chat_completion(
-                                    messages=probe_messages,  # type: ignore[arg-type]
-                                    max_tokens=1,
-                                    temperature=0.0,
-                                )
-                                if hasattr(loaded_llm, "reset") and callable(loaded_llm.reset):
-                                    try:
-                                        loaded_llm.reset()
-                                    except Exception as reset_err:
-                                        logger.debug("[LLMBackend] Probe reset error: %s", reset_err)
-                            except Exception as probe_err:
-                                if cand != 0:
-                                    logger.warning(
-                                        "[-] Forward probe failed for n_gpu_layers=%s (flash_attn=%s): %s. Downgrading...",
-                                        "ALL" if cand < 0 else str(cand),
-                                        try_flash,
-                                        probe_err,
-                                    )
-                                    try:
-                                        if hasattr(loaded_llm, "close"):
-                                            loaded_llm.close()  # type: ignore[attr-defined]
-                                    except Exception as close_err:
-                                        logger.debug("[LLMBackend] Probe close error: %s", close_err)
-                                    loaded_llm = None
-                                    # Recreate chat_handler cleanly to prevent corrupted C++ CLIP state
-                                    if mmproj_raw and os.path.isfile(mmproj_raw) and _is_valid_gguf(mmproj_raw, min_mb=50):
-                                        chat_handler = Qwen25VLChatHandler(clip_model_path=mmproj_raw, verbose=False)
-                                    gc.collect()
-                                    time.sleep(0.1)
-                                    continue
-                                else:
-                                    logger.debug("[-] CPU probe note: %s", probe_err)
-
-                            if cand == 0 and n_gpu_layers != 0:
-                                logger.warning(
-                                    "[*] GPU offloading not viable (insufficient VRAM). Successfully switched model execution to CPU mode (n_gpu_layers=0, %d threads).",
-                                    n_threads,
-                                )
-                            else:
-                                logger.info(
-                                    "[+] Successfully fitted and validated %s layer(s) into GPU/system memory (flash_attn=%s).",
-                                    "ALL" if cand < 0 else str(cand),
-                                    try_flash,
-                                )
-                            break
-                        except Exception as alloc_err:
-                            logger.warning(
-                                "[-] Loading failed for n_gpu_layers=%s (flash_attn=%s): %s. Reclaiming memory...",
-                                "ALL" if cand < 0 else str(cand),
-                                try_flash,
-                                alloc_err,
-                            )
-                            loaded_llm = None
-                            gc.collect()
-                            time.sleep(0.1)
-
-                    if loaded_llm is not None:
-                        break
-
+                loaded_llm = self._fit_model_candidate_matrix(candidates, load_params, chat_handler, mmproj_raw)
                 if loaded_llm is None:
-                    raise RuntimeError(
-                        "Could not load LLM even in CPU mode (n_gpu_layers=0). Check model integrity."
-                    )
+                    raise RuntimeError("Could not load LLM even in CPU mode (n_gpu_layers=0). Check model integrity.")
 
                 self._llm = loaded_llm
                 _GLOBAL_LLM_INSTANCE = self._llm
                 _GLOBAL_LLM_KEY = cache_key
+                self._loaded = True
                 logger.info("[+] Local VL model loaded successfully and cached in memory.")
+                return True
             except Exception as _e:
                 logger.error("[!] Error loading model: %s", _e)
                 self._load_failed = True
@@ -477,8 +152,184 @@ class _LlamaCppBackend(LLMBackend):
                     "Could not load LLM. Please run 'python scripts/download_models.py --yes' and verify GPU drivers."
                 ) from _e
 
-            self._loaded = True
+    def _unload_cached_instance(self) -> None:
+        """Closes and deallocates global cached LLM instance."""
+        global _GLOBAL_LLM_INSTANCE, _GLOBAL_LLM_KEY
+        import gc
+
+        try:
+            if hasattr(_GLOBAL_LLM_INSTANCE, "close"):
+                _GLOBAL_LLM_INSTANCE.close()  # type: ignore[attr-defined]
+        except Exception as e:
+            logger.debug("[LLMBackend] Error closing LLM instance: %s", e)
+        _GLOBAL_LLM_INSTANCE = None
+        _GLOBAL_LLM_KEY = None
+        gc.collect()
+
+    def _init_chat_handler(self, mmproj_raw: str) -> Any | None:
+        """Initializes the vision chat handler if mmproj file exists and is valid."""
+        if not mmproj_raw or not os.path.isfile(mmproj_raw):
+            logger.warning("[-] No valid mmproj path found. Model loading without vision support.")
+            return None
+
+        if not _is_valid_gguf(mmproj_raw, min_mb=50):
+            logger.warning("[-] mmproj file at '%s' is corrupted or incomplete. Running without vision support.", mmproj_raw)
+            return None
+
+        try:
+            from llama_cpp.llama_chat_format import Qwen25VLChatHandler  # type: ignore[import-untyped]
+
+            logger.info("[*] Enabling Vision Projector (%s) via Qwen25VLChatHandler...", os.path.basename(mmproj_raw))
+            return Qwen25VLChatHandler(clip_model_path=mmproj_raw, verbose=False)
+        except (ImportError, RuntimeError) as e:
+            logger.warning("[-] Could not initialize Qwen25VLChatHandler: %s", e)
+            return None
+
+    def _verify_llm_probe(self, loaded_llm: Any, chat_handler: Any) -> bool:
+        """Executes a lightweight 1-token forward probe to confirm GPU/VRAM stability."""
+        try:
+            if chat_handler is not None:
+                dummy_b64 = (
+                    "/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAP////////////////////////////////////////////////////"
+                    "//////////////////////////////////wgALCAABAAEBAREA/8QAFBABAAAAAAAAAAAAAAAAAAAAAP/aAAgBAQABPxA="
+                )
+                probe_messages = self._convert_messages([{"role": "user", "content": "probe", "images": [dummy_b64]}])
+            else:
+                probe_messages = [{"role": "user", "content": "1"}]
+
+            loaded_llm.create_chat_completion(
+                messages=probe_messages,  # type: ignore[arg-type]
+                max_tokens=1,
+                temperature=0.0,
+            )
+            if hasattr(loaded_llm, "reset") and callable(loaded_llm.reset):
+                try:
+                    loaded_llm.reset()
+                except Exception as reset_err:
+                    logger.debug("[LLMBackend] Probe reset error: %s", reset_err)
             return True
+        except Exception as probe_err:
+            logger.debug("[LLMBackend] Forward probe failed: %s", probe_err)
+            return False
+
+    def _try_load_single_configuration(
+        self,
+        llama_cls: Any,
+        cand: int,
+        try_flash: bool,
+        load_params: dict[str, Any],
+        chat_handler: Any,
+    ) -> Any | None:
+        """Attempts to allocate a single Llama instance with graceful kwarg fallback."""
+        import gc
+        import time
+
+        kwargs: dict[str, Any] = {
+            "model_path": load_params["model_path"],
+            "n_ctx": load_params["n_ctx"],
+            "n_batch": load_params["n_batch"],
+            "n_ubatch": load_params["n_ubatch"],
+            "chat_handler": chat_handler,
+            "verbose": False,
+            "n_gpu_layers": cand,
+            "n_threads": load_params["n_threads"],
+            "flash_attn": try_flash,
+            "offload_kqv": (cand != 0),
+            "no_perf": True,
+        }
+        if try_flash:
+            if load_params.get("type_k") is not None:
+                kwargs["type_k"] = load_params["type_k"]
+            if load_params.get("type_v") is not None:
+                kwargs["type_v"] = load_params["type_v"]
+
+        try:
+            gc.collect()
+            clean_kwargs = _filter_supported_kwargs(llama_cls, kwargs)
+            try:
+                return llama_cls(**clean_kwargs)
+            except TypeError:
+                for deprecated_key in ["flash_attn", "n_ubatch", "type_k", "type_v", "offload_kqv", "no_perf"]:
+                    clean_kwargs.pop(deprecated_key, None)
+                return llama_cls(**clean_kwargs)
+        except Exception as alloc_err:
+            logger.warning(
+                "[-] Loading failed for n_gpu_layers=%s (flash_attn=%s): %s. Reclaiming memory...",
+                "ALL" if cand < 0 else str(cand),
+                try_flash,
+                alloc_err,
+            )
+            gc.collect()
+            time.sleep(0.1)
+            return None
+
+    def _fit_model_candidate_matrix(
+        self,
+        candidates: list[int],
+        load_params: dict[str, Any],
+        chat_handler: Any,
+        mmproj_raw: str,
+    ) -> Any | None:
+        """Iterates candidate layer counts and flash attention options to find a stable configuration."""
+        import gc
+        import time
+
+        try:
+            from llama_cpp import Llama  # type: ignore[import-untyped]
+            from llama_cpp.llama_chat_format import Qwen25VLChatHandler  # type: ignore[import-untyped]
+        except (ImportError, RuntimeError) as _e:
+            logger.error("[!] Could not load 'llama-cpp-python': %s\n    Please run Install_OrdinFlow.bat.", _e)
+            return None
+
+        flash_attn = load_params.get("flash_attn", False)
+
+        for cand in candidates:
+            flash_options = [flash_attn] if cand != 0 else [False]
+            if flash_attn and cand != 0:
+                flash_options.append(False)
+
+            for try_flash in flash_options:
+                logger.info(
+                    "[*] Attempting to load LLM with n_gpu_layers=%s, flash_attn=%s...",
+                    "ALL" if cand < 0 else str(cand),
+                    try_flash,
+                )
+                loaded_llm = self._try_load_single_configuration(Llama, cand, try_flash, load_params, chat_handler)
+                if loaded_llm is None:
+                    continue
+
+                probe_ok = self._verify_llm_probe(loaded_llm, chat_handler)
+                if probe_ok or cand == 0:
+                    if cand == 0 and load_params.get("n_gpu_layers", -1) != 0:
+                        logger.warning(
+                            "[*] GPU offloading not viable (insufficient VRAM). Successfully switched model execution to CPU mode (n_gpu_layers=0, %d threads).",
+                            load_params.get("n_threads", 4),
+                        )
+                    else:
+                        logger.info(
+                            "[+] Successfully fitted and validated %s layer(s) into GPU/system memory (flash_attn=%s).",
+                            "ALL" if cand < 0 else str(cand),
+                            try_flash,
+                        )
+                    return loaded_llm
+
+                logger.warning(
+                    "[-] Forward probe failed for n_gpu_layers=%s (flash_attn=%s). Downgrading...",
+                    "ALL" if cand < 0 else str(cand),
+                    try_flash,
+                )
+                try:
+                    if hasattr(loaded_llm, "close"):
+                        loaded_llm.close()  # type: ignore[attr-defined]
+                except Exception as close_err:
+                    logger.debug("[LLMBackend] Probe close error: %s", close_err)
+                loaded_llm = None
+                if mmproj_raw and os.path.isfile(mmproj_raw) and _is_valid_gguf(mmproj_raw, min_mb=50):
+                    chat_handler = Qwen25VLChatHandler(clip_model_path=mmproj_raw, verbose=False)
+                gc.collect()
+                time.sleep(0.1)
+
+        return None
 
     def preload(self) -> bool:
         """Preloads local VL model and executes a lightweight forward pass to compile graphs."""
@@ -779,4 +630,11 @@ def get_backend(config: object) -> LLMBackend:
     return _LlamaCppBackend(config)
 
 
-__all__ = ["LLMBackend", "get_backend"]
+__all__ = [
+    "LLMBackend",
+    "get_backend",
+    "_filter_supported_kwargs",
+    "_is_gpu_acceleration_available",
+    "_is_nvidia_cuda_available",
+    "_is_vulkan_available",
+]

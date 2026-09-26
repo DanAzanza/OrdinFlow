@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import json
 import logging
 import re
@@ -295,7 +296,7 @@ class SkillSynthesizer:
         if not instruction_clean:
             return existing_skill, "No instruction provided."
 
-        updated = dict(existing_skill)
+        updated = copy.deepcopy(existing_skill)
         known_categories, known_variables = cls._get_domain_context()
 
         # Detect user language (German vs English)

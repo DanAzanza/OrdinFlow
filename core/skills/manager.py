@@ -334,92 +334,118 @@ class SkillManager:
             return new_clean
 
         # 4. Cascade updates across all other skills in skills_dir
+        self._cascade_rename_to_skills(old_clean, new_clean)
+
+        # 5. Cascade updates to system config.yaml / DashboardState.config
+        self._cascade_rename_to_config(old_clean, new_clean)
+
+        # 6. Cascade updates to .meta case files
+        self._cascade_rename_to_metadata(old_clean, new_clean)
+
+        return new_clean
+
+    def _cascade_rename_to_skills(self, old_name: str, new_name: str) -> None:
+        """Cascades renamed skill references into other skill definitions."""
         for other_skill in self.list_skills():
-            if other_skill.get("name") == new_clean:
+            if other_skill.get("name") == new_name:
                 continue
 
             modified = False
-            # Check tasks/actions for sub-skill calls
             for task in other_skill.get("tasks", []):
                 for act in task.get("actions", []):
                     if act.get("action_type") == "CALL_SKILL":
-                        if act.get("skill_id") == old_clean or act.get("skill_name") == old_clean:
-                            act["skill_id"] = new_clean
-                            act["skill_name"] = new_clean
+                        if act.get("skill_id") == old_name or act.get("skill_name") == old_name:
+                            act["skill_id"] = new_name
+                            act["skill_name"] = new_name
                             modified = True
 
-            # Check document types export_skill reference
-            if isinstance(other_skill.get("document_types"), dict):
-                for dt_cfg in other_skill["document_types"].values():
-                    if isinstance(dt_cfg, dict) and dt_cfg.get("export_skill") == old_clean:
-                        dt_cfg["export_skill"] = new_clean
+            doc_types = other_skill.get("document_types")
+            if isinstance(doc_types, dict):
+                for dt_cfg in doc_types.values():
+                    if isinstance(dt_cfg, dict) and dt_cfg.get("export_skill") == old_name:
+                        dt_cfg["export_skill"] = new_name
                         modified = True
 
             if modified:
                 self.save_skill(other_skill)
 
-        # 5. Cascade updates to system config.yaml / DashboardState.config
+    def _cascade_rename_to_config(self, old_name: str, new_name: str) -> None:
+        """Cascades renamed skill references into runtime and persistent configuration."""
         try:
             from core.state import DashboardState
 
-            if DashboardState.config:
-                cfg_modified = False
-                if getattr(DashboardState.config, "default_export_skill", None) == old_clean:
-                    DashboardState.config.default_export_skill = new_clean
-                    cfg_modified = True
+            if not DashboardState.config:
+                return
 
-                if isinstance(DashboardState.config.document_types, dict):
-                    for dt_cfg in DashboardState.config.document_types.values():
-                        if isinstance(dt_cfg, dict) and dt_cfg.get("export_skill") == old_clean:
-                            dt_cfg["export_skill"] = new_clean
-                            cfg_modified = True
+            cfg_modified = False
+            if getattr(DashboardState.config, "default_export_skill", None) == old_name:
+                DashboardState.config.default_export_skill = new_name
+                cfg_modified = True
 
-                if cfg_modified:
-                    DashboardState.config.save_to_yaml()
+            if isinstance(DashboardState.config.document_types, dict):
+                for dt_cfg in DashboardState.config.document_types.values():
+                    if isinstance(dt_cfg, dict) and dt_cfg.get("export_skill") == old_name:
+                        dt_cfg["export_skill"] = new_name
+                        cfg_modified = True
+
+            if cfg_modified:
+                DashboardState.config.save_to_yaml()
         except Exception as e:
             logger.warning("[SkillManager] Could not cascade skill rename to system config: %s", e)
 
-        # 6. Cascade updates to .meta case files
+    def _cascade_rename_to_metadata(self, old_name: str, new_name: str) -> None:
+        """Cascades renamed skill references into case .meta sidecars using flat guard clauses."""
         try:
             from core.state import DashboardState
 
-            if DashboardState.config and DashboardState.config.target_base_dir:
-                base_dir = DashboardState.config.target_base_dir
-                if os.path.exists(base_dir):
-                    import json
+            if not DashboardState.config or not DashboardState.config.target_base_dir:
+                return
 
-                    for root, _, files in os.walk(base_dir):
-                        for f in files:
-                            if f.endswith(".meta"):
-                                meta_path = os.path.join(root, f)
-                                try:
-                                    with open(meta_path, encoding="utf-8") as mf:
-                                        meta_data = json.load(mf)
+            base_dir = DashboardState.config.target_base_dir
+            if not os.path.exists(base_dir):
+                return
 
-                                    meta_modified = False
-                                    executed = meta_data.get("executed_skills", [])
-                                    if isinstance(executed, list) and old_clean in executed:
-                                        meta_data["executed_skills"] = [
-                                            new_clean if x == old_clean else x for x in executed
-                                        ]
-                                        meta_modified = True
-
-                                    history = meta_data.get("skill_execution_history", {})
-                                    if isinstance(history, dict) and old_clean in history:
-                                        history[new_clean] = history.pop(old_clean)
-                                        meta_modified = True
-
-                                    if meta_modified:
-                                        tmp_meta = meta_path + f".tmp_{os.getpid()}"
-                                        with open(tmp_meta, "w", encoding="utf-8") as mf:
-                                            json.dump(meta_data, mf, indent=2, ensure_ascii=False)
-                                        os.replace(tmp_meta, meta_path)
-                                except Exception as e:
-                                    logger.debug("[SkillManager] Could not update meta file %s: %s", meta_path, e)
+            for root, _, files in os.walk(base_dir):
+                for f in files:
+                    if not f.endswith(".meta"):
+                        continue
+                    self._update_single_meta_file(os.path.join(root, f), old_name, new_name)
         except Exception as e:
             logger.warning("[SkillManager] Could not cascade skill rename to case metadata: %s", e)
 
-        return new_clean
+    @staticmethod
+    def _update_single_meta_file(meta_path: str, old_name: str, new_name: str) -> None:
+        """Updates a single .meta file with flat control flow and atomic write."""
+        import json
+
+        try:
+            with open(meta_path, encoding="utf-8") as mf:
+                meta_data = json.load(mf)
+        except Exception as e:
+            logger.debug("[SkillManager] Could not read meta file %s: %s", meta_path, e)
+            return
+
+        meta_modified = False
+        executed = meta_data.get("executed_skills", [])
+        if isinstance(executed, list) and old_name in executed:
+            meta_data["executed_skills"] = [new_name if x == old_name else x for x in executed]
+            meta_modified = True
+
+        history = meta_data.get("skill_execution_history", {})
+        if isinstance(history, dict) and old_name in history:
+            history[new_name] = history.pop(old_name)
+            meta_modified = True
+
+        if not meta_modified:
+            return
+
+        tmp_meta = meta_path + f".tmp_{os.getpid()}"
+        try:
+            with open(tmp_meta, "w", encoding="utf-8") as mf:
+                json.dump(meta_data, mf, indent=2, ensure_ascii=False)
+            os.replace(tmp_meta, meta_path)
+        except Exception as e:
+            logger.debug("[SkillManager] Could not write updated meta file %s: %s", meta_path, e)
 
     def duplicate_skill(self, skill_id_or_name: str) -> dict[str, Any] | None:
         """Duplicates an existing skill with a clean unique copy name."""
