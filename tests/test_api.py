@@ -463,7 +463,9 @@ def test_api_system_browse(client, monkeypatch):
         assert data_cancel["path"] is None
 
 
-def test_api_skills_test_run(client):
+def test_api_skills_test_run(client, monkeypatch):
+    from core.skills.exceptions import SkillActionError
+
     skill_def = {
         "name": "API Test Skill",
         "tasks": [
@@ -515,9 +517,20 @@ def test_api_skills_test_run(client):
     assert res_missing_doc.status_code == 400
     assert "document_fullpath" in res_missing_doc.get_json()["error"]
 
+    def raise_sensitive_error(*args, **kwargs):
+        raise SkillActionError("act_1", "Rejected private path C:\\Private\\patient.pdf", "TYPE_FILE_PATH")
+
+    monkeypatch.setattr("routes.api.skills_api.ExportEngine.execute_actions", raise_sensitive_error)
+    res_failed = client.post("/api/skills/test_run", json={"skill": skill_def})
+    assert res_failed.status_code == 200
+    failed_data = res_failed.get_json()
+    assert failed_data["status"] == "failed"
+    assert "patient.pdf" not in failed_data["error"]
+
 
 def test_api_skills_pick_element(client, monkeypatch):
     from PIL import Image
+
     from core.skills.grounder import SoMGrounder
 
     # Mock screen capture
@@ -591,12 +604,16 @@ def test_api_cases_crud_and_approval(client, tmp_path):
     pdf_file.touch()
 
     # 1. Approve case folder
-    res_app = client.post("/api/cases/approve", json={"folder": "2026-08-22__Einlagen__Mustermann__Max", "approved": True})
+    res_app = client.post(
+        "/api/cases/approve", json={"folder": "2026-08-22__Einlagen__Mustermann__Max", "approved": True}
+    )
     assert res_app.status_code == 200
     assert (case_folder / ".approved").exists()
 
     # 2. Revoke approval
-    res_rev = client.post("/api/cases/approve", json={"folder": "2026-08-22__Einlagen__Mustermann__Max", "approved": False})
+    res_rev = client.post(
+        "/api/cases/approve", json={"folder": "2026-08-22__Einlagen__Mustermann__Max", "approved": False}
+    )
     assert res_rev.status_code == 200
     assert not (case_folder / ".approved").exists()
 
@@ -663,6 +680,3 @@ def test_api_split_inspector_submit_cases_and_security(client, tmp_path):
     data = res_valid.get_json()
     assert data["status"] == "ok"
     assert len(data["results"]) == 1
-
-
-

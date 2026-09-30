@@ -8,11 +8,11 @@ from __future__ import annotations
 
 import ctypes
 import logging
-from pathlib import Path
 import re
 import sys
 import time
 from collections.abc import Callable, Mapping
+from pathlib import Path
 from typing import Any
 
 from core.skills.exceptions import SkillActionError
@@ -113,10 +113,10 @@ def validate_target_file_path(
         return False, "", f"Target filename {resolved.name!r} is a reserved Windows device name."
 
     if must_exist:
-        if not resolved.is_file():
-            return False, "", f"Target file does not exist on disk: {resolved}"
         if not is_within_allowed_roots(resolved, allow_desktop=allow_desktop):
             return False, "", f"Target file is outside allowed roots: {resolved}"
+        if not resolved.is_file():
+            return False, "", f"Target file does not exist on disk: {resolved}"
         return True, str(resolved), None
 
     # SAVE MODE: target file does not need to exist yet
@@ -156,7 +156,11 @@ def execute_mouse_click(
         auto_id = locator.get("automation_id") or locator.get("id")
         ctrl_type = locator.get("control_type") or locator.get("type")
         loc_type = str(locator.get("type", "")).lower()
-        if auto_id or (ctrl_type and ctrl_type not in ("auto", "smart", "ocr_exact", "ocr_contains", "ocr_text", "som_vlm")) or loc_type == "uia":
+        if (
+            auto_id
+            or (ctrl_type and ctrl_type not in ("auto", "smart", "ocr_exact", "ocr_contains", "ocr_text", "som_vlm"))
+            or loc_type == "uia"
+        ):
             is_explicit_uia = True
 
     for attempt in range(1, max_retries + 1):
@@ -230,7 +234,9 @@ def execute_type_text(
         or action_type == "PASTE_CLIPBOARD"
         or ("\\" in text_to_type or "/" in text_to_type or len(text_to_type) > 15)
     )
-    is_secret = bool(step.get("is_secret", False)) or is_sensitive_credential_text(raw_text, str(step.get("description", "")))
+    is_secret = bool(step.get("is_secret", False)) or is_sensitive_credential_text(
+        raw_text, str(step.get("description", ""))
+    )
     if is_secret:
         logger.info("  [Action %s] %s: [PROTECTED SENSITIVE CREDENTIAL MASKED]", step_id, action_type)
         use_clipboard = False
@@ -312,7 +318,11 @@ def execute_wait_for_element(
         auto_id = locator.get("automation_id") or locator.get("id")
         ctrl_type = locator.get("control_type") or locator.get("type")
         loc_type = str(locator.get("type", "")).lower()
-        if auto_id or (ctrl_type and ctrl_type not in ("auto", "smart", "ocr_exact", "ocr_contains", "ocr_text", "som_vlm")) or loc_type == "uia":
+        if (
+            auto_id
+            or (ctrl_type and ctrl_type not in ("auto", "smart", "ocr_exact", "ocr_contains", "ocr_text", "som_vlm"))
+            or loc_type == "uia"
+        ):
             is_explicit_uia = True
 
     while (time.time() - start_t) <= timeout_s:

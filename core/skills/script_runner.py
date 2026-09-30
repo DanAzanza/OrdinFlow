@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import logging
 import os
-from pathlib import Path
 import re
 import shlex
 import shutil
@@ -16,6 +15,7 @@ import subprocess
 import sys
 import time
 from collections.abc import Callable, Mapping
+from pathlib import Path
 from typing import Any
 
 from core.skills.exceptions import SkillActionError
@@ -50,11 +50,13 @@ def execute_script_step(
         resolved_doc = None
         if is_safe and clean_fp:
             candidate = Path(clean_fp).resolve()
-            if candidate.is_file() and is_within_allowed_roots(candidate):
+            if is_within_allowed_roots(candidate) and candidate.is_file():
                 resolved_doc = candidate
 
         if not resolved_doc:
-            err_msg = f"Required variable 'document_fullpath' is missing, invalid, or points to non-existent file: {raw_fp!r}"
+            err_msg = (
+                f"Required variable 'document_fullpath' is missing, invalid, or points to non-existent file: {raw_fp!r}"
+            )
             logger.error("  [!] SCRIPT aborted: %s", err_msg)
             if step.get("on_failure", "stop") == "stop":
                 raise SkillActionError(step_id, err_msg, action_type)

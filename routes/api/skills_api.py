@@ -5,10 +5,10 @@ from __future__ import annotations
 import ctypes
 import json
 import logging
-from pathlib import Path
 import re
 import sys
 import time
+from pathlib import Path
 from typing import Any
 
 from flask import Blueprint, jsonify, request
@@ -78,7 +78,9 @@ def refine_step():
                 f"- skill_id: string (if CALL_SKILL)\n"
                 f"Return ONLY valid JSON matching this schema."
             )
-            extracted = DashboardState.processor.llm_extractor.call_vision_api_json({"messages": [{"role": "user", "content": prompt}]})
+            extracted = DashboardState.processor.llm_extractor.call_vision_api_json(
+                {"messages": [{"role": "user", "content": prompt}]}
+            )
             if isinstance(extracted, dict) and extracted.get("action_type"):
                 refined.update(extracted)
                 if extracted.get("target"):
@@ -137,7 +139,7 @@ def refine_step():
 
             if split_idx != -1:
                 target_part = instruction[:split_idx].rstrip(" ,")
-                fallback_part = instruction[split_idx + match_len:].lstrip(" :")
+                fallback_part = instruction[split_idx + match_len :].lstrip(" :")
                 parts = [target_part, fallback_part]
             else:
                 parts = [instruction]
@@ -276,8 +278,9 @@ def pick_element_live():
 
     ocr_text = ""
     try:
-        from core.image_processing import run_rapid_ocr
         import numpy as np
+
+        from core.image_processing import run_rapid_ocr
 
         img_np = np.array(screen)
         res = run_rapid_ocr(img_np)
@@ -302,16 +305,18 @@ def pick_element_live():
     except Exception as e:
         logger.debug("[pick_element_live] RapidOCR snippet error: %s", e)
 
-    return jsonify({
-        "status": "ok",
-        "cursor": [cur_x, cur_y],
-        "ocr_text": ocr_text,
-        "locator": {
-            "type": "ocr_contains" if ocr_text else "smart",
-            "prompt": ocr_text or f"Element at ({cur_x}, {cur_y})",
-            "offset": [0, 0],
-        },
-    })
+    return jsonify(
+        {
+            "status": "ok",
+            "cursor": [cur_x, cur_y],
+            "ocr_text": ocr_text,
+            "locator": {
+                "type": "ocr_contains" if ocr_text else "smart",
+                "prompt": ocr_text or f"Element at ({cur_x}, {cur_y})",
+                "offset": [0, 0],
+            },
+        }
+    )
 
 
 @skills_api_bp.route("/api/skills/test_run", methods=["POST"])
@@ -330,11 +335,14 @@ def test_run_skill():
     is_safe_doc, clean_doc = sanitize_safe_path(raw_doc_path)
     doc_path = ""
     if is_safe_doc and clean_doc:
-        resolved_doc = Path(clean_doc).resolve()
-        if resolved_doc.is_file() and is_within_allowed_roots(resolved_doc):
-            doc_path = str(resolved_doc)
+        if is_within_allowed_roots(clean_doc):
+            resolved_doc = Path(clean_doc).resolve()
+            if resolved_doc.is_file():
+                doc_path = str(resolved_doc)
     if raw_doc_path and not doc_path:
-        return jsonify({"error": f"Provided document path is invalid, unauthorized, or does not exist: {raw_doc_path}"}), 400
+        return jsonify(
+            {"error": f"Provided document path is invalid, unauthorized, or does not exist: {raw_doc_path}"}
+        ), 400
 
     # If the skill definition requires a source document but none was provided
     requires_doc = False
@@ -354,7 +362,11 @@ def test_run_skill():
             break
 
     if requires_doc and not doc_path:
-        return jsonify({"error": "This skill requires a valid document ('document_fullpath') in context. Execution aborted without mock data."}), 400
+        return jsonify(
+            {
+                "error": "This skill requires a valid document ('document_fullpath') in context. Execution aborted without mock data."
+            }
+        ), 400
 
     mgr = _get_skill_manager()
     vext = DashboardState.processor.llm_extractor if DashboardState.processor else None
@@ -369,35 +381,41 @@ def test_run_skill():
     try:
         success = engine.execute_actions(context=test_context, reporter=test_reporter)
         duration_s = round(time.time() - start_t, 2)
-        return jsonify({
-            "status": "ok" if success else "failed",
-            "success": success,
-            "duration_seconds": duration_s,
-            "total_actions": len(engine.actions),
-            "progress_log": progress_log,
-        })
+        return jsonify(
+            {
+                "status": "ok" if success else "failed",
+                "success": success,
+                "duration_seconds": duration_s,
+                "total_actions": len(engine.actions),
+                "progress_log": progress_log,
+            }
+        )
     except SkillActionError as sae:
         logger.warning("[test_run_skill] Skill step failed: %s", sae)
         duration_s = round(time.time() - start_t, 2)
-        return jsonify({
-            "status": "failed",
-            "success": False,
-            "error": str(sae),
-            "step_id": sae.step_id,
-            "action_type": sae.action_type,
-            "duration_seconds": duration_s,
-            "progress_log": progress_log,
-        }), 200
+        return jsonify(
+            {
+                "status": "failed",
+                "success": False,
+                "error": "Skill action failed. Review the step and consult the local application log for details.",
+                "step_id": sae.step_id,
+                "action_type": sae.action_type,
+                "duration_seconds": duration_s,
+                "progress_log": progress_log,
+            }
+        ), 200
     except Exception as e:
         logger.error("[test_run_skill] Test run exception: %s", e, exc_info=True)
         duration_s = round(time.time() - start_t, 2)
-        return jsonify({
-            "status": "error",
-            "success": False,
-            "error": "An error occurred during skill test execution",
-            "duration_seconds": duration_s,
-            "progress_log": progress_log,
-        }), 500
+        return jsonify(
+            {
+                "status": "error",
+                "success": False,
+                "error": "An error occurred during skill test execution",
+                "duration_seconds": duration_s,
+                "progress_log": progress_log,
+            }
+        ), 500
 
 
 __all__ = [
