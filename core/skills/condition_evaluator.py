@@ -14,11 +14,14 @@ import sys
 from collections.abc import Callable, Mapping
 from typing import Any
 
+import regex
+
 logger = logging.getLogger(__name__)
 
 # Constants for loop and recursion safety
 MAX_BRANCH_DEPTH = 5
 MAX_EVALUATION_STEPS = 300
+REGEX_MATCH_TIMEOUT_SECONDS = 0.05
 
 # Supported AST comparison operators
 SAFE_COMPARISON_OPERATORS: dict[type[ast.cmpop], Callable[[Any, Any], bool]] = {
@@ -233,7 +236,9 @@ def evaluate_condition(
             if not pattern:
                 return False
             if len(pattern) > 150:
-                logger.warning("[ConditionEvaluator] Regex pattern exceeds maximum allowed length (150 chars): %r", pattern[:50])
+                logger.warning(
+                    "[ConditionEvaluator] Regex pattern exceeds maximum allowed length (150 chars): %r", pattern[:50]
+                )
                 return False
             # Validate character set for user-defined patterns
             if not re.match(r"^[\w\s\.\*\+\?\(\)\[\]\{\}\|\\/:^$#@!%&=;,~`'\"<>\\-]+$", pattern, re.UNICODE):
@@ -261,9 +266,12 @@ def evaluate_condition(
                 logger.warning("[ConditionEvaluator] Rejected unsafe nested regex quantifier: %r", pattern)
                 return False
             try:
-                compiled = re.compile(pattern)
-                return bool(compiled.search(actual[:500]))
-            except re.error as e:
+                compiled = regex.compile(pattern)
+                return bool(compiled.search(actual[:500], timeout=REGEX_MATCH_TIMEOUT_SECONDS))
+            except TimeoutError:
+                logger.warning("[ConditionEvaluator] Regex evaluation exceeded its time limit: %r", pattern[:50])
+                return False
+            except regex.error as e:
                 logger.warning("[ConditionEvaluator] Invalid regex pattern %r: %s", pattern, e)
                 return False
 

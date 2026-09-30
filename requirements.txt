@@ -5,6 +5,7 @@ Pillow>=10.0.0
 pydantic>=2.0.0
 PyYAML>=6.0
 rapidocr-onnxruntime>=1.2.0
+regex>=2024.0.0
 pymupdf>=1.23.0
 pynput>=1.7.6
 pytest>=8.0.0
