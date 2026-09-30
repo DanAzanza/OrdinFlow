@@ -9,11 +9,13 @@ from collections.abc import Callable, Mapping
 from typing import Any
 
 from core.skills.base import BaseSkill
+from core.skills.exceptions import SkillActionError
 from core.skills.grounder import SoMGrounder
 from core.skills.models import SkillTask, TaskProgress, TaskResult
 from core.skills.shield import input_shield
 from core.skills.case_router import (
     extract_all_skill_document_types as _extract_all_skill_document_types_fn,
+    extract_folder_metadata,
     filter_matching_files as _filter_matching_files_fn,
     find_pending_cases as _find_pending_cases_fn,
     mark_file_skill_executed as _mark_file_skill_executed_fn,
@@ -522,8 +524,10 @@ class ExportEngine(BaseSkill):
                     str(folder_path) if folder_path else os.path.abspath(os.path.join(target_base, str(folder_name)))
                 )
                 success = self.execute_skill_for_folder(resolved_folder, context, reporter)
+                error_msg = None if success else f"Execution failed for folder: {os.path.basename(resolved_folder)}"
                 return TaskResult(
                     success=success,
+                    error=error_msg,
                     data={"folder_path": resolved_folder, "status": "completed" if success else "failed"},
                 )
             else:
@@ -545,10 +549,12 @@ class ExportEngine(BaseSkill):
                     )
 
                 all_ok = True
+                failed_folder = None
                 for _idx, c in enumerate(pending, 1):
                     if not self.wait_for_queue(reporter, "Skill paused..."):
                         logger.info("[*] Batch case execution stopped by queue.")
                         all_ok = False
+                        failed_folder = c.get("folder_name", "Unknown")
                         break
 
                     c_ctx = dict(c.get("parsed_metadata") or {})
@@ -557,15 +563,25 @@ class ExportEngine(BaseSkill):
 
                     if not self.execute_skill_for_folder(c["folder_path"], c_ctx, reporter):
                         all_ok = False
+                        failed_folder = c.get("folder_name", "Unknown")
                         break
 
+                error_msg = None if all_ok else f"Batch execution stopped or failed at case: {failed_folder}"
                 return TaskResult(
                     success=all_ok,
+                    error=error_msg,
                     data={"total_cases": len(pending), "status": "completed" if all_ok else "stopped_or_failed"},
                 )
+        except SkillActionError as sae:
+            logger.error("[ExportEngine] Step execution failed: %s", sae)
+            return TaskResult(
+                success=False,
+                error=str(sae),
+                data={"status": "failed", "step_id": sae.step_id, "action_type": sae.action_type},
+            )
         except Exception as e:
             logger.error("[ExportEngine] Execution error: %s", e, exc_info=True)
-            return TaskResult(success=False, error=str(e))
+            return TaskResult(success=False, error=str(e), data={"status": "failed"})
 
     def _execute_nested_actions(
         self,
@@ -635,16 +651,34 @@ class ExportEngine(BaseSkill):
         if not matching_files:
             return True
 
+        from core.state import DashboardState
+
+        folder_struct = None
+        delimiter = "__"
+        if DashboardState.config:
+            folder_struct = DashboardState.config.folder_structure
+            delimiter = DashboardState.config.folder_delimiter or "__"
+        elif self.skill_manager and hasattr(self.skill_manager, "config") and self.skill_manager.config:
+            folder_struct = getattr(self.skill_manager.config, "folder_structure", None)
+
+        folder_meta = extract_folder_metadata(folder_path, folder_structure=folder_struct, delimiter=delimiter)
+
+        # Merge base folder metadata with caller context
+        base_ctx = dict(folder_meta)
+        if context:
+            base_ctx.update(context)
+
         # CASE-CENTRIC MODE: If skill contains FOR_EACH_DOCUMENT, execute skill ONCE for folder
         if has_for_each_document(self.definition):
-            case_ctx = dict(context or {})
+            case_ctx = dict(base_ctx)
             case_ctx["folder_path"] = folder_path
             case_ctx["matching_files"] = [mf["fullpath"] for mf in matching_files]
             if matching_files:
                 first_meta = matching_files[0].get("meta", {})
                 for k, v in first_meta.items():
-                    if k not in case_ctx:
-                        case_ctx[k] = v
+                    clean_k = str(k).strip("{} ")
+                    if clean_k and (context is None or clean_k not in context):
+                        case_ctx[clean_k] = v
                 case_ctx.setdefault("document_fullpath", matching_files[0]["fullpath"])
                 case_ctx.setdefault("filename", matching_files[0]["filename"])
                 case_ctx.setdefault("document_type", matching_files[0]["document_type"])
@@ -658,13 +692,14 @@ class ExportEngine(BaseSkill):
                 logger.info("[*] Skill execution stopped by queue.")
                 return False
 
-            file_ctx = dict(context or {})
+            file_ctx = dict(base_ctx)
             file_ctx["folder_path"] = folder_path
             file_ctx["matching_files"] = [mf["fullpath"] for mf in matching_files]
 
             for k, v in f.get("meta", {}).items():
-                if k not in file_ctx:
-                    file_ctx[k] = v
+                clean_k = str(k).strip("{} ")
+                if clean_k and (context is None or clean_k not in context):
+                    file_ctx[clean_k] = v
 
             file_ctx["document_fullpath"] = f["fullpath"]
             file_ctx["document_type"] = f["document_type"]
@@ -725,6 +760,11 @@ class ExportEngine(BaseSkill):
             self.target_window = skill_def.get("target_window")
             self.rdp_prefix = skill_def.get("rdp_path_prefix", "")
             return self.execute_actions(context or {}, depth=depth, dry_run=dry_run)
+        except SkillActionError as sae:
+            logger.error("[ExportEngine] execute_skill '%s' failed: %s", skill_id, sae)
+            if depth > 0:
+                raise
+            return False
         finally:
             self.steps = orig_steps
             self.actions = orig_actions

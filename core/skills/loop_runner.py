@@ -127,9 +127,11 @@ def execute_for_each_document(
         doc_ctx["doc_index"] = idx
         doc_ctx["total_docs"] = total_docs
 
+        # File-level sidecar metadata takes precedence over base folder metadata
         for k, v in doc.get("meta", {}).items():
-            if k not in doc_ctx:
-                doc_ctx[k] = v
+            clean_k = str(k).strip("{} ")
+            if clean_k:
+                doc_ctx[clean_k] = v
 
         if reporter:
             msg = f"Document {idx}/{total_docs}: {doc['filename']}"

@@ -18,6 +18,7 @@ import time
 from collections.abc import Callable, Mapping
 from typing import Any
 
+from core.skills.exceptions import SkillActionError
 from core.skills.models import TaskProgress
 from core.utils import is_within_allowed_roots, sanitize_safe_path
 
@@ -40,6 +41,8 @@ def execute_script_step(
     reporter: Callable[[TaskProgress], None] | None = None,
 ) -> bool:
     """Executes a PowerShell / Shell / CLI command step with bounded timeouts."""
+    step_id = str(step.get("id", "script_step"))
+    action_type = str(step.get("action_type") or step.get("type", "SCRIPT")).upper()
     raw_cmd = str(step.get("command", "") or step.get("script", "") or step.get("code", ""))
     if "{document_fullpath}" in raw_cmd:
         raw_fp = str(context.get("document_fullpath", "") or "").strip()
@@ -51,10 +54,10 @@ def execute_script_step(
                 resolved_doc = candidate
 
         if not resolved_doc:
-            logger.error(
-                "  [!] SCRIPT aborted: Required variable 'document_fullpath' is missing, invalid, or points to non-existent file: %r",
-                raw_fp,
-            )
+            err_msg = f"Required variable 'document_fullpath' is missing, invalid, or points to non-existent file: {raw_fp!r}"
+            logger.error("  [!] SCRIPT aborted: %s", err_msg)
+            if step.get("on_failure", "stop") == "stop":
+                raise SkillActionError(step_id, err_msg, action_type)
             return False
 
     sanitized_context = {
@@ -133,10 +136,11 @@ def execute_script_step(
                     proc.communicate(timeout=1.0)
                 except OSError as e:
                     logger.debug("[ScriptRunner] Subprocess kill error: %s", e)
-                logger.error("[ScriptRunner] Script timed out after %.1fs", timeout_s)
+                err_msg = f"Script timed out after {timeout_s:.1f}s"
+                logger.error("[ScriptRunner] %s", err_msg)
                 if step.get("on_failure", "stop") == "stop":
-                    return False
-                return True
+                    raise SkillActionError(step_id, err_msg, action_type)
+                return False
 
             try:
                 chunk_timeout = min(0.25, remaining_t)
@@ -147,17 +151,23 @@ def execute_script_step(
 
         returncode = proc.returncode
         if returncode is not None and returncode != 0:
-            logger.error("[ScriptRunner] Script failed (code %d): %s", returncode, stderr_out)
+            clean_err = stderr_out.strip() or stdout_out.strip() or f"Process exited with code {returncode}"
+            err_msg = f"Script failed with exit code {returncode}: {clean_err[:300]}"
+            logger.error("[ScriptRunner] %s", err_msg)
             if step.get("on_failure", "stop") == "stop":
-                return False
+                raise SkillActionError(step_id, err_msg, action_type)
+            return False
         elif returncode == 0:
             logger.info(
                 "[ScriptRunner] Script executed successfully: %s",
                 stdout_out[:200] if stdout_out else "",
             )
         return True
+    except SkillActionError:
+        raise
     except Exception as e:
-        logger.error("[ScriptRunner] Script execution error: %s", e)
+        err_msg = f"Script execution error: {e}"
+        logger.error("[ScriptRunner] %s", err_msg)
         if step.get("on_failure", "stop") == "stop":
-            return False
-        return True
+            raise SkillActionError(step_id, err_msg, action_type) from e
+        return False

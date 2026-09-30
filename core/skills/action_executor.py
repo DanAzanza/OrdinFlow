@@ -15,10 +15,16 @@ import time
 from collections.abc import Callable, Mapping
 from typing import Any
 
+from core.skills.exceptions import SkillActionError
 from core.skills.shield import input_shield
 from core.skills.text_helpers import paste_text_via_clipboard, type_unicode_text
 from core.skills.window_manager import ensure_window_ready, handle_known_dialog_popups, save_failure_screenshot
-from core.utils import is_sensitive_credential_text, is_within_allowed_roots, sanitize_safe_path
+from core.utils import (
+    RESERVED_WIN_NAMES,
+    is_sensitive_credential_text,
+    is_within_allowed_roots,
+    sanitize_safe_path,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -84,6 +90,48 @@ def send_native_double_click(x: int, y: int) -> bool:
     return send_native_click(x, y, button="left", double=True)
 
 
+def validate_target_file_path(
+    file_path: str,
+    must_exist: bool = True,
+    allow_desktop: bool = True,
+) -> tuple[bool, str, str | None]:
+    """Validates file path for OPEN (must exist) or SAVE (parent in allowed roots).
+
+    Returns (is_valid, resolved_path_or_empty, error_message).
+    """
+    is_safe, clean_path = sanitize_safe_path(file_path)
+    if not is_safe or not clean_path.strip():
+        return False, "", f"Path failed security sanitization: {file_path!r}"
+
+    try:
+        resolved = Path(clean_path).resolve()
+    except Exception as e:
+        return False, "", f"Path resolution failed: {e}"
+
+    base_stem = resolved.stem.upper()
+    if base_stem in RESERVED_WIN_NAMES:
+        return False, "", f"Target filename {resolved.name!r} is a reserved Windows device name."
+
+    if must_exist:
+        if not resolved.is_file():
+            return False, "", f"Target file does not exist on disk: {resolved}"
+        if not is_within_allowed_roots(resolved, allow_desktop=allow_desktop):
+            return False, "", f"Target file is outside allowed roots: {resolved}"
+        return True, str(resolved), None
+
+    # SAVE MODE: target file does not need to exist yet
+    parent = resolved.parent
+    if not is_within_allowed_roots(parent, allow_desktop=allow_desktop):
+        return False, "", f"Target directory is outside allowed roots: {parent}"
+
+    try:
+        parent.mkdir(parents=True, exist_ok=True)
+    except OSError as e:
+        return False, "", f"Could not create target directory {parent}: {e}"
+
+    return True, str(resolved), None
+
+
 def execute_mouse_click(
     step: Mapping[str, Any],
     step_id: str,
@@ -102,9 +150,31 @@ def execute_mouse_click(
     retry_delay_s = float(step.get("retry_delay_s", 0.35))
     coords = None
 
+    # Fast-path: check explicit Windows UI Automation locator first
+    is_explicit_uia = False
+    if sys.platform == "win32" and isinstance(locator, dict):
+        auto_id = locator.get("automation_id") or locator.get("id")
+        ctrl_type = locator.get("control_type") or locator.get("type")
+        loc_type = str(locator.get("type", "")).lower()
+        if auto_id or (ctrl_type and ctrl_type not in ("auto", "smart", "ocr_exact", "ocr_contains", "ocr_text", "som_vlm")) or loc_type == "uia":
+            is_explicit_uia = True
+
     for attempt in range(1, max_retries + 1):
         if not wait_for_queue_fn():
             return False
+
+        if is_explicit_uia:
+            from core.skills.uia_locator import UIALocator
+
+            uia_elem = UIALocator.find_element(locator, window_title=win, timeout_s=0.5)
+            if uia_elem and "center" in uia_elem:
+                cx, cy = uia_elem["center"]
+                offset = locator.get("offset", [0, 0])
+                ox = offset[0] if isinstance(offset, (list, tuple)) and len(offset) > 0 else 0
+                oy = offset[1] if isinstance(offset, (list, tuple)) and len(offset) > 1 else 0
+                coords = (cx + ox, cy + oy)
+                break
+
         coords = locate_fn(locator, win)
         if coords is not None:
             break
@@ -117,8 +187,11 @@ def execute_mouse_click(
     if coords is None:
         if not wait_for_queue_fn():
             return False
-        logger.error("  [!] Target not found for action %s: %s", action_type, locator)
+        err_msg = f"Target element not found for {action_type}: {locator}"
+        logger.error("  [!] %s", err_msg)
         save_failure_screenshot(step_id, str(step.get("description", "")), win)
+        if step.get("on_failure", "stop") == "stop":
+            raise SkillActionError(step_id, err_msg, action_type)
         return False
 
     with input_shield():
@@ -145,7 +218,10 @@ def execute_type_text(
 
     # Fail-fast check: If raw text contains dynamic variable placeholders but resolves to empty string
     if "{" in raw_text and not text_to_type.strip():
-        logger.error("  [!] %s aborted: Placeholder in %r resolved to empty string.", action_type, raw_text)
+        err_msg = f"Placeholder in {raw_text!r} resolved to empty string."
+        logger.error("  [!] %s aborted: %s", action_type, err_msg)
+        if step.get("on_failure", "stop") == "stop":
+            raise SkillActionError(step_id, err_msg, action_type)
         return False
 
     press_enter = bool(step.get("press_enter", False))
@@ -176,27 +252,32 @@ def execute_type_file_path(
     rdp_prefix: str,
     substitute_fn: Callable[[str, Mapping[str, Any]], str],
 ) -> bool:
-    """Validates file path existence and pasts it into the target file dialog."""
+    """Validates file path existence or parent directory and pastes it into the target file dialog."""
     raw_path = str(step.get("file_path", context.get("document_fullpath", "") or ""))
     sub_path = substitute_fn(raw_path, context).strip()
     if not sub_path:
-        logger.error("  [!] TYPE_FILE_PATH aborted: Target file path is empty or unresolved.")
+        err_msg = "Target file path is empty or unresolved."
+        logger.error("  [!] TYPE_FILE_PATH aborted: %s", err_msg)
+        if step.get("on_failure", "stop") == "stop":
+            raise SkillActionError(step_id, err_msg, "TYPE_FILE_PATH")
         return False
 
-    is_safe, clean_path = sanitize_safe_path(sub_path)
-    if not is_safe or not clean_path.strip():
-        logger.error("[Security] Aborted TYPE_FILE_PATH due to invalid/unsafe path: %r", sub_path)
-        save_failure_screenshot(step_id, f"Security Block: {sub_path}", target_window)
+    mode = str(step.get("mode") or "").lower()
+    action_type = str(step.get("action_type") or "").upper()
+    must_exist = bool(step.get("must_exist", True))
+    if mode == "save" or action_type in ("SAVE_FILE_PATH", "TYPE_SAVE_PATH"):
+        must_exist = False
+
+    is_valid, resolved_str, err_msg = validate_target_file_path(sub_path, must_exist=must_exist)
+    if not is_valid:
+        msg = err_msg or "Path validation failed"
+        logger.error("  [!] TYPE_FILE_PATH aborted: %s", msg)
+        save_failure_screenshot(step_id, msg, target_window)
+        if step.get("on_failure", "stop") == "stop":
+            raise SkillActionError(step_id, msg, "TYPE_FILE_PATH")
         return False
 
-    resolved_file = Path(clean_path).resolve()
-    if not resolved_file.is_file() or not is_within_allowed_roots(resolved_file):
-        logger.error("  [!] TYPE_FILE_PATH aborted: Target file does not exist on disk or is outside allowed roots: %s", resolved_file)
-        save_failure_screenshot(step_id, f"Missing/Unauthorized File: {resolved_file}", target_window)
-        return False
-
-    final_path = str(resolved_file)
-
+    final_path = resolved_str
     if rdp_prefix and re.match(r"^[a-zA-Z]:", final_path):
         drive_letter = final_path[0].upper()
         prefix = rdp_prefix.rstrip("\\/")
@@ -226,9 +307,25 @@ def execute_wait_for_element(
     start_t = time.time()
     found = False
 
+    is_explicit_uia = False
+    if sys.platform == "win32" and isinstance(locator, dict):
+        auto_id = locator.get("automation_id") or locator.get("id")
+        ctrl_type = locator.get("control_type") or locator.get("type")
+        loc_type = str(locator.get("type", "")).lower()
+        if auto_id or (ctrl_type and ctrl_type not in ("auto", "smart", "ocr_exact", "ocr_contains", "ocr_text", "som_vlm")) or loc_type == "uia":
+            is_explicit_uia = True
+
     while (time.time() - start_t) <= timeout_s:
         if not wait_for_queue_fn():
             return False
+
+        if is_explicit_uia:
+            from core.skills.uia_locator import UIALocator
+
+            if UIALocator.is_element_visible(locator, win):
+                found = True
+                break
+
         coords = locate_fn(locator, win)
         if coords is not None:
             found = True

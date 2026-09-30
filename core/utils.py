@@ -495,8 +495,58 @@ def is_within_base(path: str | Path, base_dir: str | Path) -> bool:
         return False
 
 
-def is_within_allowed_roots(path: str | Path, allowed_roots: list[str | Path] | None = None) -> bool:
-    """Verifies that path is within any of the allowed application roots or tempdir."""
+RESERVED_WIN_NAMES: frozenset[str] = frozenset(
+    {"CON", "PRN", "AUX", "NUL", *(f"COM{i}" for i in range(1, 10)), *(f"LPT{i}" for i in range(1, 10))}
+)
+
+
+def get_user_desktop_dir() -> str:
+    """Returns user's Desktop directory path, resolving Windows Known Folder if available."""
+    if sys.platform == "win32":
+        try:
+            import ctypes
+            from ctypes import wintypes
+
+            class _GUID(ctypes.Structure):
+                _fields_ = [
+                    ("Data1", wintypes.DWORD),
+                    ("Data2", wintypes.WORD),
+                    ("Data3", wintypes.WORD),
+                    ("Data4", ctypes.c_byte * 8),
+                ]
+
+            # FOLDERID_Desktop = {B4BFCC3A-DB2C-424C-B029-7FE99A87C641}
+            guid_desktop = _GUID(
+                0xB4BFCC3A,
+                0xDB2C,
+                0x424C,
+                (ctypes.c_byte * 8)(0xB0, 0x29, 0x7F, 0xE9, 0x9A, 0x87, 0xC6, 0x41),
+            )
+            path_ptr = ctypes.c_wchar_p()
+            hr = ctypes.windll.shell32.SHGetKnownFolderPath(
+                ctypes.byref(guid_desktop), 0, None, ctypes.byref(path_ptr)
+            )
+            if hr == 0 and path_ptr.value:
+                resolved_desktop = str(path_ptr.value)
+                ctypes.windll.ole32.CoTaskMemFree(path_ptr)
+                return resolved_desktop
+        except Exception as e:
+            logger.debug("[get_user_desktop_dir] Failed resolving Windows Known Folder: %s", e)
+
+    user_prof = os.environ.get("USERPROFILE", "") or os.path.expanduser("~")
+    if user_prof:
+        cand = os.path.join(user_prof, "Desktop")
+        if os.path.exists(cand):
+            return cand
+    return os.path.expanduser("~/Desktop")
+
+
+def is_within_allowed_roots(
+    path: str | Path,
+    allowed_roots: list[str | Path] | None = None,
+    allow_desktop: bool = False,
+) -> bool:
+    """Verifies that path is within any of the allowed application roots, tempdir, or optionally user desktop."""
     if not path:
         return False
     if allowed_roots is None:
@@ -515,6 +565,10 @@ def is_within_allowed_roots(path: str | Path, allowed_roots: list[str | Path] | 
                     roots.append(DashboardState.config.target_base_dir)
         except (ImportError, AttributeError):
             pass
+        if allow_desktop:
+            dt = get_user_desktop_dir()
+            if dt:
+                roots.append(dt)
         allowed_roots = roots
 
     return any(is_within_base(path, r) for r in allowed_roots if r)

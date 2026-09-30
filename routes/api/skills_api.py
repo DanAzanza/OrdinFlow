@@ -14,6 +14,7 @@ from typing import Any
 from flask import Blueprint, jsonify, request
 
 from core.skills import (
+    SkillActionError,
     SkillManager,
     SkillQueueManager,
     SoMGrounder,
@@ -375,6 +376,18 @@ def test_run_skill():
             "total_actions": len(engine.actions),
             "progress_log": progress_log,
         })
+    except SkillActionError as sae:
+        logger.warning("[test_run_skill] Skill step failed: %s", sae)
+        duration_s = round(time.time() - start_t, 2)
+        return jsonify({
+            "status": "failed",
+            "success": False,
+            "error": str(sae),
+            "step_id": sae.step_id,
+            "action_type": sae.action_type,
+            "duration_seconds": duration_s,
+            "progress_log": progress_log,
+        }), 200
     except Exception as e:
         logger.error("[test_run_skill] Test run exception: %s", e, exc_info=True)
         duration_s = round(time.time() - start_t, 2)

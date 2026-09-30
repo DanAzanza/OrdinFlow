@@ -6,9 +6,12 @@ import os
 from unittest.mock import patch
 import pytest
 
+from core.skills.action_executor import execute_mouse_click, execute_type_file_path
 from core.skills.engines.export_engine import ExportEngine
+from core.skills.exceptions import SkillActionError
 from core.skills.grounder import SoMGrounder
 from core.skills.manager import SkillManager
+from core.skills.models import SkillTask
 from core.skills.shield import input_shield, set_block_input
 from core.skills.text_helpers import paste_text_via_clipboard, substitute_placeholders
 
@@ -440,8 +443,13 @@ def test_export_engine_fail_fast_missing_document_in_script():
         ],
     }
     engine = ExportEngine(skill_def)
-    assert engine.execute_actions(context={}) is False
-    assert engine.execute_actions(context={"document_fullpath": "C:/NonExistentPath/File.pdf"}) is False
+    with pytest.raises(SkillActionError) as exc_info:
+        engine.execute_actions(context={})
+    assert "document_fullpath" in str(exc_info.value)
+
+    with pytest.raises(SkillActionError) as exc_info:
+        engine.execute_actions(context={"document_fullpath": "C:/NonExistentPath/File.pdf"})
+    assert "document_fullpath" in str(exc_info.value)
 
 
 def test_export_engine_fail_fast_type_file_path():
@@ -462,8 +470,13 @@ def test_export_engine_fail_fast_type_file_path():
         ],
     }
     engine = ExportEngine(skill_def)
-    assert engine.execute_actions(context={}) is False
-    assert engine.execute_actions(context={"document_fullpath": "C:/NonExistent/Doc.pdf"}) is False
+    with pytest.raises(SkillActionError) as exc_info:
+        engine.execute_actions(context={})
+    assert "empty or unresolved" in str(exc_info.value)
+
+    with pytest.raises(SkillActionError) as exc_info:
+        engine.execute_actions(context={"document_fullpath": "C:/NonExistent/Doc.pdf"})
+    assert "Doc.pdf" in str(exc_info.value) or "invalid" in str(exc_info.value)
 
 
 def test_export_engine_fail_fast_unresolved_type_text():
@@ -484,7 +497,9 @@ def test_export_engine_fail_fast_unresolved_type_text():
         ],
     }
     engine = ExportEngine(skill_def)
-    assert engine.execute_actions(context={}) is False
+    with pytest.raises(SkillActionError) as exc_info:
+        engine.execute_actions(context={})
+    assert "Nachname" in str(exc_info.value)
 
 
 def test_substitute_placeholders_desktop_and_userprofile():
@@ -629,3 +644,143 @@ def test_export_engine_validate_ui_state_on_error_continue():
     engine = ExportEngine(skill_def)
     context = {"category": "Fußscan"}
     assert engine.execute_actions(context=context) is True
+
+
+def test_export_engine_folder_metadata_auto_extraction(tmp_path):
+    case_folder = tmp_path / "Mustermann__Erika__1985-05-12"
+    case_folder.mkdir(parents=True)
+    pdf_file = case_folder / "Befund__2026.pdf"
+    pdf_file.touch()
+
+    skill_def = {
+        "id": "meta_extractor_skill",
+        "name": "Meta Extractor Skill",
+        "steps": [
+            {
+                "id": "set_last",
+                "action_type": "SET_VARIABLE",
+                "variable": "saved_last",
+                "value": "{Nachname}",
+            },
+            {
+                "id": "set_first",
+                "action_type": "SET_VARIABLE",
+                "variable": "saved_first",
+                "value": "{Vorname}",
+            },
+        ],
+    }
+    engine = ExportEngine(skill_def)
+    task = SkillTask(
+        id="task_meta",
+        skill_id="meta_extractor_skill",
+        skill_name="Meta Extractor",
+        skill_type="export",
+        context={"folder_path": str(case_folder)},
+    )
+    result = engine.execute(task)
+    assert result.success is True
+    assert result.data.get("status") == "completed"
+
+
+def test_type_file_path_save_mode_and_rdp(tmp_path, monkeypatch):
+    dest_dir = tmp_path / "sub_exports"
+    dest_file = dest_dir / "target_output.cdr"
+    assert not dest_dir.exists()
+
+    pasted_values: list[str] = []
+    monkeypatch.setattr(
+        "core.skills.action_executor.paste_text_via_clipboard",
+        lambda text, *args, **kwargs: pasted_values.append(text) or True,
+    )
+
+    step = {
+        "id": "save_as_file",
+        "action_type": "TYPE_FILE_PATH",
+        "mode": "save",
+        "file_path": str(dest_file),
+    }
+
+    ok = execute_type_file_path(
+        step=step,
+        step_id="save_as_file",
+        context={},
+        target_window=None,
+        rdp_prefix=r"\\tsclient\G",
+        substitute_fn=substitute_placeholders,
+    )
+    assert ok is True
+    assert dest_dir.is_dir()
+    assert len(pasted_values) == 1
+    assert "target_output.cdr" in pasted_values[0]
+
+
+def test_skill_action_error_bubbling_to_task_result(tmp_path):
+    case_folder = tmp_path / "Muster_Case"
+    case_folder.mkdir()
+    pdf_file = case_folder / "Doc__1.pdf"
+    pdf_file.touch()
+
+    skill_def = {
+        "id": "failing_skill",
+        "name": "Failing Skill",
+        "steps": [
+            {
+                "id": "broken_step",
+                "action_type": "TYPE_TEXT",
+                "text": "{NonExistentPlaceholder}",
+                "on_failure": "stop",
+            }
+        ],
+    }
+    engine = ExportEngine(skill_def)
+    task = SkillTask(
+        id="task_fail",
+        skill_id="failing_skill",
+        skill_name="Failing Skill",
+        skill_type="export",
+        context={"folder_path": str(case_folder)},
+    )
+    result = engine.execute(task)
+    assert result.success is False
+    assert result.error is not None
+    assert "broken_step" in result.error
+    assert "NonExistentPlaceholder" in result.error
+    assert result.data.get("status") == "failed"
+
+
+def test_mouse_click_uia_fast_path(monkeypatch):
+    click_coords: list[tuple[int, int]] = []
+    monkeypatch.setattr(
+        "core.skills.uia_locator.UIALocator.is_available",
+        lambda: True,
+    )
+    monkeypatch.setattr(
+        "core.skills.uia_locator.UIALocator.find_element",
+        lambda locator, window_title=None, timeout_s=0.5: {"center": (350, 450)},
+    )
+    monkeypatch.setattr(
+        "core.skills.action_executor.send_native_click",
+        lambda x, y, button="left", double=False: click_coords.append((x, y)) or True,
+    )
+
+    step = {
+        "id": "uia_btn_click",
+        "action_type": "CLICK",
+        "locator": {"automation_id": "btn_confirm", "control_type": "Button"},
+    }
+
+    ok = execute_mouse_click(
+        step=step,
+        step_id="uia_btn_click",
+        action_type="CLICK",
+        context={},
+        target_window="TestApp",
+        substitute_fn=substitute_placeholders,
+        locate_fn=lambda loc, win: None,
+        wait_for_queue_fn=lambda: True,
+        sleep_fn=lambda s: True,
+    )
+    assert ok is True
+    assert click_coords == [(350, 450)]
+

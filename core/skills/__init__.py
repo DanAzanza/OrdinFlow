@@ -3,6 +3,7 @@
 from core.skills.base import BaseSkill
 from core.skills.engines.export_engine import ExportEngine
 from core.skills.engines.import_engine import ImportEngine
+from core.skills.exceptions import SkillActionError
 from core.skills.grounder import SoMGrounder
 from core.skills.manager import SkillManager, get_skill_manager
 from core.skills.models import (
@@ -22,6 +23,7 @@ __all__ = [
     "ImportEngine",
     "ExportEngine",
     "SkillExecutor",
+    "SkillActionError",
     "SkillManager",
     "get_skill_manager",
     "SkillQueueManager",

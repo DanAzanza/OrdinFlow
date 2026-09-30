@@ -282,7 +282,10 @@ def substitute_placeholders(text: str, context: Mapping[str, Any]) -> str:
     if user_prof:
         derived.setdefault("userprofile", user_prof)
         derived.setdefault("USERPROFILE", user_prof)
-        desktop_dir = os.path.join(user_prof, "Desktop")
+    from core.utils import get_user_desktop_dir
+
+    desktop_dir = get_user_desktop_dir()
+    if desktop_dir:
         derived.setdefault("desktop", desktop_dir)
         derived.setdefault("Desktop", desktop_dir)
 

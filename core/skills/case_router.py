@@ -5,12 +5,12 @@ from __future__ import annotations
 import json
 import logging
 import os
-from pathlib import Path
+from pathlib import Path, PurePath, PureWindowsPath
 import time
 from typing import Any
 
 from core.routing import parse_folder_name
-from core.utils import is_within_allowed_roots, sanitize_safe_path
+from core.utils import clean_path_component, is_within_allowed_roots, sanitize_safe_path
 
 logger = logging.getLogger(__name__)
 
@@ -100,6 +100,62 @@ def filter_matching_files(
     return matching_files
 
 
+def extract_folder_metadata(
+    folder_path_or_name: str,
+    folder_structure: list[str] | None = None,
+    delimiter: str | None = None,
+) -> dict[str, Any]:
+    """Extracts normalized, unbraced case metadata from a folder name or path."""
+    from core.state import DashboardState
+
+    raw = str(folder_path_or_name or "").strip()
+    if not raw:
+        return {}
+
+    norm_path = PureWindowsPath(raw) if ("\\" in raw or ":" in raw) else PurePath(raw)
+    folder_name = norm_path.name or raw
+
+    active_delim = delimiter
+    if not active_delim:
+        if DashboardState.config and DashboardState.config.folder_delimiter:
+            active_delim = DashboardState.config.folder_delimiter
+        elif "__" in folder_name:
+            active_delim = "__"
+        elif "--" in folder_name:
+            active_delim = "--"
+        else:
+            active_delim = "__"
+
+    parsed = parse_folder_name(folder_name, folder_structure=folder_structure, delimiter=active_delim)
+    clean_meta: dict[str, Any] = {}
+    for k, v in parsed.items():
+        if k in ("parts", "display_title"):
+            continue
+        clean_k = str(k).strip("{} ")
+        if clean_k:
+            if isinstance(v, str):
+                clean_meta[clean_k] = clean_path_component(v) if v.strip() else ""
+            else:
+                clean_meta[clean_k] = v
+
+    # Derive person sub-fields (Vorname, Nachname)
+    person_val = str(
+        clean_meta.get("Person")
+        or clean_meta.get("person")
+        or clean_meta.get("Patient")
+        or clean_meta.get("patient")
+        or ""
+    ).strip()
+    if person_val and "," in person_val:
+        parts = person_val.split(",", 1)
+        clean_meta.setdefault("Nachname", parts[0].strip())
+        clean_meta.setdefault("Vorname", parts[1].strip())
+
+    clean_meta["folder_name"] = folder_name
+    clean_meta["case_folder"] = folder_name
+    return clean_meta
+
+
 def find_pending_cases(
     target_base_dir: str,
     skill_id: str,
@@ -125,20 +181,11 @@ def find_pending_cases(
         unprocessed_files = [f for f in matching if skill_id not in f.get("executed_skills", [])]
 
         if unprocessed_files:
-            parsed_meta = parse_folder_name(
+            parsed_meta = extract_folder_metadata(
                 folder_name,
                 folder_structure=folder_structure,
-                delimiter=delimiter if delimiter in folder_name else "__",
+                delimiter=delimiter,
             )
-
-            # Automatically derive Vorname / Nachname if Person or Patient is present in comma notation
-            person_val = parsed_meta.get("Person") or parsed_meta.get("person") or parsed_meta.get("Patient") or parsed_meta.get("patient") or ""
-            if person_val and "," in person_val:
-                person_parts = person_val.split(",", 1)
-                parsed_meta.setdefault("Nachname", person_parts[0].strip())
-                parsed_meta.setdefault("Vorname", person_parts[1].strip())
-                parsed_meta.setdefault("{Nachname}", person_parts[0].strip())
-                parsed_meta.setdefault("{Vorname}", person_parts[1].strip())
 
             pending_cases.append(
                 {
