@@ -289,24 +289,73 @@ def verify_bundle(archive_path: Path, checksum_path: Path | None = None) -> bool
     return True
 
 
+def verify_installer(installer_path: Path, checksum_path: Path | None = None) -> bool:
+    """Performs validation on a built Inno Setup installer executable (.exe)."""
+    print("=" * 60)
+    print(f"[*] Validating Inno Setup Installer: {installer_path.name}")
+    print("=" * 60)
+
+    # 1. Existence and size check
+    if not installer_path.is_file():
+        print(f"[FAIL] Installer executable does not exist: {installer_path}")
+        return False
+
+    size_bytes = installer_path.stat().st_size
+    size_mb = size_bytes / (1024 * 1024)
+    print(f"[*] Binary Size: {size_mb:.2f} MB ({size_bytes} bytes)")
+    if size_bytes < 100 * 1024:
+        print("[FAIL] Installer file is unexpectedly small (< 100 KB). Likely corrupt or empty.")
+        return False
+
+    # 2. Windows PE executable magic check
+    try:
+        with open(installer_path, "rb") as f:
+            magic = f.read(2)
+            if magic != b"MZ":
+                print(f"[FAIL] Invalid executable header: expected b'MZ', found {magic!r}")
+                return False
+    except OSError as e:
+        print(f"[FAIL] Could not read executable header: {e}")
+        return False
+    print("[OK] Valid Windows PE executable header (MZ) confirmed.")
+
+    # 3. SHA256 Checksum Verification
+    if not verify_sha256(installer_path, checksum_path):
+        return False
+
+    print("\n" + "=" * 60)
+    print(" [OK] INSTALLER RELEASE VERIFICATION PASSED (0 defects) ")
+    print("=" * 60)
+    return True
+
+
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Verify OrdinFlow Release Archive")
-    parser.add_argument("--archive", required=True, help="Path to release .zip archive")
+    parser = argparse.ArgumentParser(description="Verify OrdinFlow Release Artifacts (Archive or Installer)")
+    parser.add_argument("--archive", default=None, help="Path to release .zip archive")
+    parser.add_argument("--installer", default=None, help="Path to release Inno Setup installer .exe")
     parser.add_argument("--checksum-file", default=None, help="Optional path to .sha256 checksum file")
     return parser.parse_args()
 
 
 def main() -> int:
     args = parse_args()
-    archive_path = Path(args.archive).resolve()
     checksum_path = Path(args.checksum_file).resolve() if args.checksum_file else None
 
-    if not archive_path.is_file():
-        print(f"[ERROR] Release archive not found: {archive_path}", file=sys.stderr)
-        return 1
+    if args.installer:
+        installer_path = Path(args.installer).resolve()
+        success = verify_installer(installer_path, checksum_path)
+        return 0 if success else 1
 
-    success = verify_bundle(archive_path, checksum_path)
-    return 0 if success else 1
+    if args.archive:
+        archive_path = Path(args.archive).resolve()
+        if archive_path.suffix.lower() == ".exe":
+            success = verify_installer(archive_path, checksum_path)
+        else:
+            success = verify_bundle(archive_path, checksum_path)
+        return 0 if success else 1
+
+    print("[ERROR] Please specify either --archive or --installer.", file=sys.stderr)
+    return 1
 
 
 if __name__ == "__main__":

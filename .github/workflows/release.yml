@@ -67,13 +67,16 @@ jobs:
           Write-Output "RELEASE_VERSION=$ver" >> $env:GITHUB_ENV
           Write-Host "[*] Target Release Version: $ver"
 
-      - name: Build Release Bundle & SHA256 Checksums
-        run: |
-          python scripts/build_release.py --version ${{ env.RELEASE_VERSION }} --output-dir dist/
+      - name: Install Inno Setup Compiler
+        run: choco install innosetup --no-progress -y
 
-      - name: Adversarially Verify Built Release Bundle
+      - name: Build Inno Setup Release Installer & Checksums
         run: |
-          python scripts/verify_release.py --archive dist/OrdinFlow-${{ env.RELEASE_VERSION }}.zip --checksum-file dist/OrdinFlow-${{ env.RELEASE_VERSION }}-checksums.sha256
+          python scripts/build_release.py --version ${{ env.RELEASE_VERSION }} --output-dir dist/ --installer
+
+      - name: Adversarially Verify Built Installer Release
+        run: |
+          python scripts/verify_release.py --installer dist/OrdinFlow-Setup-${{ env.RELEASE_VERSION }}.exe --checksum-file dist/OrdinFlow-Setup-${{ env.RELEASE_VERSION }}-checksums.sha256
 
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
@@ -84,5 +87,5 @@ jobs:
           prerelease: ${{ github.event.inputs.prerelease || false }}
           generate_release_notes: true
           files: |
-            dist/OrdinFlow-${{ env.RELEASE_VERSION }}.zip
-            dist/OrdinFlow-${{ env.RELEASE_VERSION }}-checksums.sha256
+            dist/OrdinFlow-Setup-${{ env.RELEASE_VERSION }}.exe
+            dist/OrdinFlow-Setup-${{ env.RELEASE_VERSION }}-checksums.sha256

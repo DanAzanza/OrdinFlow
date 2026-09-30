@@ -158,14 +158,21 @@ def main() -> None:
         print(f"\n[!] Missing model: {filename}")
         url = MODEL_URLS.get(filename)
         if url:
+            is_interactive = sys.stdin is not None and getattr(sys.stdin, "isatty", lambda: False)()
             if auto_yes:
                 download_file_atomic(url, target_path)
+            elif not is_interactive:
+                print(f"Non-interactive environment detected. Skipping download for {filename}.")
+                print(f"Please run with '--yes' or place your GGUF model manually at: {target_path}")
             else:
-                answer = input(f"Do you want to download {filename} now? (y/N): ").strip().lower()
-                if answer in ["y", "yes"]:
-                    download_file_atomic(url, target_path)
-                else:
-                    print(f"Skipped. Please place your GGUF model manually at: {target_path}")
+                try:
+                    answer = input(f"Do you want to download {filename} now? (y/N): ").strip().lower()
+                    if answer in ["y", "yes"]:
+                        download_file_atomic(url, target_path)
+                    else:
+                        print(f"Skipped. Please place your GGUF model manually at: {target_path}")
+                except (EOFError, RuntimeError):
+                    print(f"Skipped interactive prompt. Please place your GGUF model manually at: {target_path}")
         else:
             print(f"Please place your model manually at: {target_path}")
 

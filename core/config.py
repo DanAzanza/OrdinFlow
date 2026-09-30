@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import os
+import sys
 import threading
 from dataclasses import asdict, dataclass, field
 from typing import Any
@@ -13,6 +14,15 @@ import yaml
 logger = logging.getLogger(__name__)
 
 _CONFIG_LOCK = threading.RLock()
+
+
+def _get_fallback_data_dir() -> str:
+    """Returns fallback writable user data directory when base_dir is write-protected."""
+    if sys.platform == "win32":
+        appdata = os.environ.get("LOCALAPPDATA")
+        if appdata:
+            return os.path.join(appdata, "OrdinFlow")
+    return os.path.join(os.path.expanduser("~"), ".ordinflow")
 
 
 @dataclass
@@ -81,6 +91,12 @@ class AppConfig:
         with _CONFIG_LOCK:
             full_path = self._resolve_path(filepath)
 
+            # If not found in base_dir, check fallback data directory
+            if not os.path.exists(full_path):
+                alt_path = os.path.join(_get_fallback_data_dir(), "settings", os.path.basename(filepath))
+                if os.path.exists(alt_path):
+                    full_path = alt_path
+
             # 1. Load main configuration (system settings)
             if os.path.exists(full_path):
                 with open(full_path, encoding="utf-8") as f:
@@ -96,6 +112,10 @@ class AppConfig:
             from core.skills.manager import SkillManager
 
             skills_dir = self._resolve_path(os.path.join("settings", "skills"))
+            if not os.path.exists(skills_dir):
+                alt_skills = os.path.join(_get_fallback_data_dir(), "settings", "skills")
+                if os.path.exists(alt_skills):
+                    skills_dir = alt_skills
             mgr = SkillManager(skills_dir=skills_dir)
             default_skill = mgr.get_default_import_skill()
             if default_skill and isinstance(default_skill.get("document_types"), dict):
@@ -106,24 +126,46 @@ class AppConfig:
         with _CONFIG_LOCK:
             full_path = self._resolve_path(filepath)
             settings_dir = os.path.dirname(full_path)
-            os.makedirs(settings_dir, exist_ok=True)
 
             cfg_dict = {k: v for k, v in asdict(self).items() if k != "document_types"}
             tmp_path = full_path + ".tmp"
-            with open(tmp_path, "w", encoding="utf-8") as f:
-                yaml.dump(
-                    cfg_dict,
-                    f,
-                    default_flow_style=False,
-                    sort_keys=False,
-                    allow_unicode=True,
-                )
-            os.replace(tmp_path, full_path)
+            try:
+                os.makedirs(settings_dir, exist_ok=True)
+                with open(tmp_path, "w", encoding="utf-8") as f:
+                    yaml.dump(
+                        cfg_dict,
+                        f,
+                        default_flow_style=False,
+                        sort_keys=False,
+                        allow_unicode=True,
+                    )
+                os.replace(tmp_path, full_path)
+            except OSError:
+                # If write failed (e.g. read-only Program Files), fallback to user data dir
+                fallback_base = _get_fallback_data_dir()
+                alt_dir = os.path.join(fallback_base, "settings")
+                os.makedirs(alt_dir, exist_ok=True)
+                alt_path = os.path.join(alt_dir, os.path.basename(full_path))
+                tmp_alt = alt_path + ".tmp"
+                with open(tmp_alt, "w", encoding="utf-8") as f:
+                    yaml.dump(
+                        cfg_dict,
+                        f,
+                        default_flow_style=False,
+                        sort_keys=False,
+                        allow_unicode=True,
+                    )
+                os.replace(tmp_alt, alt_path)
+                logger.warning("[!] Saved configuration to user data dir due to write restriction: %s", alt_path)
 
         if self.document_types:
             from core.skills.manager import SkillManager
 
             skills_dir = self._resolve_path(os.path.join("settings", "skills"))
+            if not os.path.exists(skills_dir):
+                alt_skills = os.path.join(_get_fallback_data_dir(), "settings", "skills")
+                if os.path.exists(alt_skills):
+                    skills_dir = alt_skills
             mgr = SkillManager(skills_dir=skills_dir)
             default_skill = mgr.get_default_import_skill()
             if default_skill:
@@ -140,6 +182,16 @@ class AppConfig:
     def setup_paths(self) -> None:
         """Initializes and creates watch and target directories."""
         base_path = os.path.abspath(self.base_dir)
+
+        # Fallback to user data dir if base_path is write-protected
+        if not os.access(base_path, os.W_OK):
+            fallback = _get_fallback_data_dir()
+            try:
+                os.makedirs(fallback, exist_ok=True)
+                base_path = fallback
+            except OSError:
+                pass
+
         if not self.watch_dir:
             self.watch_dir = os.path.join(base_path, "Inbox")
         if not self.target_base_dir:

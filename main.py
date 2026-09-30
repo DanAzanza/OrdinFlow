@@ -13,7 +13,14 @@ logger = logging.getLogger(__name__)
 try:
     _base_dir = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, _base_dir)
-    _crash_log = os.path.join(_base_dir, "crash.log")
+    # Check if base_dir is writable; if not (e.g. C:\Program Files), fallback to LOCALAPPDATA
+    _log_dir = _base_dir
+    if sys.platform == "win32" and not os.access(_base_dir, os.W_OK):
+        _appdata = os.environ.get("LOCALAPPDATA")
+        if _appdata:
+            _log_dir = os.path.join(_appdata, "OrdinFlow", "logs")
+            os.makedirs(_log_dir, exist_ok=True)
+    _crash_log = os.path.join(_log_dir, "crash.log")
     _log_f = open(_crash_log, "a", encoding="utf-8", buffering=1)
     if sys.stderr is None:
         sys.stderr = _log_f
@@ -27,12 +34,29 @@ def _bootstrap_venv() -> None:
     if os.environ.get("_ORDINFLOW_REEXEC") == "1":
         return
 
-    # Check if running inside virtualenv (sys.prefix != sys.base_prefix)
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+
+    # 1. Check if running from a bundled standalone distribution runtime
+    if os.path.exists(os.path.join(base_dir, "standalone.flag")) or os.path.exists(
+        os.path.join(sys.prefix, "STANDALONE")
+    ):
+        return
+
+    # 2. Check if already inside an active virtualenv (sys.prefix != sys.base_prefix)
     is_venv = getattr(sys, "base_prefix", sys.prefix) != sys.prefix
     if is_venv:
         return
 
-    base_dir = os.path.dirname(os.path.abspath(__file__))
+    # 3. Check if all core packages are already importable in current python environment
+    try:
+        import fitz  # noqa: F401
+        import flask  # noqa: F401
+        import yaml  # noqa: F401
+
+        return
+    except ImportError:
+        pass
+
     is_win = sys.platform == "win32"
     is_pythonw = "pythonw" in os.path.basename(sys.executable).lower()
 
@@ -66,6 +90,19 @@ def _bootstrap_venv() -> None:
         )
         if sys.stderr is not None:
             sys.stderr.write(msg)
+        if sys.platform == "win32" and is_pythonw:
+            try:
+                import ctypes
+
+                ctypes.windll.user32.MessageBoxW(
+                    0,
+                    "OrdinFlow virtual environment not found!\n\nPlease run 'Install_OrdinFlow.bat' first or reinstall OrdinFlow.",
+                    "OrdinFlow Startup Error",
+                    0x10,
+                )
+            except (OSError, RuntimeError) as err:
+                if sys.stderr is not None:
+                    sys.stderr.write(f"[WARN] Failed to display error dialog: {err}\n")
         sys.exit(1)
 
 
@@ -103,7 +140,17 @@ def setup_logging():
     log_format = "%(asctime)s [%(levelname)s] %(message)s"
     formatter = logging.Formatter(log_format)
 
-    file_handler = FlushingFileHandler("main.log", mode="a", encoding="utf-8")
+    # Determine writable log location
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    log_dir = base_dir
+    if sys.platform == "win32" and not os.access(base_dir, os.W_OK):
+        appdata = os.environ.get("LOCALAPPDATA")
+        if appdata:
+            log_dir = os.path.join(appdata, "OrdinFlow", "logs")
+            os.makedirs(log_dir, exist_ok=True)
+    log_path = os.path.join(log_dir, "main.log")
+
+    file_handler = FlushingFileHandler(log_path, mode="a", encoding="utf-8")
     file_handler.setLevel(logging.INFO)
     file_handler.setFormatter(formatter)
 
@@ -310,4 +357,16 @@ if __name__ == "__main__":
         main()
     except (OSError, RuntimeError, ValueError, TypeError, KeyError) as e:
         logger.critical("[CRITICAL STARTUP ERROR] %s", e, exc_info=True)
+        if sys.platform == "win32":
+            try:
+                import ctypes
+
+                ctypes.windll.user32.MessageBoxW(
+                    0,
+                    f"OrdinFlow failed to start:\n\n{e}",
+                    "OrdinFlow Startup Error",
+                    0x10,
+                )
+            except (OSError, RuntimeError) as dlg_err:
+                logger.warning("[!] Failed to display error dialog: %s", dlg_err)
         os._exit(1)

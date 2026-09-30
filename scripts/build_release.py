@@ -9,7 +9,10 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import os
 import re
+import shutil
+import subprocess
 import sys
 import zipfile
 from pathlib import Path
@@ -247,8 +250,114 @@ def build_release_archive(
     return zip_path, checksum_path
 
 
+def find_iscc_compiler() -> Path | None:
+    """Discovers Inno Setup 6 compiler (iscc.exe) via PATH or standard Windows directories."""
+    # 1. PATH lookup
+    iscc_path = shutil.which("iscc")
+    if iscc_path:
+        return Path(iscc_path)
+
+    # 2. Standard Windows installation directories
+    system_drive = os.environ.get("SystemDrive", "C:")
+    program_files_x86 = os.environ.get("ProgramFiles(x86)", f"{system_drive}\\Program Files (x86)")
+    program_files = os.environ.get("ProgramFiles", f"{system_drive}\\Program Files")
+    local_app_data = os.environ.get("LOCALAPPDATA", "")
+
+    candidates = [
+        Path(program_files_x86) / "Inno Setup 6" / "ISCC.exe",
+        Path(program_files) / "Inno Setup 6" / "ISCC.exe",
+    ]
+    if local_app_data:
+        candidates.append(Path(local_app_data) / "Programs" / "Inno Setup 6" / "ISCC.exe")
+
+    for cand in candidates:
+        if cand.is_file():
+            return cand
+    return None
+
+
+def build_inno_installer(
+    version: str,
+    output_dir: Path,
+    root_dir: Path = ROOT_DIR,
+    allow_version_mismatch: bool = False,
+) -> tuple[Path, Path]:
+    """Builds Inno Setup installer executable and companion SHA256 checksum file."""
+    normalized_version = version.lstrip("v")
+    toml_version = get_pyproject_version()
+
+    def versions_match(v1: str, v2: str) -> bool:
+        if v1 == v2:
+            return True
+        p1 = [int(x) for x in v1.split(".") if x.isdigit()]
+        p2 = [int(x) for x in v2.split(".") if x.isdigit()]
+        while len(p1) < 3:
+            p1.append(0)
+        while len(p2) < 3:
+            p2.append(0)
+        return p1 == p2
+
+    if not versions_match(normalized_version, toml_version) and not allow_version_mismatch:
+        raise ValueError(
+            f"Version mismatch: Specified version is '{version}' (normalized '{normalized_version}') "
+            f"but pyproject.toml defines version '{toml_version}'. "
+            f"Please update pyproject.toml or use the correct version tag."
+        )
+
+    iscc = find_iscc_compiler()
+    if not iscc:
+        raise FileNotFoundError(
+            "Inno Setup 6 compiler (iscc.exe) was not found on PATH or in standard program directories. "
+            "Please install Inno Setup 6 from https://jrsoftware.org/isdl.php or via 'winget install JRSoftware.InnoSetup'."
+        )
+
+    iss_file = root_dir / "installer" / "ordinflow.iss"
+    if not iss_file.is_file():
+        raise FileNotFoundError(f"Inno Setup script not found at {iss_file}")
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+    exe_filename = f"OrdinFlow-Setup-v{normalized_version}.exe"
+    exe_path = output_dir / exe_filename
+    checksum_filename = f"OrdinFlow-Setup-v{normalized_version}-checksums.sha256"
+    checksum_path = output_dir / checksum_filename
+
+    print(f"[*] Compiling Inno Setup installer with {iscc}...")
+    print(f"[*] Target executable: {exe_path}")
+
+    cmd = [
+        str(iscc),
+        f"/DMyAppVersion={normalized_version}",
+        f"/O{output_dir}",
+        f"/FOrdinFlow-Setup-v{normalized_version}",
+        str(iss_file),
+    ]
+
+    res = subprocess.run(cmd, check=False)
+    if res.returncode != 0:
+        raise RuntimeError(f"Inno Setup compiler exited with return code {res.returncode}")
+
+    if not exe_path.is_file():
+        raise FileNotFoundError(f"Expected installer executable was not created: {exe_path}")
+
+    # Generate SHA256 Checksum
+    hasher = hashlib.sha256()
+    with open(exe_path, "rb") as f:
+        while chunk := f.read(65536):
+            hasher.update(chunk)
+    sha256_hex = hasher.hexdigest()
+
+    checksum_line = f"{sha256_hex}  {exe_filename}\n"
+    checksum_path.write_text(checksum_line, encoding="utf-8")
+
+    size_mb = exe_path.stat().st_size / (1024 * 1024)
+    print(f"[OK] Inno Setup installer created: {exe_path} ({size_mb:.2f} MB)")
+    print(f"[OK] Checksum created: {checksum_path} (SHA256: {sha256_hex})")
+
+    return exe_path, checksum_path
+
+
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Build OrdinFlow Release Archive")
+    parser = argparse.ArgumentParser(description="Build OrdinFlow Release Package (Installer & Archive)")
     parser.add_argument(
         "--version",
         default="",
@@ -257,7 +366,17 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--output-dir",
         default="dist",
-        help="Output directory for the generated release zip and checksum file.",
+        help="Output directory for the generated release packages and checksum files.",
+    )
+    parser.add_argument(
+        "--installer",
+        action="store_true",
+        help="Explicitly build the Windows Inno Setup installer executable.",
+    )
+    parser.add_argument(
+        "--zip",
+        action="store_true",
+        help="Explicitly build the ZIP release archive.",
     )
     parser.add_argument(
         "--allow-version-mismatch",
@@ -273,11 +392,29 @@ def main() -> int:
     output_dir = Path(args.output_dir).resolve()
 
     try:
-        build_release_archive(
-            version=version,
-            output_dir=output_dir,
-            allow_version_mismatch=args.allow_version_mismatch,
-        )
+        build_inst = args.installer
+        build_zip = args.zip
+
+        # If neither explicitly requested, prefer installer if ISCC is found, otherwise fallback to ZIP
+        if not build_inst and not build_zip:
+            if find_iscc_compiler():
+                build_inst = True
+            else:
+                build_zip = True
+
+        if build_inst:
+            build_inno_installer(
+                version=version,
+                output_dir=output_dir,
+                allow_version_mismatch=args.allow_version_mismatch,
+            )
+
+        if build_zip:
+            build_release_archive(
+                version=version,
+                output_dir=output_dir,
+                allow_version_mismatch=args.allow_version_mismatch,
+            )
         return 0
     except Exception as e:
         print(f"\n[ERROR] Failed to build release: {e}", file=sys.stderr)
