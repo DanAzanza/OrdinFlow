@@ -10,7 +10,7 @@ import time
 from typing import Any
 
 from core.skills.manager import SkillManager
-from core.skills.models import SkillTask, SkillType, TaskProgress, TaskStatus
+from core.skills.models import QueueSnapshot, SkillTask, SkillType, TaskProgress, TaskStatus
 
 logger = logging.getLogger(__name__)
 
@@ -208,6 +208,10 @@ class SkillQueueManager:
             self.items = new_items
             self._save_state()
             return True
+
+    def get_queue_snapshot(self) -> QueueSnapshot:
+        """Returns a typed, explicit queue snapshot contract."""
+        return QueueSnapshot.from_manager(self)
 
     def get_queue_state(self) -> dict[str, Any]:
         """Returns the live snapshot of queue execution status."""

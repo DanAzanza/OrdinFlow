@@ -8,7 +8,7 @@ import pytest
 
 from core.skills.base import BaseSkill
 from core.skills.manager import SkillManager
-from core.skills.models import SkillTask, TaskProgress, TaskResult, TaskStatus
+from core.skills.models import QueueSnapshot, SkillTask, TaskProgress, TaskResult, TaskStatus
 from core.skills.queue import SkillQueueManager
 
 
@@ -231,6 +231,36 @@ def test_queue_manager_auto_repeat(temp_skills_env):
     assert state["auto_repeat_interval_seconds"] == 120
 
 
+def test_queue_snapshot_contract_and_isolation(temp_skills_env):
+    _tmp_dir, skills_dir = temp_skills_env
+    skill_mgr = SkillManager(skills_dir=skills_dir)
+    queue_mgr = SkillQueueManager(skill_manager=skill_mgr)
+
+    skill_mgr.save_skill({"id": "state_skill", "name": "State Skill", "type": "export"})
+    item = queue_mgr.add_to_queue("state_skill")
+
+    snapshot = queue_mgr.get_queue_snapshot()
+    assert isinstance(snapshot, QueueSnapshot)
+    assert snapshot.is_running is False
+    assert snapshot.active_task is None
+    assert snapshot.active_item is None
+    assert len(snapshot.items) == 1
+    assert snapshot.items[0].id == item.id
+    assert snapshot.to_dict()["items"][0]["id"] == item.id
+
+    # Verify snapshot task isolation against live queue task mutations
+    item.context["foo"] = "bar"
+    assert "foo" not in snapshot.items[0].context
+    assert snapshot.to_dict()["items"][0]["context"] == {}
+
+    # Verify set_auto_repeat returns clean dict contract
+    repeat_res = queue_mgr.set_auto_repeat(True, interval_seconds=60)
+    assert repeat_res == {
+        "auto_repeat_enabled": True,
+        "auto_repeat_interval_seconds": 60,
+    }
+
+
 def test_import_engine_live_pause_and_stop(temp_skills_env, monkeypatch):
     tmp_dir, skills_dir = temp_skills_env
     skill_mgr = SkillManager(skills_dir=skills_dir)
@@ -321,6 +351,7 @@ def test_queue_manager_passes_vision_extractor_and_processor(temp_skills_env, mo
     monkeypatch.setattr(skill_mgr, "get_skill_engine", mock_get_engine)
 
     from routes.state import DashboardState
+
     dummy_extractor = object()
 
     class DummyProcObj:
@@ -354,6 +385,7 @@ def test_queue_stop_active_export_engine_mid_step(temp_skills_env, monkeypatch):
     queue_mgr = SkillQueueManager(skill_manager=skill_mgr)
 
     import core.skills.queue as q_mod
+
     monkeypatch.setattr(q_mod, "_SKILL_QUEUE_MANAGER", queue_mgr)
 
     from core.config import AppConfig
@@ -417,6 +449,7 @@ def test_queue_stop_does_not_poison_standalone_test_run(temp_skills_env, monkeyp
     queue_mgr = SkillQueueManager(skill_manager=skill_mgr)
 
     import core.skills.queue as q_mod
+
     monkeypatch.setattr(q_mod, "_SKILL_QUEUE_MANAGER", queue_mgr)
 
     from core.skills.engines.export_engine import ExportEngine
@@ -446,6 +479,7 @@ def test_queue_stop_and_immediate_restart(temp_skills_env, monkeypatch):
     queue_mgr = SkillQueueManager(skill_manager=skill_mgr)
 
     import core.skills.queue as q_mod
+
     monkeypatch.setattr(q_mod, "_SKILL_QUEUE_MANAGER", queue_mgr)
 
     executed = []
@@ -477,6 +511,3 @@ def test_queue_stop_and_immediate_restart(temp_skills_env, monkeypatch):
     # Task 2 should complete successfully
     task2_state = next(i for i in state["items"] if i["id"] == t2.id)
     assert task2_state["status"] == "completed"
-
-
-

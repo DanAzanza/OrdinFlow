@@ -130,12 +130,12 @@ class SkillTask:
             "skill_name": self.skill_name,
             "skill_type": str(self.skill_type.value if isinstance(self.skill_type, SkillType) else self.skill_type),
             "status": str(self.status.value if isinstance(self.status, TaskStatus) else self.status),
-            "context": self.context,
+            "context": dict(self.context) if isinstance(self.context, dict) else {},
             "progress": self.progress.to_dict() if isinstance(self.progress, TaskProgress) else self.progress,
             "created_at": self.created_at,
             "started_at": self.started_at,
             "finished_at": self.finished_at,
-            "result": self.result,
+            "result": dict(self.result) if isinstance(self.result, dict) else self.result,
             "error": self.error,
         }
 
@@ -161,3 +161,56 @@ class SkillTask:
             result=dict(data["result"]) if isinstance(data.get("result"), dict) else None,
             error=str(data["error"]) if data.get("error") else None,
         )
+
+
+@dataclass
+class QueueSnapshot:
+    """Explicit, typed view of the queue execution state."""
+
+    is_running: bool = False
+    is_paused: bool = False
+    auto_repeat_enabled: bool = False
+    auto_repeat_interval_seconds: int = 300
+    active_item: SkillTask | None = None
+    items: list[SkillTask] = field(default_factory=list)
+
+    @property
+    def active_task(self) -> SkillTask | None:
+        """Alias for active_item for parity with SkillQueueManager.active_task."""
+        return self.active_item
+
+    @classmethod
+    def from_manager(cls, manager: Any) -> QueueSnapshot:
+        lock = getattr(manager, "lock", None)
+        if lock is not None and hasattr(lock, "__enter__"):
+            with lock:
+                return cls._build_from_manager(manager)
+        return cls._build_from_manager(manager)
+
+    @classmethod
+    def _build_from_manager(cls, manager: Any) -> QueueSnapshot:
+        raw_active: SkillTask | None = getattr(manager, "active_task", None) or getattr(manager, "active_item", None)
+        raw_items: list[SkillTask] = list(getattr(manager, "items", []))
+
+        # Deep-isolate tasks to prevent mutation races across threads
+        cloned_active = SkillTask.from_dict(raw_active.to_dict()) if raw_active else None
+        cloned_items = [SkillTask.from_dict(t.to_dict()) for t in raw_items]
+
+        return cls(
+            is_running=bool(getattr(manager, "is_running", False)),
+            is_paused=bool(getattr(manager, "is_paused", False)),
+            auto_repeat_enabled=bool(getattr(manager, "auto_repeat_enabled", False)),
+            auto_repeat_interval_seconds=int(getattr(manager, "auto_repeat_interval_seconds", 300)),
+            active_item=cloned_active,
+            items=cloned_items,
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "is_running": self.is_running,
+            "is_paused": self.is_paused,
+            "auto_repeat_enabled": self.auto_repeat_enabled,
+            "auto_repeat_interval_seconds": self.auto_repeat_interval_seconds,
+            "active_item": self.active_item.to_dict() if self.active_item else None,
+            "items": [item.to_dict() for item in self.items],
+        }
