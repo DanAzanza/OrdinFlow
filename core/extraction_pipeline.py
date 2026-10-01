@@ -270,7 +270,7 @@ class ExtractionPipeline:
                 target_set_lower = {f.lower() for f in target_fields if f.lower() != "signed"}
                 page_fields_lower = {f.lower() for f in p_fields.keys()}
                 if not (page_fields_lower & target_set_lower):
-                    logging.debug(
+                    logger.debug(
                         f"[*] Page {p_num} ({p_type}) {label}: Skipped (no matching target fields for this page type)."
                     )
                     tier_page_results.append({})
@@ -278,7 +278,7 @@ class ExtractionPipeline:
 
             spatial_text = p.get("spatial_text", "")
             if not spatial_text or len(spatial_text.strip()) < 10:
-                logging.debug(f"[*] Page {p_num} ({p_type}) {label}: No spatial text available. Skipping text pass.")
+                logger.debug(f"[*] Page {p_num} ({p_type}) {label}: No spatial text available. Skipping text pass.")
                 tier_page_results.append({})
                 continue
 
@@ -287,7 +287,7 @@ class ExtractionPipeline:
             )
             res = ext if isinstance(ext, dict) else {}
             tier_page_results.append(res)
-            logging.info(f"[*] Page {p_num} ({p_type}) {label} result: {res}")
+            logger.info(f"[*] Page {p_num} ({p_type}) {label} result: {res}")
 
         return tier_page_results
 

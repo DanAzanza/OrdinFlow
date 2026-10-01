@@ -114,3 +114,66 @@ def test_export_engine_with_for_each_and_while_loops():
     success = engine.execute_actions(context=context)
     assert success is True
     assert context["last_tag"] == "tag3"
+
+
+def test_export_engine_nested_actions_preserves_engine_context_and_progress():
+    dummy_manager = object()
+    dummy_extractor = object()
+
+    skill_def = {
+        "id": "nested_ctx_skill",
+        "name": "Nested Context Skill",
+        "type": "export",
+        "tasks": [
+            {
+                "id": "t1",
+                "actions": [
+                    {
+                        "id": "loop_step",
+                        "action_type": "FOR_EACH",
+                        "collection_var": "items",
+                        "item_var": "item",
+                        "actions": [
+                            {
+                                "id": "inner_set",
+                                "action_type": "SET_VARIABLE",
+                                "variable": "seen_{item}",
+                                "value": "yes",
+                            }
+                        ],
+                    },
+                    {"id": "final_step", "action_type": "SET_VARIABLE", "variable": "done", "value": "true"},
+                ],
+            }
+        ],
+    }
+
+    engine = ExportEngine(
+        skill_def,
+        skill_manager=dummy_manager,
+        vision_extractor=dummy_extractor,
+    )
+
+    progress_reports = []
+
+    def reporter(p):
+        progress_reports.append(p)
+
+    context = {"items": ["alpha", "beta"]}
+    success = engine.execute_actions(context=context, reporter=reporter)
+
+    assert success is True
+    assert context["seen_alpha"] == "yes"
+    assert context["seen_beta"] == "yes"
+    assert context["done"] == "true"
+    assert engine.id == "nested_ctx_skill"
+    assert engine.skill_manager is dummy_manager
+    assert engine.vision_extractor is dummy_extractor
+
+    # Verify that only the root completion emits a final "Completed" message,
+    # nested loop actions must NOT emit premature "Completed ... (Nested)" messages
+    completed_reports = [p for p in progress_reports if p.message.startswith("Completed")]
+    assert len(completed_reports) == 1
+    assert completed_reports[0].message == "Completed Nested Context Skill"
+    assert completed_reports[0].percent == 100.0
+

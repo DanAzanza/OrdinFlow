@@ -5,13 +5,14 @@ from __future__ import annotations
 import logging
 import os
 import sys
+import time
 from collections.abc import Callable, Mapping
 from typing import Any
 
 from core.skills.base import BaseSkill
 from core.skills.exceptions import SkillActionError
 from core.skills.grounder import SoMGrounder
-from core.skills.models import SkillTask, TaskProgress, TaskResult
+from core.skills.models import SkillTask, SkillType, TaskProgress, TaskResult
 from core.skills.shield import input_shield
 from core.skills.case_router import (
     extract_all_skill_document_types as _extract_all_skill_document_types_fn,
@@ -38,10 +39,8 @@ from core.skills.text_helpers import (
     substitute_placeholders as _substitute_placeholders_fn,
 )
 from core.skills.window_manager import (
-    check_hung_app_and_recover,
     ensure_window_ready,
     handle_known_dialog_popups as _handle_known_dialog_popups_fn,
-    maximize_target_window,
     save_failure_screenshot as _save_failure_screenshot_fn,
 )
 from core.skills.condition_evaluator import evaluate_condition
@@ -77,22 +76,16 @@ class ExportEngine(BaseSkill):
         raw_steps = definition.get("steps")
         raw_actions = definition.get("actions")
 
-        actions: list[dict[str, Any]] = []
         if isinstance(raw_tasks, list) and raw_tasks:
-            for t in raw_tasks:
-                if isinstance(t, dict):
-                    t_actions = t.get("actions", [])
-                    if isinstance(t_actions, list):
-                        for a in t_actions:
-                            if isinstance(a, dict):
-                                actions.append(a)
+            actions = [a for t in raw_tasks if isinstance(t, dict) for a in t.get("actions", []) if isinstance(a, dict)]
         elif isinstance(raw_steps, list):
             actions = [s for s in raw_steps if isinstance(s, dict)]
         elif isinstance(raw_actions, list):
             actions = [a for a in raw_actions if isinstance(a, dict)]
+        else:
+            actions = []
 
-        self.steps: list[dict[str, Any]] = actions
-        self.actions: list[dict[str, Any]] = actions
+        self.steps = self.actions = actions
         self.tasks: list[dict[str, Any]] = [t for t in raw_tasks if isinstance(t, dict)] if isinstance(raw_tasks, list) else []
         self.target_window = definition.get("target_window")
         if not self.target_window:
@@ -122,10 +115,6 @@ class ExportEngine(BaseSkill):
         """Inspects whether an unexpected overwrite/confirmation modal popup is blocking the flow and resolves it."""
         return _handle_known_dialog_popups_fn(window_title)
 
-    def _maximize_window(self, win_pattern: str) -> None:
-        """Maximizes the target window via Win32 ShowWindow(SW_MAXIMIZE = 3)."""
-        maximize_target_window(win_pattern)
-
     def _ensure_window_ready(
         self,
         win_pattern: str,
@@ -145,43 +134,29 @@ class ExportEngine(BaseSkill):
             is_cancelled_fn=lambda: not self.wait_for_queue(),
         )
 
-    def _check_hung_app_and_recover(self, win_pattern: str, context: Mapping[str, Any]) -> bool:
-        """Checks if target window is hung/unresponsive and restarts it if configured."""
-        return check_hung_app_and_recover(
-            win_pattern=win_pattern,
-            context=context,
-            recover_enabled=self.recover_hung_process,
-            ensure_ready_fn=self._ensure_window_ready,
-        )
-
-    def _wait_for_queue(
-        self,
-        reporter: Callable[[TaskProgress], None] | None = None,
-        paused_msg: str = "Execution paused...",
-    ) -> bool:
-        return self.wait_for_queue(reporter, paused_msg)
-
     def execute_actions(
         self,
         context: dict[str, Any],
         reporter: Callable[[TaskProgress], None] | None = None,
         depth: int = 0,
         dry_run: bool = False,
+        actions: list[dict[str, Any]] | None = None,
     ) -> bool:
         """Executes the recorded or synthesized action sequence step-by-step."""
-        if not self.actions:
+        effective_actions = actions if actions is not None else self.actions
+        if not effective_actions:
             logger.info("[!] Skill '%s' has no actions configured. Completed as no-op.", self.id)
             return True
 
-        total_actions = len(self.actions)
-        step_map = {str(s.get("id")): idx for idx, s in enumerate(self.actions) if s.get("id")}
+        total_actions = len(effective_actions)
+        step_map = {str(s.get("id")): idx for idx, s in enumerate(effective_actions) if s.get("id")}
         act_idx = 0
         while act_idx < total_actions:
             if not self.wait_for_queue(reporter, "Skill paused..."):
                 logger.info("[*] Skill execution stopped by queue.")
                 return False
 
-            step = self.actions[act_idx]
+            step = effective_actions[act_idx]
             action_type = str(step.get("action_type") or step.get("type", "")).upper()
             step_id = step.get("id", f"act_{act_idx + 1}")
             desc = step.get("description") or action_type
@@ -477,7 +452,8 @@ class ExportEngine(BaseSkill):
 
             # 14. SET_VARIABLE (Dynamically Mutate / Assign Context Variables)
             elif action_type == "SET_VARIABLE":
-                var_name = str(step.get("variable") or step.get("var") or step.get("name") or "").strip().strip("{}")
+                raw_var = str(step.get("variable") or step.get("var") or step.get("name") or "")
+                var_name = self._substitute_placeholders(raw_var, context).strip().strip("{}")
                 raw_val = str(step.get("value") or step.get("val") or "")
                 if var_name:
                     context[var_name] = self._substitute_placeholders(raw_val, context)
@@ -491,7 +467,7 @@ class ExportEngine(BaseSkill):
 
             act_idx += 1
 
-        if reporter:
+        if reporter and depth == 0:
             reporter(
                 TaskProgress(
                     current=total_actions,
@@ -591,19 +567,13 @@ class ExportEngine(BaseSkill):
         dry_run: bool,
         reporter: Callable[[TaskProgress], None] | None,
     ) -> bool:
-        """Executes a nested sub-list of actions within the same target window context."""
-        sub_engine = ExportEngine({
-            "id": f"{self.id}__nested",
-            "name": f"{self.name} (Nested)",
-            "tasks": [{"id": "sub_nested", "actions": actions}],
-            "target_window": self.target_window,
-            "executable_path": self.executable_path,
-        })
-        return sub_engine.execute_actions(
+        """Executes a nested sub-list of actions within the same engine context."""
+        return self.execute_actions(
             context=context,
             reporter=reporter,
             depth=depth,
             dry_run=dry_run,
+            actions=actions,
         )
 
     def get_target_document_types(self) -> list[str]:
@@ -612,26 +582,22 @@ class ExportEngine(BaseSkill):
 
     def filter_matching_files(self, folder_path: str, allowed_types: list[str] | None = None) -> list[dict[str, Any]]:
         """Filters PDF files in a case folder according to the skill's allowed document types and loads metadata."""
+        _, delimiter = self._get_folder_config()
+        return _filter_matching_files_fn(folder_path, allowed_types or self.get_target_document_types(), delimiter=delimiter)
+
+    def _get_folder_config(self) -> tuple[Any, str]:
         from core.state import DashboardState
 
-        delimiter = DashboardState.config.folder_delimiter if DashboardState.config else "__"
-        types_to_use = allowed_types or self.get_target_document_types()
-        return _filter_matching_files_fn(folder_path, types_to_use, delimiter=delimiter)
+        if DashboardState.config:
+            return DashboardState.config.folder_structure, DashboardState.config.folder_delimiter or "__"
+        cfg = getattr(self.skill_manager, "config", None)
+        return getattr(cfg, "folder_structure", None), "__"
 
     def find_pending_cases(self, target_base_dir: str) -> list[dict[str, Any]]:
         """Finds all approved case folders with unprocessed files."""
         if not self.enabled:
             return []
-        folder_struct = None
-        delimiter = "__"
-        from core.state import DashboardState
-
-        if DashboardState.config:
-            folder_struct = DashboardState.config.folder_structure
-            delimiter = DashboardState.config.folder_delimiter or "__"
-        elif self.skill_manager and hasattr(self.skill_manager, "config") and self.skill_manager.config:
-            folder_struct = getattr(self.skill_manager.config, "folder_structure", None)
-
+        folder_struct, delimiter = self._get_folder_config()
         allowed_types = self.get_target_document_types()
         return _find_pending_cases_fn(
             target_base_dir, self.id, allowed_types, folder_structure=folder_struct, delimiter=delimiter
@@ -651,16 +617,7 @@ class ExportEngine(BaseSkill):
         if not matching_files:
             return True
 
-        from core.state import DashboardState
-
-        folder_struct = None
-        delimiter = "__"
-        if DashboardState.config:
-            folder_struct = DashboardState.config.folder_structure
-            delimiter = DashboardState.config.folder_delimiter or "__"
-        elif self.skill_manager and hasattr(self.skill_manager, "config") and self.skill_manager.config:
-            folder_struct = getattr(self.skill_manager.config, "folder_structure", None)
-
+        folder_struct, delimiter = self._get_folder_config()
         folder_meta = extract_folder_metadata(folder_path, folder_structure=folder_struct, delimiter=delimiter)
 
         # Merge base folder metadata with caller context
@@ -728,50 +685,59 @@ class ExportEngine(BaseSkill):
         depth: int = 0,
         dry_run: bool = False,
     ) -> bool:
-        """Executes a skill by ID within the current engine instance context."""
+        """Executes a sub-skill by ID using its dedicated engine instance."""
         if depth > 5 or not self.skill_manager:
             return False
-        skill_def = self.skill_manager.get_skill(skill_id)
-        if not skill_def or not skill_def.get("enabled", True):
+
+        skill_def: dict[str, Any] | None = None
+        if hasattr(self.skill_manager, "get_skill"):
+            res = self.skill_manager.get_skill(skill_id)
+            if isinstance(res, dict):
+                skill_def = res
+
+        engine: BaseSkill | None = None
+        if skill_def is not None:
+            if not skill_def.get("enabled", True):
+                return False
+            if skill_def.get("type") == "import":
+                from core.skills.engines.import_engine import ImportEngine
+
+                engine = ImportEngine(skill_def)
+            else:
+                engine = ExportEngine(
+                    skill_def, skill_manager=self.skill_manager, vision_extractor=self.vision_extractor
+                )
+        elif hasattr(self.skill_manager, "get_skill_engine"):
+            engine = self.skill_manager.get_skill_engine(skill_id, vision_extractor=self.vision_extractor)
+
+        if not engine or not engine.enabled:
             return False
 
-        orig_steps = self.steps
-        orig_actions = self.actions
-        orig_window = self.target_window
-        orig_rdp = self.rdp_prefix
-        orig_id = self.id
-        orig_name = self.name
+        exec_ctx = context if context is not None else {}
         try:
-            self.id = str(skill_def.get("id", skill_id))
-            self.name = str(skill_def.get("name", self.id))
-            raw_tasks = skill_def.get("tasks")
-            raw_steps = skill_def.get("steps")
-            actions: list[dict[str, Any]] = []
-            if isinstance(raw_tasks, list) and raw_tasks:
-                for t in raw_tasks:
-                    if isinstance(t, dict):
-                        for a in t.get("actions", []):
-                            if isinstance(a, dict):
-                                actions.append(a)
-            elif isinstance(raw_steps, list):
-                actions = [s for s in raw_steps if isinstance(s, dict)]
-            self.steps = actions
-            self.actions = actions
-            self.target_window = skill_def.get("target_window")
-            self.rdp_prefix = skill_def.get("rdp_path_prefix", "")
-            return self.execute_actions(context or {}, depth=depth, dry_run=dry_run)
+            if isinstance(engine, ExportEngine):
+                return engine.execute_actions(exec_ctx, depth=depth, dry_run=dry_run)
+            elif hasattr(engine, "execute"):
+                task = SkillTask(
+                    id=f"{skill_id}_{int(time.time() * 1000)}",
+                    skill_id=skill_id,
+                    skill_name=engine.name,
+                    skill_type=getattr(engine, "skill_type", SkillType.EXPORT),
+                    context=exec_ctx,
+                )
+                res = engine.execute(task)
+                return bool(res.success)
+            return False
         except SkillActionError as sae:
             logger.error("[ExportEngine] execute_skill '%s' failed: %s", skill_id, sae)
             if depth > 0:
                 raise
             return False
-        finally:
-            self.steps = orig_steps
-            self.actions = orig_actions
-            self.target_window = orig_window
-            self.rdp_prefix = orig_rdp
-            self.id = orig_id
-            self.name = orig_name
+        except Exception as e:
+            logger.error("[ExportEngine] execute_skill '%s' error: %s", skill_id, e, exc_info=True)
+            if depth > 0:
+                raise
+            return False
 
     def find_pending_cases_for_skill(self, skill_id: str, target_base_dir: str) -> list[dict[str, Any]]:
         """Finds pending cases for any skill ID."""

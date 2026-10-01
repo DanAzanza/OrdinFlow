@@ -321,12 +321,43 @@ def safe_move(src: str, dst: str, retries: int = 3, delay: float = 2.0) -> bool:
     raise PermissionError(f"File could not be moved: {src}")
 
 
-def deduplicate_path(target_filepath: str) -> str:
-    """Appends a timestamp suffix if the target file already exists."""
-    if os.path.exists(target_filepath):
+def deduplicate_path(target_filepath: str, max_attempts: int = 10_000) -> str:
+    """Ensures target_filepath does not collide with existing files by appending an incrementing or timestamp suffix.
+
+    Handles Windows path normalization, sidecars, and bounds iteration against runaway I/O loops.
+    """
+    if not target_filepath:
+        return ""
+
+    target_filepath = os.path.normpath(target_filepath)
+    if not os.path.exists(target_filepath):
+        return target_filepath
+
+    # Handle .meta sidecars cleanly to avoid orphaned metadata
+    is_meta = target_filepath.lower().endswith(".meta")
+    if is_meta:
+        core_path = target_filepath[:-5]
+        core_base, core_ext = os.path.splitext(core_path)
+        base = core_base
+        ext = f"{core_ext}.meta"
+    else:
         base, ext = os.path.splitext(target_filepath)
-        return f"{base}_{int(time.time())}{ext}"
-    return target_filepath
+
+    ts = int(time.time())
+    candidate = f"{base}_{ts}{ext}"
+    if not os.path.exists(candidate):
+        return candidate
+
+    counter = 1
+    while counter <= max_attempts:
+        candidate = f"{base}_{ts}_{counter}{ext}"
+        if not os.path.exists(candidate):
+            return candidate
+        counter += 1
+
+    raise RuntimeError(
+        f"Exhausted {max_attempts} attempts deduplicating path: {target_filepath}"
+    )
 
 
 def init_windows_dpi_awareness() -> None:

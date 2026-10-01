@@ -1,3 +1,6 @@
+import os
+from pathlib import Path
+
 from core.utils import (
     clean_extracted_value,
     clean_path_component,
@@ -55,3 +58,52 @@ def test_declarative_folder_structure_and_parsing():
     assert parsed["Produkt"] == "Software"
     assert parsed["Nachname"] == "Müller"
     assert parsed["Vorname"] == "Max"
+
+
+def test_deduplicate_path_no_collision(tmp_path):
+    from core.utils import deduplicate_path
+
+    target = str(tmp_path / "new_doc.pdf")
+    assert deduplicate_path(target) == target
+
+
+def test_deduplicate_path_with_collision_same_second(tmp_path):
+    from core.utils import deduplicate_path
+
+    target = tmp_path / "report.pdf"
+    target.write_text("orig")
+
+    # First deduplication creates timestamp suffix
+    c1 = deduplicate_path(str(target))
+    assert c1 != str(target)
+    assert c1.endswith(".pdf")
+    assert not os.path.exists(c1)
+
+    # Simulate c1 already written in the same second
+    Path(c1).write_text("c1")
+
+    # Second deduplication must avoid colliding with c1
+    c2 = deduplicate_path(str(target))
+    assert c2 != str(target)
+    assert c2 != c1
+    assert "_1.pdf" in c2 or c2.endswith(".pdf")
+    assert not os.path.exists(c2)
+
+    # Simulate c2 written as well
+    Path(c2).write_text("c2")
+    c3 = deduplicate_path(str(target))
+    assert c3 not in (str(target), c1, c2)
+    assert not os.path.exists(c3)
+
+
+def test_deduplicate_path_sidecar_meta(tmp_path):
+    from core.utils import deduplicate_path
+
+    meta_target = tmp_path / "invoice.pdf.meta"
+    meta_target.write_text("{}")
+
+    deduped_meta = deduplicate_path(str(meta_target))
+    assert deduped_meta != str(meta_target)
+    # Must preserve .pdf.meta structure for clean pair association
+    assert deduped_meta.endswith(".pdf.meta")
+

@@ -784,3 +784,42 @@ def test_mouse_click_uia_fast_path(monkeypatch):
     assert ok is True
     assert click_coords == [(350, 450)]
 
+
+def test_export_engine_execute_skill_delegates_without_mutating_self():
+    class DummyManager:
+        def __init__(self):
+            self.skills = {
+                "child_skill": {
+                    "id": "child_skill",
+                    "name": "Child Skill",
+                    "type": "export",
+                    "actions": [
+                        {"id": "c1", "action_type": "SET_VARIABLE", "variable": "child_ran", "value": "true"}
+                    ],
+                }
+            }
+
+        def get_skill(self, sid):
+            return self.skills.get(sid)
+
+        def get_skill_engine(self, sid, vision_extractor=None):
+            s = self.skills.get(sid)
+            return ExportEngine(s, skill_manager=self, vision_extractor=vision_extractor) if s else None
+
+    mgr = DummyManager()
+    parent_engine = ExportEngine(
+        {"id": "parent_skill", "name": "Parent Skill", "type": "export", "target_window": "ParentWindow"},
+        skill_manager=mgr,
+    )
+
+    ctx = {}
+    ok = parent_engine.execute_skill("child_skill", context=ctx)
+    assert ok is True
+    assert ctx["child_ran"] == "true"
+
+    # Crucial: parent_engine instance must NOT have mutated its identity or target window
+    assert parent_engine.id == "parent_skill"
+    assert parent_engine.name == "Parent Skill"
+    assert parent_engine.target_window == "ParentWindow"
+
+
