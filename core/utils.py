@@ -451,16 +451,25 @@ def trash_source_with_meta(filepath: str) -> None:
         logger.warning(f"[!] Error moving source file to trash '{filepath}': {e}")
 
 
-def remove_source_with_meta(filepath: str) -> None:
-    """Deletes the source file and its associated .meta sidecar file."""
-    try:
-        if os.path.exists(filepath):
-            os.remove(filepath)
-        meta_path = filepath + ".meta"
-        if os.path.exists(meta_path):
-            os.remove(meta_path)
-    except OSError as e:
-        logger.warning(f"[!] Error deleting source file '{filepath}': {e}")
+def remove_source_with_meta(filepath: str, retries: int = 3, delay: float = 0.5) -> bool:
+    """Deletes the source file and its associated .meta sidecar file with retries."""
+    success = True
+    for attempt in range(1, max(retries, 1) + 1):
+        try:
+            if os.path.exists(filepath):
+                os.remove(filepath)
+            meta_path = filepath + ".meta"
+            if os.path.exists(meta_path):
+                os.remove(meta_path)
+            success = True
+            break
+        except OSError as e:
+            success = False
+            if attempt < retries:
+                time.sleep(delay)
+            else:
+                logger.warning(f"[!] Error deleting source file '{filepath}' after {retries} attempts: {e}")
+    return success and not os.path.exists(filepath)
 
 
 def cleanup_empty_folder(folder_path: str, stop_at: str | None = None) -> None:

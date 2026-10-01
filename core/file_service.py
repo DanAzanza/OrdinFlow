@@ -7,7 +7,9 @@ import datetime
 import json
 import logging
 import os
+import time
 from typing import Any
+import uuid
 
 logger = logging.getLogger(__name__)
 
@@ -173,14 +175,46 @@ class FileService:
                         extracted_raw[k] = v
             meta["extracted"] = extracted_raw
 
+        # If existing .meta exists, preserve user-added metadata / fields
+        if os.path.exists(meta_path):
+            try:
+                with open(meta_path, "r", encoding="utf-8") as f:
+                    existing = json.load(f)
+                if isinstance(existing, dict):
+                    merged = dict(existing)
+                    merged.update(meta)
+                    meta = merged
+            except Exception as e:
+                logger.debug("[FileService] Could not read existing .meta '%s': %s", meta_path, e)
+
+        # Write to unique temp file ending with .tmp.meta (to satisfy inbox scanner and folder cleanup)
+        tmp_path = f"{filepath}.{uuid.uuid4().hex}.tmp.meta"
         try:
-            tmp_path = meta_path + ".tmp"
             with open(tmp_path, "w", encoding="utf-8") as f:
                 json.dump(meta, f, ensure_ascii=False, indent=2)
-            os.replace(tmp_path, meta_path)
-            logger.info("[*] Marked file for review: '%s' (Reason: %s)", os.path.basename(filepath), reason)
+
+            delays = [0.05, 0.1, 0.25, 0.5]
+            replaced = False
+            for attempt, delay in enumerate(delays, start=1):
+                try:
+                    os.replace(tmp_path, meta_path)
+                    replaced = True
+                    break
+                except OSError:
+                    if attempt == len(delays):
+                        raise
+                    time.sleep(delay)
+
+            if replaced:
+                logger.info("[*] Marked file for review: '%s' (Reason: %s)", os.path.basename(filepath), reason)
         except (OSError, TypeError, ValueError) as e:
             logger.error(f"[!] Error writing sidecar file '{meta_path}': {e}")
+        finally:
+            if os.path.exists(tmp_path):
+                try:
+                    os.remove(tmp_path)
+                except OSError:
+                    pass
 
     def split_multi_page_pdf(
         self,
@@ -298,21 +332,53 @@ class FileService:
                     pass
             return False
 
-    def save_filtered_pdf(self, src_path: str, dst_path: str, kept_pages: list[int]) -> bool:
-        """Saves a PDF without empty pages."""
+    def save_filtered_pdf(self, src_path: str, dst_path: str, kept_pages: list[int]) -> str | None:
+        """Saves a PDF without empty pages. Returns target_filepath on success, None on failure."""
         if not self.can_split_pdf:
-            return False
+            logger.error("[FileService] PyMuPDF is not installed. Cannot filter PDF pages.")
+            return None
         if not os.path.exists(src_path):
             logger.warning(f"[!] Source file '{src_path}' no longer exists for filtering.")
-            return False
+            return None
+        if not kept_pages:
+            logger.warning(f"[!] No pages provided to keep for '{src_path}'.")
+            return None
+
+        # Pre-flight guard against in-place self-overwrite
+        try:
+            if os.path.exists(dst_path) and os.path.samefile(src_path, dst_path):
+                logger.error("[!] Source and destination resolve to the same file: %s", src_path)
+                return None
+        except OSError:
+            pass
+
+        target_filepath = deduplicate_path(dst_path)
         try:
             with fitz.open(src_path) as doc:  # type: ignore[assignment]
                 with fitz.open() as new_doc:  # type: ignore[assignment]
                     for p_idx in kept_pages:
                         new_doc.insert_pdf(doc, from_page=p_idx - 1, to_page=p_idx - 1)
-                    new_doc.save(dst_path, garbage=4, deflate=True, clean=True)
-            remove_source_with_meta(src_path)
-            return True
+                    new_doc.save(target_filepath, garbage=4, deflate=True, clean=True)
+
+            removed = remove_source_with_meta(src_path)
+            if not removed and os.path.exists(src_path):
+                logger.error(
+                    "[!] Failed to remove source file '%s' after saving filtered PDF. Cleaning up output to prevent duplicate processing.",
+                    src_path,
+                )
+                try:
+                    if os.path.exists(target_filepath):
+                        os.remove(target_filepath)
+                except OSError:
+                    pass
+                return None
+
+            return target_filepath
         except Exception as e:
             logger.error(f"[!] Error saving filtered PDF for '{src_path}': {e}")
-            return False
+            try:
+                if os.path.exists(target_filepath):
+                    os.remove(target_filepath)
+            except OSError:
+                pass
+            return None

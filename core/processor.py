@@ -262,11 +262,29 @@ class DocumentProcessor:
                 return False
             self.processing_files.add(filepath)
 
+        stats_recorded = False
+
+        def _record_stat(status: str, duration: float = 0.0) -> None:
+            nonlocal stats_recorded
+            if stats_recorded:
+                return
+            with self._stats_lock:
+                self.stats_total += 1
+                if status == "success":
+                    self.stats_success += 1
+                elif status == "failed":
+                    self.stats_failed += 1
+                elif status == "skipped":
+                    self.stats_skipped += 1
+                self.stats_total_duration += duration
+            stats_recorded = True
+
         try:
             self.wait_if_paused()
             logger.info(f"======== Processing: {filename} ========")
             if not wait_until_unlocked(filepath, retries=5, delay=1.0):
                 logger.warning(f"[!] File '{filename}' remained locked after 5 attempts.")
+                _record_stat("failed", time.time() - start_time)
                 return False
 
             extracted = self.extract_hybrid_voting(filepath, save_empty_pages=save_empty_pages)
@@ -292,6 +310,7 @@ class DocumentProcessor:
                 if not routing_cfg.get("archive", True):
                     logger.warning(f"[-] '{matched_type}' has archive=False and will not be archived.")
                     self._mark_for_review(filepath, f"{matched_type} – manual assignment required")
+                    _record_stat("skipped", time.time() - start_time)
                     return False
 
                 is_dependent_doc = bool(matched_info.get("dependent", False))
@@ -315,6 +334,7 @@ class DocumentProcessor:
 
             if not os.path.exists(filepath):
                 logger.warning(f"[!] File '{filename}' was removed or moved during processing. Skipping routing.")
+                _record_stat("skipped", time.time() - start_time)
                 return False
 
             if is_valid and extracted:
@@ -347,6 +367,7 @@ class DocumentProcessor:
                     )
                     if not success:
                         if not os.path.exists(filepath) or os.path.exists(f"{filepath}.meta"):
+                            _record_stat("failed", time.time() - start_time)
                             return False
                         target_dir, target_filename = _route_single_file()
                         self._move_and_compress_file(filepath, target_dir, target_filename)
@@ -374,47 +395,50 @@ class DocumentProcessor:
 
                     if self.can_split_pdf and doc_len > 0 and len(kept_pages) < doc_len:
                         logger.info(f"[*] Saving PDF without empty pages. Keeping pages {kept_pages} of {doc_len}.")
-                        self.file_service.save_filtered_pdf(filepath, target_filepath, kept_pages)
+                        saved_path = self.file_service.save_filtered_pdf(filepath, target_filepath, kept_pages)
+                        if not saved_path:
+                            logger.warning(
+                                "[!] Filtering empty pages failed for '%s'. Falling back to full document move.",
+                                filename,
+                            )
+                            self._move_and_compress_file(filepath, target_dir, target_filename)
                     else:
                         self._move_and_compress_file(filepath, target_dir, target_filename)
 
                 duration = time.time() - start_time
-                with self._stats_lock:
-                    self.stats_total += 1
-                    self.stats_success += 1
-                    self.stats_total_duration += duration
+                _record_stat("success", duration)
                 logger.info(f"[+] Processing of '{filename}' completed successfully after {duration:.2f} seconds.")
                 return True
             else:
                 if not os.path.exists(filepath):
                     logger.warning(f"[!] File '{filename}' no longer exists. Skipping sidecar creation.")
+                    _record_stat("skipped", time.time() - start_time)
                     return False
                 self._mark_for_review(filepath, reason, extracted)
 
                 duration = time.time() - start_time
-                with self._stats_lock:
-                    self.stats_total += 1
-                    self.stats_failed += 1
-                    self.stats_total_duration += duration
+                _record_stat("failed", duration)
                 logger.warning(f"[-] Processing of '{filename}' incomplete ({duration:.2f}s) — Reason: {reason}.")
                 if extracted:
                     logger.debug(f"[-] Raw extracted data: {format_result(extracted)}")
                 return False
         except AllPagesEmptyError:
+            duration = time.time() - start_time
             logger.info(f"[-] '{filename}' consists only of empty pages and will be moved to trash.")
             trash_source_with_meta(filepath)
-            with self._stats_lock:
-                self.stats_total += 1
-                self.stats_skipped += 1
+            _record_stat("skipped", duration)
             return True
         except FileNotFoundError:
+            duration = time.time() - start_time
             logger.warning(f"[!] File '{filename}' was deleted during processing.")
-            with self._stats_lock:
-                self.stats_skipped += 1
+            _record_stat("skipped", duration)
             return False
         except Exception as e:
-            logger.exception(f"[!] Error: {e}")
             duration = time.time() - start_time
+            logger.exception(f"[!] Error: {e}")
+            _record_stat("failed", duration)
+            if os.path.exists(filepath) and not os.path.exists(f"{filepath}.meta"):
+                self._mark_for_review(filepath, f"Unhandled error: {type(e).__name__}: {e}")
             logger.error(f"[-] Processing of '{filename}' aborted due to error after {duration:.2f} seconds.")
             return False
         finally:
