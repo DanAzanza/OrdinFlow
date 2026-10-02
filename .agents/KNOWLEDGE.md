@@ -75,3 +75,8 @@ Repository-specific component scopes required by `AGENTS.md` Section 6:
 ### 🧪 Test Isolation on Gitignored Local Skills
 * **Constraint**: `settings/skills/*.yaml` (except `*.example.yaml`) are user/environment-specific configuration files and are excluded from Git tracking via `.gitignore`.
 * **Contract**: Automated test suites in `tests/` MUST NEVER assert the presence of local disk skill files (e.g. CorelDRAW or local practice workflows). All engine and UI tests must operate purely on in-memory fixtures or isolated temporary test directories (`temp_skills_dir`).
+
+### 📄 0-Page Dummy PDF Trap in Test Fixtures
+* **Constraint**: In `core/utils.py`, `wait_until_unlocked` checks structural readiness using `len(doc) > 0` via PyMuPDF (`fitz.open`).
+* **Quirk**: Plain text strings (`"dummy content"`) or empty PDF headers (`b"%PDF-1.4\n%EOF\n"`) parse with `len(doc) == 0`. `wait_until_unlocked` assumes an external scanner is still streaming pages, retrying 5 times with a 1.0s sleep (5.0s per test!). Tests creating dummy PDFs must always use `tests.conftest.MINIMAL_1PAGE_PDF_BYTES` or the `create_test_pdf` fixture (`len(doc) >= 1`) to avoid false multi-second CI delays.
+
