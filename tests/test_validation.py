@@ -5,6 +5,7 @@ import pytest
 
 from core.config import AppConfig
 from core.processor import DocumentProcessor
+from tests.conftest import MINIMAL_1PAGE_PDF_BYTES
 
 
 @pytest.fixture
@@ -215,7 +216,7 @@ def test_notiz_no_signature_required(processor):
 def test_person_memory_persists_even_on_validation_failure(processor, tmp_path):
     # Erstelle eine Dummy-Datei im watch_dir
     dummy_file = tmp_path / "watch" / "test_vertrag.pdf"
-    dummy_file.write_text("dummy pdf content", encoding="utf-8")
+    dummy_file.write_bytes(MINIMAL_1PAGE_PDF_BYTES)
 
     # Mocke extract_hybrid_voting, dass ein Vertrag OHNE Unterschrift für "Hans Müller" herauskommt
     mock_extracted = {
@@ -246,7 +247,7 @@ def test_notiz_routes_to_rejected_vertrag_person(processor, tmp_path):
     # 1. Process contract without signature in watch_dir -> fails and remains in inbox (.meta is created)
     vertrag_file = tmp_path / "watch" / "vertrag_ohne_signatur.pdf"
     processor.config.folder_structure = ["{Datum}", "{Produkt}", "{Nachname}", "{Vorname}"]
-    vertrag_file.write_text("dummy vertrag", encoding="utf-8")
+    vertrag_file.write_bytes(MINIMAL_1PAGE_PDF_BYTES)
 
     mock_vertrag = {
         "Document": "Vertrag",
@@ -267,7 +268,7 @@ def test_notiz_routes_to_rejected_vertrag_person(processor, tmp_path):
 
     # 2. Now a note arrives WITHOUT a person name
     notiz_file = tmp_path / "watch" / "notiz_ohne_name.pdf"
-    notiz_file.write_text("dummy notiz", encoding="utf-8")
+    notiz_file.write_bytes(MINIMAL_1PAGE_PDF_BYTES)
 
     mock_notiz = {
         "Document": "Notiz",

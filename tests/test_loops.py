@@ -65,6 +65,7 @@ def test_execute_while_loop_hits_max_iterations():
         "action_type": "WHILE_LOOP",
         "condition": "True",
         "max_iterations": 10,
+        "poll_delay_s": 0.0,
         "actions": [{"id": "sub_act"}],
     }
     iters = 0

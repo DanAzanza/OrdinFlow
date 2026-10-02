@@ -6,6 +6,8 @@ TESTS AUFRUFEN: python -m pytest tests/test_ocr_and_vision.py --tb=no -v
 import os
 from unittest.mock import patch
 
+from tests.conftest import MINIMAL_1PAGE_PDF_BYTES
+
 # ──────────────────────────────────────────────────────────────
 # HIGH VALUE: OCR-Vorverarbeitung (_run_ocr_with_bin_filter)
 # ──────────────────────────────────────────────────────────────
@@ -139,7 +141,7 @@ def test_routing_without_signature_marks_pruefen(processor, tmp_path):
     }
 
     dummy_file = watch_dir / "no_sign.pdf"
-    dummy_file.write_text("dummy vertrag", encoding="utf-8")
+    dummy_file.write_bytes(MINIMAL_1PAGE_PDF_BYTES)
 
     mock_extracted = {
         "Document": "Vertrag",
@@ -184,7 +186,7 @@ def test_routing_with_missing_name_keeps_in_watch(processor, tmp_path):
     }
 
     dummy_file = watch_dir / "no_name.pdf"
-    dummy_file.write_text("dummy", encoding="utf-8")
+    dummy_file.write_bytes(MINIMAL_1PAGE_PDF_BYTES)
 
     mock_extracted = {
         "Document": "Vertrag",
@@ -540,6 +542,38 @@ def test_render_dpi_in_app_config():
     cfg = AppConfig()
     assert cfg.render_dpi == 200
     assert cfg.white_border == 21
+
+
+def test_evaluate_field_consensus_pure_llm_weights():
+    """Tests that voting consensus accurately aggregates multi-tier LLM weights without synthetic OCR boost."""
+    from core.voting import evaluate_field_consensus as _evaluate_field_consensus
+
+    winner, k_score, counts = _evaluate_field_consensus(
+        "Nachname",
+        [[{"Nachname": "Müller"}], [{"Nachname": "Müller"}]],
+        ["tier1", "text"],
+    )
+
+    assert winner == "Müller"
+    # Weight 1.0 (Tier 1 Vision) + 1.0 (Spatial Text) = 2.0
+    assert counts.get("Müller") == 2.0
+    assert k_score == 1.0
+
+
+def test_evaluate_field_consensus_disagreement_weights():
+    """Tests consensus when Vision Tier 1 and Spatial Text disagree."""
+    from core.voting import evaluate_field_consensus as _evaluate_field_consensus
+
+    winner, k_score, counts = _evaluate_field_consensus(
+        "Nachname",
+        [[{"Nachname": "Müller"}], [{"Nachname": "Meier"}]],
+        ["tier1", "text"],
+    )
+
+    assert counts.get("Müller") == 1.0
+    assert counts.get("Meier") == 1.0
+    assert k_score == 0.50
+
 
 
 

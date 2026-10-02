@@ -71,13 +71,15 @@ def test_empty_document_moved_to_trash(tmp_path):
     from core.config import AppConfig
     from core.processor import AllPagesEmptyError, DocumentProcessor
 
+    from tests.conftest import MINIMAL_1PAGE_PDF_BYTES
+
     cfg = AppConfig(base_dir=str(tmp_path))
     cfg.watch_dir = str(tmp_path / "Inbox")
     os.makedirs(cfg.watch_dir, exist_ok=True)
     proc = DocumentProcessor(cfg)
 
     dummy_file = str(tmp_path / "Inbox" / "empty.pdf")
-    Path(dummy_file).write_bytes(b"%PDF-1.4\n%EOF\n")
+    Path(dummy_file).write_bytes(MINIMAL_1PAGE_PDF_BYTES)
 
     with (
         patch.object(proc, "extract_hybrid_voting", side_effect=AllPagesEmptyError("Empty pages")),
@@ -281,8 +283,10 @@ def test_processor_unhandled_exception_quarantines_and_tracks_stats(tmp_path, te
     from unittest.mock import MagicMock
     from core.processor import DocumentProcessor
 
+    from tests.conftest import MINIMAL_1PAGE_PDF_BYTES
+
     doc_path = str(tmp_path / "corrupt.pdf")
-    Path(doc_path).write_text("corrupt_binary_data")
+    Path(doc_path).write_bytes(MINIMAL_1PAGE_PDF_BYTES)
 
     _, config, _ = test_sandbox
     processor = DocumentProcessor(config)

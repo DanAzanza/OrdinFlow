@@ -129,3 +129,35 @@ def create_test_image():
         return filepath
 
     return _creator
+
+
+MINIMAL_1PAGE_PDF_BYTES = (
+    b"%PDF-1.4\n"
+    b"1 0 obj\n"
+    b"<< /Type /Catalog /Pages 2 0 R >>\n"
+    b"endobj\n"
+    b"2 0 obj\n"
+    b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>\n"
+    b"endobj\n"
+    b"3 0 obj\n"
+    b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] >>\n"
+    b"endobj\n"
+    b"xref\n"
+    b"0 4\n"
+    b"0000000000 65535 f \n"
+    b"0000000009 00000 n \n"
+    b"0000000058 00000 n \n"
+    b"0000000115 00000 n \n"
+    b"trailer\n"
+    b"<< /Size 4 /Root 1 0 R >>\n"
+    b"startxref\n"
+    b"190\n"
+    b"%%EOF\n"
+)
+
+
+@pytest.fixture
+def minimal_pdf_bytes() -> bytes:
+    """Provides raw bytes of a valid, minimal 1-page PDF document."""
+    return MINIMAL_1PAGE_PDF_BYTES
+

@@ -2,9 +2,11 @@
 
 import os
 import tempfile
+from unittest.mock import patch
 
 from core.config import AppConfig
 from core.processor import DocumentProcessor
+from tests.conftest import MINIMAL_1PAGE_PDF_BYTES
 
 
 def test_load_from_yaml_creates_default_when_missing(tmp_path):
@@ -106,7 +108,7 @@ def test_universal_document_router_custom_schema(tmp_path):
 
     processor = DocumentProcessor(config)
     dummy_file = tmp_path / "watch" / "schoko.pdf"
-    dummy_file.write_text("Schokotorte", encoding="utf-8")
+    dummy_file.write_bytes(MINIMAL_1PAGE_PDF_BYTES)
 
     mock_extracted = {
         "Document": "Rezeptur",
@@ -128,8 +130,6 @@ def test_universal_document_router_custom_schema(tmp_path):
 
 def test_universal_document_router_custom_schema_custom_delimiter(tmp_path):
     """Testet Kuchen-Rezepte mit einem benutzerdefinierten Ordner-Delimiter ('++')."""
-    from unittest.mock import patch
-
     config = AppConfig(base_dir=str(tmp_path))
     config.watch_dir = str(tmp_path / "watch")
     config.target_base_dir = str(tmp_path / "target")
@@ -152,7 +152,7 @@ def test_universal_document_router_custom_schema_custom_delimiter(tmp_path):
 
     processor = DocumentProcessor(config)
     dummy_file = tmp_path / "watch" / "marmor.pdf"
-    dummy_file.write_text("Marmorkuchen", encoding="utf-8")
+    dummy_file.write_bytes(MINIMAL_1PAGE_PDF_BYTES)
 
     mock_extracted = {"Document": "Rezeptur", "Kategorie": "Rührkuchen", "Rezeptname": "Marmorkuchen", "Backzeit": "50"}
 
@@ -169,8 +169,6 @@ def test_universal_document_router_custom_schema_custom_delimiter(tmp_path):
 
 def test_optional_fields_in_folder_template(tmp_path):
     """Prüft, dass optionale Felder wie 'Titel' bei fehlendem Wert nicht als FEHLT im Ordnernamen erscheinen."""
-    from unittest.mock import patch
-
     config = AppConfig(base_dir=str(tmp_path))
     config.watch_dir = str(tmp_path / "watch")
     config.target_base_dir = str(tmp_path / "target")
@@ -194,7 +192,7 @@ def test_optional_fields_in_folder_template(tmp_path):
 
     processor = DocumentProcessor(config)
     dummy_file = tmp_path / "watch" / "vertrag.pdf"
-    dummy_file.write_text("Dummy Vertrag", encoding="utf-8")
+    dummy_file.write_bytes(MINIMAL_1PAGE_PDF_BYTES)
 
     mock_extracted = {
         "Document": "Vertrag",
