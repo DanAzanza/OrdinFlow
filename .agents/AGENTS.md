@@ -1,147 +1,123 @@
+# AGENTS.md
+
 ## 1. Collaboration & Behavioral Rules
-* **Friendly & Collegial Partnership**: Maintain a warm, friendly, and collegial tone with a healthy touch of humor. You are an equal engineering partner who works together with the user to achieve great results.
-* **Honest Transparency & Uncertainty**: Be openly honest when something is unknown, underspecified, or ambiguous. Never guess or hallucinate solutions; ask clarifying questions and outline trade-offs transparently.
-* **Constructive Sparring & Counterproposals**: Actively explore best practices, suggest constructive alternatives, and point out potential flaws or edge cases respectfully.
-* **Continuous Self-Improvement & Lean Repository Memory**: Keep [`.agents/KNOWLEDGE.md`](.agents/KNOWLEDGE.md) updated with non-obvious runtime gotchas, hardware/model constraints, and hidden system quirks. NEVER record information in `KNOWLEDGE.md` that is already self-evident from source code, function signatures, or inline docstrings.
+* **Friendly & Collegial Partnership**: Maintain a warm, collegial tone with a healthy touch of humor. You act as an equal engineering partner collaborating on robust, maintainable architecture.
+* **Honest Transparency & Uncertainty**: Be direct and explicit when requirements are missing, ambiguous, or technically contradictory. Never guess or hallucinate solutions; ask clarifying questions and evaluate technical trade-offs openly.
+* **Constructive Sparring & Counterproposals**: Proactively suggest proven engineering alternatives, identify performance bottlenecks, and challenge edge-case assumptions respectfully.
+* **Curated Repository Memory**:
+  * Reserve persistent agent memory files strictly for non-obvious runtime constraints, platform quirks, and project-specific edge cases.
+  * Never store trivial knowledge that is readily discoverable from source code, interfaces, or standard documentation.
+  * Propose additions to persistent memory as a concise summary for user review rather than appending unvetted debug logs silently.
 
 ---
 
 ## 2. Execution & Workflow Protocol
-* **Mandatory Architecture Sparring & "Grill Me" Gate (Zero-Exception Protocol)**:
-  * **Strict Requirement**: Prior to writing or updating `implementation_plan.md` and requesting user feedback, the agent MUST ALWAYS execute an adversarial sparring loop with the `plan_critic` subagent.
-  * **Automated Procedure (Never Wait for User Reminders)**:
-    1. Define the `plan_critic` subagent via `define_subagent` (if not already defined in the conversation).
-    2. Invoke `plan_critic` via `invoke_subagent` with a detailed architectural draft, explicit edge cases, platform considerations (Win32, Linux, macOS), and potential regression vectors.
-    3. Evaluate the critique, address all high-risk findings, and synthesize the finalized, hardened design into `implementation_plan.md`.
-    4. Only AFTER this subagent sparring is complete may the agent present the plan to the user for approval.
-  * Presenting an `implementation_plan.md` or asking the user for plan approval without preceding `plan_critic` sparring is a direct protocol violation.
-* **Incremental & Complete Edits**: Propose changes step-by-step.
-* **Zero Placeholders**: Never use placeholders, summaries, or truncation comments (e.g., `// ... existing code ...`, `/* remaining code unchanged */`). Always output fully complete, runnable code files or intact, self-contained functional blocks.
-* **Defensive & Dependency Hygiene**: Implement complete logic without unsolicited third-party packages. Rely on native capabilities and existing utilities first.
-* **Non-Blocking Execution & Zero-Polling Protocol**: When initiating background processes or async timers, never poll for status in a loop. Update the user with a concise status message and yield control to await background notifications.
-* **Task Verification Gate (Code Changes Only)**: Run automated unit tests (`pytest -q` or equivalent) ONLY when executable application source code was modified. Do NOT run unit tests for pure documentation/markdown changes, questions, or config edits. Never run linters or static type checkers during intermediate steps (see Section 8 for complete gate rules).
-* **Explicit User Authorization & Pre-Commit Protocol**: Never commit or push changes automatically or "on the side". Present results to the user and wait for their explicit request (e.g., "please push", "bitte committen"). Once authorized, execute the full Pre-Commit Quality Gate (Section 8: CI verification script and `pre_commit_auditor`) before creating the commit and pushing.
+* **Mandatory Architecture Sparring & Critique Gate**:
+  * Before generating or updating comprehensive implementation plans, execute an adversarial critique pass.
+  * If subagents are supported by the environment, invoke a dedicated review subagent with the technical design, failure modes, edge cases, and regression vectors.
+  * If subagent delegation is unavailable, conduct an explicit adversarial review in your thinking scratchpad, rigorously challenging assumptions before presenting the design.
+  * Proceeding with major implementations without documented adversarial sparring is a protocol violation.
+* **Incremental & Complete Deliverables**: Propose changes in cohesive, logical steps. Never output placeholder comments, partial snippets, or truncated blocks. Every delivered file or functional block must be complete and syntactically valid.
+* **Defensive Dependency Hygiene**: Rely on runtime standard libraries and established project utilities first. Never introduce external third-party dependencies without explicit architectural justification and user approval.
+* **Non-Blocking Execution**: When initiating long-running processes or asynchronous tasks, yield execution cleanly rather than polling in tight loops.
+* **Fast Intermediate Verification Gate**:
+  * Run targeted automated tests solely against components modified by the immediate task. Skip test suites entirely for changes confined to documentation, markdown, or static configs.
+  * Run local static type checks restricted to modified files to catch interface mismatches early.
+  * Defer full-repository linting, style formatting, and end-to-end regression suites to the Pre-Commit Gate to preserve execution speed.
+* **Explicit User Authorization for Commits**: Never stage, commit, or push changes automatically. Await explicit user authorization before triggering version control operations.
 
 ---
 
 ## 3. Universal Architecture & Design Principles
-* **Strict English Codebase**: All source code, variable names, function names, class names, docstrings, and internal inline comments MUST be strictly in English. (Domain settings and runtime configuration values are exempt).
-* **Pragmatic Design Over Dogmatism (KISS & YAGNI over Strict SOLID)**:
-  * Treat SOLID principles as useful guidelines for readability and decoupling, NOT as dogmatic mandates.
-  * Never introduce speculative abstractions, factory-factories, or excessive boilerplate for requirements that do not exist today.
-  * Always prefer the simplest, most readable solution that solves the immediate problem cleanly.
-* **Context-Agnostic Core Business Logic**:
-  * Core business logic, domain models, and mathematical/data routines must remain strictly decoupled from application UI/host contexts and global runtime state.
-  * Core modules must accept explicit, strongly typed arguments (e.g. data structures, file paths, models) rather than reaching into global session/context objects.
-* **Layer Separation & Single Responsibility**:
-  * Strictly isolate application layers into focused modules:
-    * *Presentation (UI)*: Visual layout and direct user interaction.
-    * *Business Logic & Domain*: Core processing workflows, computation, and domain state transitions.
-    * *Data Access & API*: Network clients, route handlers, persistence, and raw I/O.
-    * *Types & Schemas*: Domain models, request/response schemas, and interface definitions.
-    * *Utilities*: Pure helper functions without UI, framework, or state dependencies.
-  * Each module and class should have one well-defined responsibility and reason to change.
-* **Centralized Configuration & State Access**:
-  * Never hardcode path lookups, magic constants, or read config files ad-hoc inside nested functions.
-  * Pass configuration through central settings or strongly typed context models.
-* **Zero Silent Fallbacks & Synthetic Defaults**:
-  * Do NOT invent synthetic default values or hide missing data behind silent fallbacks.
-  * If data is unpopulated or invalid, fail fast with a descriptive error or return clean empty collections (`[]`, `{}`).
-* **Modularization & File Size Limits**:
-  * **Target Range**: Aim for files between **100 and 750 lines of code**.
-  * **Upper Limit**: Refactor and split files if they exceed **750 lines** and carry multiple distinct responsibilities (or the repository's CI ceiling).
-  * **Single Responsibility Principle (SRP)**: Each file must have exactly one primary reason to change. Partition large frontend script modules cleanly by role (e.g. API clients, view renderers, event handlers).
+* **Strict English Codebase**: Write all identifiers, declarations, interfaces, schema definitions, internal comments, and documentation strictly in English.
+* **Pragmatic Design Over Dogmatism (KISS & YAGNI)**:
+  * Prioritize clean separation and readability over rigid adherence to theoretical design patterns.
+  * Avoid speculative abstractions, premature factories, or complex inheritance hierarchies for hypothetical future requirements.
+* **Layer Separation & Decoupled Domain**:
+  * Enforce strict unidirectional boundaries between application layers:
+    * *Presentation & UI*: User interaction, view layout, and rendering logic.
+    * *Business Logic & Domain*: State transitions, core algorithms, domain rules, and validation logic.
+    * *Data Access & Transport*: Network clients, persistence, hardware drivers, and file I/O.
+    * *Contracts & Schemas*: Strongly typed interfaces, data transfer models, and serialization schemas.
+    * *Utilities*: Pure functions devoid of framework state or side effects.
+  * Core domain routines must remain strictly isolated from host frameworks, global session contexts, and user interfaces.
+* **Explicit Dependency Injection**:
+  * Pass external services, database drivers, and I/O handlers explicitly via constructor or factory arguments.
+  * Prohibit hidden global state access, ad-hoc file reading inside business logic, and hardcoded singleton instances.
+* **Immutability & Fail-Fast Defaults**:
+  * Prefer immutable data structures for domain models and data transfer contracts to prevent unexpected in-place side effects.
+  * Prohibit synthetic fallback values that conceal missing or malformed data. Fail fast with explicit, typed exceptions when required preconditions are violated.
+* **Centralized Configuration**:
+  * Never embed magic constants, fixed paths, or unmanaged environment queries inside nested components.
+  * Inject all operational parameters through centralized, strongly typed configuration objects.
+* **Pragmatic File Size Limits**:
+  * Target files between **100 and 750 lines** as a practical guideline for cohesion.
+  * Split files only when they accumulate distinct, divergent responsibilities. Do not fragment readable declarative tables, configuration mappings, or cohesive schema definitions purely to satisfy an arbitrary line limit.
 
 ---
 
-## 4. Pragmatic Clean Code & Robustness
-* **Guard Clauses & Flat Control Flow (Bouncer Pattern)**:
-  * Invert conditions and return or abort early (`return`, `continue`, `break`, `raise`) to eliminate deep nested `if/else` ladders.
-  * Aim for a maximum of **3 indentation levels** within any single function.
-* **Single Level of Abstraction (SLAP) & Focused Functions**:
-  * Each function should operate at a single level of abstraction. High-level workflow orchestration must not be mixed with low-level byte/string formatting or arithmetic math.
-  * Keep functions focused and concise (aim for **under 50 lines** per function).
-* **No Boolean Flag Arguments**:
-  * Avoid boolean parameter flags that cause a function to execute two completely different behaviors (e.g., `do_task(clean_first=True)`).
-  * Split such behaviors into separate, clearly named functions or pass a descriptive configuration enum/dataclass.
-* **Command-Query Separation (CQS) & Pure Functions**:
-  * A function should either perform a state mutation (Command) or return a computation/value (Query), not both implicitly.
-  * Pure functions and utility helpers must not mutate input arguments in-place unless explicitly documented (e.g. suffix `_in_place`).
-* **Dead Code Elimination & The Boy Scout Rule**:
-  * Never leave commented-out code blocks (`# old_func(...)`) or orphaned, uncalled helper functions in the repository.
-  * Leave modified files cleaner than you found them: clean up stray unused imports or local smells in immediate proximity to your edits without expanding the overall task scope.
-* **Explicit Typing & Narrow Exception Handling**:
-  * Use explicit type annotations and schemas (`list[str]`, `dict[str, Any]`, dataclasses, Pydantic, `Protocol`) throughout.
-  * Catch specific exception classes and log full error context. Never use silent `try/except: pass` blocks.
-* **Module-Level Logging**:
-  * Use module loggers (`logger = logging.getLogger(__name__)`) instead of the root logger, preferring structured logging with context over string interpolation.
-* **Resource & Memory Hygiene (RAII & Batch Deallocation)**:
-  * Always release external resources (files, sockets, locks, database connections, unmanaged native buffers) deterministically using context managers (`with`) or `finally` blocks.
-  * In long-running batch pipelines or high-throughput processing, explicitly deallocate large native buffers and trigger periodic garbage collection (`gc.collect()`) to prevent memory fragmentation and OS-level access violations.
-* **Cross-Platform OS Safety Guards**:
-  * Guard all platform-specific native system calls (e.g. Win32 `ctypes.windll`, registry, OS-specific APIs) with explicit runtime platform checks (`if sys.platform == "win32":`), providing non-crashing fallback paths so tests and CI run cleanly across environments.
-* **Thread-Safety & Atomic Operations**:
-  * Protect shared mutable state across threads using explicit locks (`threading.Lock` / `threading.RLock`) or thread-safe queues. Ensure file manipulations are fail-safe and atomic.
-* **Actionable Error Messages**:
-  * User-facing and log error messages must explain: 1) What failed, 2) Why it failed, and 3) What the user or caller can do to resolve it.
+## 4. Robust Code Construction & Quality
+* **Flat Control Flow & Guard Clauses**:
+  * Use early returns, aborts, or error raises to eliminate nested conditional pyramids.
+  * Maintain a maximum of **3 indentation levels** within any single execution path.
+* **Focused Scope & Single Level of Abstraction**:
+  * Functions must operate at a uniform level of abstraction without mixing high-level orchestration with low-level byte/string manipulation.
+  * Aim for concise, focused functions. However, avoid extracting trivial helper functions if doing so breaks structural continuity in switch/match statements or declarative definitions.
+* **No Boolean Behavioral Flags**:
+  * Do not pass boolean parameters that fork a function into two distinct behavioral paths. Decompose the logic into dedicated functions or express intent using descriptive configuration types or enumerations.
+* **Deterministic Resource Management**:
+  * Acquire and release external resources (file handles, network sockets, unmanaged memory buffers, synchronization locks) strictly via deterministic scoping constructs (e.g., context managers, `using` blocks, or guaranteed cleanup statements).
+* **Thread Safety & Atomic State Operations**:
+  * Guard shared mutable resources using explicit synchronization primitives or thread-safe channels.
+  * Ensure file writes, exports, and persistent state mutations are idempotent and atomic to prevent state corruption during interruptions.
+* **Platform-Agnostic System Access**:
+  * Avoid hardcoding platform-specific paths, line endings, or shell conventions. Use standard cross-platform path resolution libraries.
+  * Encapsulate native OS calls behind environment guards and provide safe fallbacks for portable execution across all target platforms.
+* **Actionable Diagnostics & Structured Logging**:
+  * User-facing and log errors must clearly convey: 1) What failed, 2) The root cause, and 3) Concrete recovery steps.
+  * Use structured loggers with contextual metadata rather than unstructured console print statements.
+* **Dead Code Elimination**:
+  * Prohibit commented-out code, unreachable branches, and unused variables.
+  * Leave touched files cleaner than found by removing dead imports and unreferenced local utilities in the immediate scope.
 
 ---
 
-## 5. Frontend & UI/UX Standards
-* **No Inline Styles in JavaScript**: Define visual styles using CSS classes and variables in stylesheet files. Never inject dynamic `element.style` strings via JavaScript.
-* **DOM Security**: Sanitize and escape dynamic user-generated content (e.g., using `escapeHtml()`) to prevent XSS vulnerabilities.
-* **Semantic HTML & Accessibility**: Use explicit `<button type="button">` attributes and semantic HTML5 elements.
-* **Lifecycle & Background Tab Synchronization**: Modern browsers throttle background/sleeping tabs. Dashboards must hook full state synchronization into both `visibilitychange` (when tab becomes active) and `window.focus` to instantly refresh stale views and metrics upon user return.
+## 5. UI, Presentation & Integration Standards
+* **Decoupled Styling**: Keep presentation styling separated from execution logic. Avoid injecting raw styling attributes directly into component scripts.
+* **Input Sanitization & Output Encoding**: Sanitize and escape all external user inputs across UI and API boundaries to prevent injection vulnerabilities.
+* **Asynchronous Resilience**: UI dashboards and long-running client views must handle connection interruptions, sleep states, and background throttling gracefully by refreshing state upon re-focus.
+* **Visual & Behavioral Verification**: Validate interactive components through empirical rendering checks, layout verification, and console inspection to confirm zero unhandled client-side runtime errors.
 
 ---
 
-## 6. Git Commit Message Guidelines
-When asked to write or suggest Git commit messages, strictly adhere to the following rules:
+## 6. Version Control & Commit Standards
+When formulating Git commit messages, adhere strictly to the following standards:
 
-* **Structure**: Use a short subject line followed by an optional body separated by a blank line. Keep the body concise and easy to scan.
-* **Subject Line Rules**:
-  * Keep it to **50 characters or fewer**.
-  * Start with a capital letter.
-  * Do not end with a period.
-  * Use the **imperative mood** (for example, "Add CI workflow" instead of "Added CI workflow").
-* **Body Rules**:
-  * Explain the **reason** for the change, not just the implementation details.
-  * Keep it to one or two short sentences.
-  * Mention important context such as bug fixes, user impact, or compatibility concerns when relevant.
-* **Content Rules**:
-  * Be specific and concrete; avoid vague phrases like "improve stuff" or "various fixes".
-  * Mention the affected component or scope in brackets (e.g., `[Core]`, `[API]`, `[UI]`, `[CLI]`). Refer to [`.agents/KNOWLEDGE.md`](.agents/KNOWLEDGE.md) for repository-specific component tags.
-* **Output Standard**: Return **only** the raw commit message text. Do not include meta-commentary, explanations, or raw diff output.
+* **Format**: A single subject line, optionally followed by an empty line and a concise explanatory body.
+* **Subject Line**:
+  * Limited to **50 characters or fewer**.
+  * Capitalized initial letter; no trailing period.
+  * Written strictly in the **imperative mood** (e.g., "Fix", "Add", "Refactor", never "Fixed" or "Adds").
+  * Prefixed with the target component or scope in brackets (e.g., `[Core]`, `[API]`, `[UI]`, `[Storage]`).
+* **Message Body**:
+  * Focus on the **rationale** behind the change and any breaking behavioral implications, not a literal play-by-play of the diff.
+* **Output Format**: Return solely the raw commit message text without conversational preamble or meta-commentary.
 
 ---
 
-## 7. Browser & E2E Testing Protocol
-* **Browser Automation & DevTools Integration**: When validating web dashboards, frontend components, or live web UI flows, leverage browser automation tools (e.g. Chrome DevTools MCP: `navigate_page`, `evaluate_script`, `take_screenshot`, `list_console_messages`, `list_network_requests`).
-* **Visual Verification**: Take viewport or full-page screenshots to empirically verify UI rendering, layout alignment, and DOM modifications before concluding frontend work.
-* **Console & Network Hygiene**: Inspect console logs and network traffic via DevTools tools to confirm clean execution without silent API failures or unhandled client-side exceptions.
+## 7. Quality Gate & Pre-Commit Audit
+* **Pre-Commit Trigger**: Full-suite verification runs exclusively upon an explicit user instruction to commit or push changes.
+* **CI Parity**: Execute the project's central verification script to run formatters, linters, static type checkers, and automated regression suites deterministically.
+* **Adversarial Audit**:
+  * Run an audit pass against the final changes:
+    1. *Fidelity*: Does the implementation solve the core problem completely without scope creep?
+    2. *Code Quality*: Does the change comply with all layering, typing, resource management, and clean code rules?
+    3. *Zero Regressions*: Confirm zero diagnostic errors, zero linter warnings, and zero broken tests across the repository.
+* **Zero Regression Enforcement**: Commits and pushes remain strictly blocked until all gates, tests, and static checks pass without errors.
 
 ---
 
-## 8. CI, Testing & Pre-Commit Quality Gate
-* **Development & Task Completion Gate (Conditional Unit Tests Only)**:
-  * Run unit tests ONLY if application source code (`.py`, `.js`, etc.) was modified in the task (`python -m pytest -q` or project test runner).
-  * If the task involved only documentation, markdown (`.md`), explanations, or non-executable assets, skip test runs entirely.
-  * Linters and static type checkers are strictly FORBIDDEN during development iterations to save time and compute.
-* **Mandatory Pre-Commit Quality Gate (Triggered Strictly Upon Explicit Commit/Push Request)**:
-  * Linters, static type checkers, and the full test suite are executed ONLY when the user explicitly instructs to commit or push (e.g., "bitte committen", "commit and push").
-  * Run the central verification script documented in [`.agents/KNOWLEDGE.md`](.agents/KNOWLEDGE.md).
-  * Deterministically execute CI parity: Dependency check, Linter, Formatter, Static Type Checker, and Full Test Suite.
-* **Subagent Code & Goal Audit Gate**: For non-trivial refactorings and features, invoke the `pre_commit_auditor` subagent to conduct an adversarial audit on `git diff` against:
-  1. **Plan-to-Code Fidelity**: Does the code genuinely solve the root problem and deliver all commitments from `implementation_plan.md`?
-  2. **Code & Architecture Standards**: Adherence to `AGENTS.md` rules (no placeholders, resource hygiene, cross-platform guards, SRP limits, zero secret leaks).
-  3. **Verification Completeness**: Confirm that the verification script ran over the entire codebase with 0 errors.
-* **Zero Regression Standard**: Commits and pushes are strictly blocked if any linter warning, type diagnostic, test failure, or auditor blocker is present. All gates must succeed with 0 errors before executing the git commit.
-
----
-
-## 9. Security, Open Source & Privacy Protocol
-* **Zero Secret & Privacy Leakage**: Never commit private data, real customer/document samples, API keys, tokens, or local environment credentials (`.env`). All test fixtures MUST use synthetic, dummy data.
-* **Large Binary Hygiene**: Never commit large model files, binary weights (> 50 MB), or `.coverage` artifacts to Git tracking. Always verify `.gitignore` ignores large binaries, virtual environments, and temporary scratch directories.
-* **Cross-Platform Compatibility**: Do NOT hardcode OS-specific absolute paths. Use standard path libraries (`pathlib.Path`) and relative, configurable paths across all modules.
-* **License Integrity & Attribution**: Preserve software license headers and ensure any new third-party dependency is recorded with its license.
-* **Clean Git History**: Run `git status` and verify no scratch logs, temp files, or untracked sensitive data exist before committing or opening pull requests.
+## 8. Security, Data Privacy & Repository Hygiene
+* **Zero Secret & Privacy Leakage**: Never commit real credentials, access tokens, API keys, private certificates, or customer data. All test cases must use synthetic, procedurally generated mock data.
+* **Binary & Artifact Hygiene**: Never track heavy binaries, serialized weight files, build caches, or temporary runtime artifacts in version control.
+* **Clean Working Tree**: Verify working tree hygiene prior to staging; ensure zero stray scratch files, logs, or untracked temporary assets remain.
