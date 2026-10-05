@@ -23,7 +23,7 @@ from routes.state import DashboardState
 @pytest.fixture
 def test_sandbox():
     """Provides a completely isolated sandbox filesystem for tests."""
-    tmp_dir = tempfile.mkdtemp(prefix="ordinflow_test_")
+    tmp_dir = str(Path(tempfile.mkdtemp(prefix="ordinflow_test_")).resolve())
     settings_dir = os.path.join(tmp_dir, "settings")
     skills_dir = os.path.join(settings_dir, "skills")
     inbox_dir = os.path.join(tmp_dir, "Inbox")

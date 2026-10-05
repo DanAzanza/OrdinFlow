@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from tests.conftest import MINIMAL_1PAGE_PDF_BYTES
@@ -157,7 +158,7 @@ def test_inbox_delete_moves_to_trash(client, test_sandbox):
         res = client.delete("/api/inbox/ToDelete.pdf")
         assert res.status_code == 200
         assert res.get_json() == {"status": "ok"}
-        assert doc in trashed_files
+        assert any(Path(p).resolve() == Path(doc).resolve() for p in trashed_files)
         assert not os.path.exists(doc)
         assert not os.path.exists(meta_file)
 
@@ -287,7 +288,7 @@ def test_inbox_error_branches_and_processor_integration(client, test_sandbox):
     watch_dir = config.watch_dir
 
     doc_name = "EdgeDoc.pdf"
-    doc_path = os.path.join(watch_dir, doc_name)
+    doc_path = str(Path(os.path.join(watch_dir, doc_name)).resolve())
     with open(doc_path, "wb") as f:
         f.write(MINIMAL_1PAGE_PDF_BYTES)
 
@@ -301,7 +302,7 @@ def test_inbox_error_branches_and_processor_integration(client, test_sandbox):
     with patch("core.skills.queue.get_skill_queue_manager", return_value=mock_qm):
         res_fail_retry = client.post(f"/api/inbox/{doc_name}/retry")
         assert res_fail_retry.status_code == 500
-        assert doc_path not in mock_processor.processing_files
+        assert not any(Path(p).resolve() == Path(doc_path).resolve() for p in mock_processor.processing_files)
 
     # 2. Assign with missing required fields / invalid schema
     res_bad_schema = client.post(f"/api/inbox/{doc_name}/assign", json="not a dict")
@@ -316,7 +317,7 @@ def test_inbox_error_branches_and_processor_integration(client, test_sandbox):
     assert "sufficient data" in res_insufficient.get_json()["error"]
 
     # 4. Processor discard on delete
-    delete_doc = os.path.join(watch_dir, "DeleteDiscard.pdf")
+    delete_doc = str(Path(os.path.join(watch_dir, "DeleteDiscard.pdf")).resolve())
     with open(delete_doc, "wb") as f:
         f.write(MINIMAL_1PAGE_PDF_BYTES)
     mock_processor.processing_files.add(delete_doc)
@@ -326,7 +327,7 @@ def test_inbox_error_branches_and_processor_integration(client, test_sandbox):
     ):
         res_del = client.delete("/api/inbox/DeleteDiscard.pdf")
         assert res_del.status_code == 200
-        assert delete_doc not in mock_processor.processing_files
+        assert not any(Path(p).resolve() == Path(delete_doc).resolve() for p in mock_processor.processing_files)
 
     # 5. Delete OSError returns 500
     with patch("routes.api.inbox_api.send_to_trash", side_effect=OSError("Disk write error")):

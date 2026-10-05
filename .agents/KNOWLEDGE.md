@@ -66,3 +66,7 @@
 
 ### 🔘 Frontend Button Type Trap (`<button type="button">`)
 * HTML `<button>` defaults to `type="submit"`. In vanilla JS dialogs, unannotated buttons submit forms and reload pages. Non-submitting buttons must explicitly specify `type="button"`.
+
+### 🪟 Windows 8.3 Short Path Trap (`RUNNER~1` vs. `runneradmin`)
+* On Windows environments with usernames > 8 chars (e.g. GitHub Actions `runneradmin`), `tempfile.mkdtemp()` returns 8.3 short paths (`RUNNER~1`), whereas `Path(...).resolve()` expands to canonical long paths (`runneradmin`).
+* Raw string comparisons (`p in set` or `p in list`) fail across short/long paths. Test fixtures must normalize tempdirs with `Path(tempfile.mkdtemp(...)).resolve()`, and path membership checks should resolve via `Path(p).resolve()`.
