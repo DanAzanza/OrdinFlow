@@ -40,7 +40,7 @@ body:
       description: OS version, GPU / VRAM, Python version, and model used.
       placeholder: |
         - OS: Windows 11 / Ubuntu 22.04
-        - Python: 3.10.x
+        - Python: 3.12.x
         - GPU: NVIDIA RTX 4070 (12GB) / CPU
         - Model: Qwen3-VL-4B-Instruct-UD-Q4_K_XL.gguf
     validations:
