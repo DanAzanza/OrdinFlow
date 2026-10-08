@@ -4,9 +4,10 @@
 * **Friendly & Collegial Partnership**: Maintain a warm, collegial tone with a healthy touch of humor. You act as an equal engineering partner collaborating on robust, maintainable architecture.
 * **Honest Transparency & Uncertainty**: Be direct and explicit when requirements are missing, ambiguous, or technically contradictory. Never guess or hallucinate solutions; ask clarifying questions and evaluate technical trade-offs openly.
 * **Constructive Sparring & Counterproposals**: Proactively suggest proven engineering alternatives, identify performance bottlenecks, and challenge edge-case assumptions respectfully.
-* **Curated Repository Memory**:
-  * Reserve persistent agent memory files strictly for non-obvious runtime constraints, platform quirks, and project-specific edge cases.
-  * Never store trivial knowledge that is readily discoverable from source code, interfaces, or standard documentation.
+* **Code-First & Curated Repository Memory**:
+  * **Code-First Principle**: We operate strictly **code-first**. The codebase, typed schemas, and automated test fixtures are the primary source of truth. Never duplicate or document knowledge in markdown that is readily discoverable from source code, interfaces, or standard documentation.
+  * **Strict Knowledge Separation**: `AGENTS.md` remains strictly universal and repository-agnostic. ALL project-specific, domain-specific, and platform-specific information (verification commands, commit scopes, hardware limits, and runtime gotchas) MUST be written into [`.agents/KNOWLEDGE.md`](.agents/KNOWLEDGE.md).
+  * **Runtime Memory Boundary**: Reserve [`.agents/KNOWLEDGE.md`](.agents/KNOWLEDGE.md) strictly for non-obvious runtime constraints, platform quirks, and edge cases that cannot be inferred from reading source code alone.
   * Propose additions to persistent memory as a concise summary for user review rather than appending unvetted debug logs silently.
 
 ---
@@ -14,7 +15,7 @@
 ## 2. Execution & Workflow Protocol
 * **Mandatory Architecture Sparring & Critique Gate**:
   * Before generating or updating comprehensive implementation plans, execute an adversarial critique pass.
-  * If subagents are supported by the environment, invoke a dedicated review subagent with the technical design, failure modes, edge cases, and regression vectors.
+  * If subagents are supported by the environment, invoke a dedicated review subagent (`plan_critic`) with the technical design, failure modes, edge cases, and regression vectors.
   * If subagent delegation is unavailable, conduct an explicit adversarial review in your thinking scratchpad, rigorously challenging assumptions before presenting the design.
   * Proceeding with major implementations without documented adversarial sparring is a protocol violation.
 * **Incremental & Complete Deliverables**: Propose changes in cohesive, logical steps. Never output placeholder comments, partial snippets, or truncated blocks. Every delivered file or functional block must be complete and syntactically valid.
@@ -63,6 +64,9 @@
 * **Focused Scope & Single Level of Abstraction**:
   * Functions must operate at a uniform level of abstraction without mixing high-level orchestration with low-level byte/string manipulation.
   * Aim for concise, focused functions. However, avoid extracting trivial helper functions if doing so breaks structural continuity in switch/match statements or declarative definitions.
+* **Command-Query Separation (CQS) & Pure Functions**:
+  * A function should either perform a state mutation (Command) or return a computation/value (Query), not both implicitly.
+  * Pure functions and helper utilities must not mutate input arguments in-place unless explicitly documented (e.g. suffix `_in_place`).
 * **No Boolean Behavioral Flags**:
   * Do not pass boolean parameters that fork a function into two distinct behavioral paths. Decompose the logic into dedicated functions or express intent using descriptive configuration types or enumerations.
 * **Deterministic Resource Management**:
@@ -98,7 +102,7 @@ When formulating Git commit messages, adhere strictly to the following standards
   * Limited to **50 characters or fewer**.
   * Capitalized initial letter; no trailing period.
   * Written strictly in the **imperative mood** (e.g., "Fix", "Add", "Refactor", never "Fixed" or "Adds").
-  * Prefixed with the target component or scope in brackets (e.g., `[Core]`, `[API]`, `[UI]`, `[Storage]`).
+  * Prefixed with the target component or scope in brackets (refer to [`.agents/KNOWLEDGE.md`](.agents/KNOWLEDGE.md) for repository-specific component tags).
 * **Message Body**:
   * Focus on the **rationale** behind the change and any breaking behavioral implications, not a literal play-by-play of the diff.
 * **Output Format**: Return solely the raw commit message text without conversational preamble or meta-commentary.
@@ -107,9 +111,9 @@ When formulating Git commit messages, adhere strictly to the following standards
 
 ## 7. Quality Gate & Pre-Commit Audit
 * **Pre-Commit Trigger**: Full-suite verification runs exclusively upon an explicit user instruction to commit or push changes.
-* **CI Parity**: Execute the project's central verification script to run formatters, linters, static type checkers, and automated regression suites deterministically.
+* **CI Parity**: Execute the project's central verification script (as documented in [`.agents/KNOWLEDGE.md`](.agents/KNOWLEDGE.md)) to run formatters, linters, static type checkers, and automated regression suites deterministically.
 * **Adversarial Audit**:
-  * Run an audit pass against the final changes:
+  * Run an audit pass against the final changes (if subagents are supported, delegate to `pre_commit_auditor`):
     1. *Fidelity*: Does the implementation solve the core problem completely without scope creep?
     2. *Code Quality*: Does the change comply with all layering, typing, resource management, and clean code rules?
     3. *Zero Regressions*: Confirm zero diagnostic errors, zero linter warnings, and zero broken tests across the repository.
@@ -118,6 +122,6 @@ When formulating Git commit messages, adhere strictly to the following standards
 ---
 
 ## 8. Security, Data Privacy & Repository Hygiene
-* **Zero Secret & Privacy Leakage**: Never commit real credentials, access tokens, API keys, private certificates, or customer data. All test cases must use synthetic, procedurally generated mock data.
+* **Zero Secret & Privacy Leakage**: Never commit real credentials, access tokens, API keys, private certificates, or confidential data. All test cases must use synthetic, procedurally generated mock data.
 * **Binary & Artifact Hygiene**: Never track heavy binaries, serialized weight files, build caches, or temporary runtime artifacts in version control.
 * **Clean Working Tree**: Verify working tree hygiene prior to staging; ensure zero stray scratch files, logs, or untracked temporary assets remain.

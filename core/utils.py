@@ -8,6 +8,7 @@ import time
 from collections import deque
 from pathlib import Path
 from typing import Any
+import uuid
 
 logger = logging.getLogger(__name__)
 
@@ -319,6 +320,33 @@ def safe_move(src: str, dst: str, retries: int = 3, delay: float = 2.0) -> bool:
                 logger.warning(f"[*] File locked, retrying {attempt + 1}/{retries} for {src}...")
                 time.sleep(delay)
     raise PermissionError(f"File could not be moved: {src}")
+
+
+def safe_copy(src: str, dst: str, retries: int = 4, delay: float = 0.5) -> bool:
+    """Safely copies a file into the destination path with atomic replace and retry logic against Windows locks."""
+    dst_dir = os.path.dirname(dst)
+    if dst_dir:
+        os.makedirs(dst_dir, exist_ok=True)
+    tmp_dst = f"{dst}.{uuid.uuid4().hex}.tmp"
+    try:
+        shutil.copy2(src, tmp_dst)
+        for attempt in range(1, retries + 1):
+            try:
+                os.replace(tmp_dst, dst)
+                return True
+            except (PermissionError, OSError) as e:
+                if attempt < retries:
+                    time.sleep(delay * attempt)
+                else:
+                    logger.warning(f"[!] Error replacing temp copy '{tmp_dst}' -> '{dst}': {e}")
+                    raise
+    finally:
+        if os.path.exists(tmp_dst):
+            try:
+                os.remove(tmp_dst)
+            except OSError:
+                pass
+    return False
 
 
 def deduplicate_path(target_filepath: str, max_attempts: int = 10_000) -> str:

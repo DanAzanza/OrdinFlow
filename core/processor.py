@@ -12,7 +12,7 @@ from typing import Any
 
 from core.config import AppConfig
 from core.extraction_pipeline import ExtractionPipeline
-from core.file_service import FileService
+from core.file_service import FileService, is_file_processed_and_fresh
 from core.image_processing import ImagePreprocessor
 from core.routing import render_filename
 from core.utils import (
@@ -110,9 +110,10 @@ class DocumentProcessor:
                 valid_exts = {".pdf", ".png", ".jpg", ".jpeg", ".tif", ".tiff"}
                 queue_count = sum(
                     1
-                    for _, _, files in os.walk(self.config.watch_dir)
+                    for root, _, files in os.walk(self.config.watch_dir)
                     for f in files
                     if os.path.splitext(f.lower())[1] in valid_exts
+                    and not os.path.exists(os.path.join(root, f + ".meta"))
                 )
         except (OSError, ValueError) as e:
             logger.debug("Error retrieving queue size: %s", e)
@@ -162,6 +163,9 @@ class DocumentProcessor:
 
     def _move_and_compress_file(self, filepath: str, target_dir: str, target_filename: str) -> str:
         return self.file_service.move_file(filepath, target_dir, target_filename)
+
+    def _copy_file(self, filepath: str, target_dir: str, target_filename: str) -> str:
+        return self.file_service.copy_file(filepath, target_dir, target_filename)
 
     def _mark_for_review(
         self,
@@ -248,6 +252,7 @@ class DocumentProcessor:
         filepath: str,
         split_multi_documents: bool = True,
         save_empty_pages: bool = False,
+        force: bool = False,
     ) -> bool:
         """Classifies, extracts, and routes a document."""
         start_time = time.time()
@@ -255,6 +260,10 @@ class DocumentProcessor:
         if not os.path.exists(filepath):
             logger.warning(f"[!] File '{filename}' no longer exists.")
             return False
+
+        if not force and is_file_processed_and_fresh(filepath):
+            logger.info(f"[*] File '{filename}' is already processed and marked as done. Skipping.")
+            return True
 
         with self.processing_lock:
             if filepath in self.processing_files:
@@ -355,6 +364,7 @@ class DocumentProcessor:
                     )
                     return td, tf
 
+                keep_source = bool(getattr(self.config, "keep_inbox_files", False))
                 page_results = extracted.get("page_results", [])
                 if split_multi_documents and len(page_results) > 1:
                     success = self.file_service.split_multi_page_pdf(
@@ -364,13 +374,29 @@ class DocumentProcessor:
                         find_doc_type_cfg_fn=self.llm_extractor.find_doc_type_config,
                         optional_fields=optional_fields,
                         save_empty_pages=save_empty_pages,
+                        keep_source=keep_source,
                     )
                     if not success:
                         if not os.path.exists(filepath) or os.path.exists(f"{filepath}.meta"):
                             _record_stat("failed", time.time() - start_time)
                             return False
                         target_dir, target_filename = _route_single_file()
-                        self._move_and_compress_file(filepath, target_dir, target_filename)
+                        if keep_source:
+                            target_fp = self._copy_file(filepath, target_dir, target_filename)
+                            marked = self.file_service.mark_as_processed(
+                                filepath, extracted=extracted, routed_paths=[target_fp]
+                            )
+                            if not marked:
+                                try:
+                                    if os.path.exists(target_fp):
+                                        os.remove(target_fp)
+                                except OSError:
+                                    pass
+                                self._mark_for_review(filepath, "Failed to write processed .meta sidecar", extracted)
+                                _record_stat("failed", time.time() - start_time)
+                                return False
+                        else:
+                            self._move_and_compress_file(filepath, target_dir, target_filename)
                 else:
                     target_dir, target_filename = _route_single_file()
                     target_filepath = os.path.join(target_dir, target_filename)
@@ -395,15 +421,49 @@ class DocumentProcessor:
 
                     if self.can_split_pdf and doc_len > 0 and len(kept_pages) < doc_len:
                         logger.info(f"[*] Saving PDF without empty pages. Keeping pages {kept_pages} of {doc_len}.")
-                        saved_path = self.file_service.save_filtered_pdf(filepath, target_filepath, kept_pages)
+                        saved_path = self.file_service.save_filtered_pdf(
+                            filepath, target_filepath, kept_pages, keep_source=keep_source
+                        )
                         if not saved_path:
                             logger.warning(
                                 "[!] Filtering empty pages failed for '%s'. Falling back to full document move.",
                                 filename,
                             )
-                            self._move_and_compress_file(filepath, target_dir, target_filename)
+                            if keep_source:
+                                target_fp = self._copy_file(filepath, target_dir, target_filename)
+                                marked = self.file_service.mark_as_processed(
+                                    filepath, extracted=extracted, routed_paths=[target_fp]
+                                )
+                                if not marked:
+                                    try:
+                                        if os.path.exists(target_fp):
+                                            os.remove(target_fp)
+                                    except OSError:
+                                        pass
+                                    self._mark_for_review(
+                                        filepath, "Failed to write processed .meta sidecar", extracted
+                                    )
+                                    _record_stat("failed", time.time() - start_time)
+                                    return False
+                            else:
+                                self._move_and_compress_file(filepath, target_dir, target_filename)
                     else:
-                        self._move_and_compress_file(filepath, target_dir, target_filename)
+                        if keep_source:
+                            target_fp = self._copy_file(filepath, target_dir, target_filename)
+                            marked = self.file_service.mark_as_processed(
+                                filepath, extracted=extracted, routed_paths=[target_fp]
+                            )
+                            if not marked:
+                                try:
+                                    if os.path.exists(target_fp):
+                                        os.remove(target_fp)
+                                except OSError:
+                                    pass
+                                self._mark_for_review(filepath, "Failed to write processed .meta sidecar", extracted)
+                                _record_stat("failed", time.time() - start_time)
+                                return False
+                        else:
+                            self._move_and_compress_file(filepath, target_dir, target_filename)
 
                 duration = time.time() - start_time
                 _record_stat("success", duration)

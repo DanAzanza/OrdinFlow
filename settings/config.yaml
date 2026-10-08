@@ -27,6 +27,7 @@ vision_api_retries: 3
 base_dir: .
 watch_dir: ""
 target_base_dir: ""
+keep_inbox_files: false
 folder_delimiter: __
 folder_structure:
 - '{Datum}'

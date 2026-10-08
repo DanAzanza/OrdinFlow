@@ -6,6 +6,7 @@ const CONFIG_LABELS = {
     // 📂 Folders & Paths
     watch_dir: "Central Inbox Folder",
     target_base_dir: "Cases Archive Folder",
+    keep_inbox_files: "Keep processed files in Inbox (mark as done in .meta)",
     dashboard_port: "Dashboard Web Port",
 
     // 🗂️ Archiving & Directory Structure
@@ -27,7 +28,7 @@ const CONFIG_LABELS = {
 const CONFIG_GROUPS = [
     {
         title: "📂 Folders & System Paths",
-        keys: ["watch_dir", "target_base_dir", "dashboard_port"]
+        keys: ["watch_dir", "target_base_dir", "keep_inbox_files", "dashboard_port"]
     },
     {
         title: "🗂️ Archiving & Directory Structure",

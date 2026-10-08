@@ -2,8 +2,9 @@ async function fetchInbox() {
 	try {
 		state.inbox = await api("/api/inbox");
 		const reviewCount = state.inbox.filter((f) => Boolean(f.is_review ?? f.is_pruefen)).length;
+		const unprocessedCount = state.inbox.filter((f) => !f.is_processed && !f.is_abgearbeitet).length;
 		const bIn = document.getElementById("badgeInbox");
-		if (bIn) bIn.textContent = state.inbox.length;
+		if (bIn) bIn.textContent = unprocessedCount;
 		const bp = document.getElementById("badgePruefen");
 		if (bp) {
 			if (reviewCount > 0) {
@@ -116,6 +117,7 @@ function initInboxDelegation(list) {
 function renderFileCardHtml(f) {
 	const hasPreview = !!f.preview_url;
 	const isReview = Boolean(f.is_review ?? f.is_pruefen);
+	const isProcessed = Boolean(f.is_processed ?? f.is_abgearbeitet);
 	const reason = f.reason || f.grund || "";
 
 	// Check if filename has all information for auto assign
@@ -126,7 +128,17 @@ function renderFileCardHtml(f) {
 		: 4;
 	const hasAllInfo = parts.length === expectedParts;
 
-	return `<div class="file-card ${isReview ? "pruefen" : ""}">
+	let tagClass = "processing";
+	let tagText = "Processing";
+	if (isReview) {
+		tagClass = "review";
+		tagText = "⚠ Review";
+	} else if (isProcessed) {
+		tagClass = "processed";
+		tagText = "✓ Abgearbeitet";
+	}
+
+	return `<div class="file-card ${isReview ? "pruefen" : (isProcessed ? "processed" : "")}">
       <div class="preview clickable-preview" data-inspect="${encodeURIComponent(f.path)}">
         ${
 					hasPreview
@@ -138,12 +150,13 @@ function renderFileCardHtml(f) {
         <div class="file-name">${escapeHtml(f.name)}</div>
         <div class="file-meta">${formatSize(f.size)} · ${escapeHtml(f.modified || "")}</div>
         ${isReview && reason ? `<div class="file-meta file-meta-warning">⚠ ${escapeHtml(reason)}</div>` : ""}
+        ${isProcessed ? `<div class="file-meta file-meta-success" style="color: #4ade80;">✓ Abgearbeitet</div>` : ""}
         ${renderValidationBadges(f.extracted)}
       </div>
-      <span class="inbox-tag ${isReview ? "review" : "processing"} file-inbox-tag">${isReview ? "⚠ Review" : "Processing"}</span>
+      <span class="inbox-tag ${tagClass} file-inbox-tag">${tagText}</span>
       <div class="file-actions">
         ${
-					isReview
+					isReview || isProcessed
 						? `
           <button type="button" class="btn btn-sm btn-accent" data-retryfile="${encodeURIComponent(f.path)}" title="Reprocess">🔄</button>
           ${
@@ -231,7 +244,7 @@ function renderInbox() {
 
 	// Compute hash of data to avoid destroying DOM and resetting image loads if nothing changed
 	const currentHash = `${q}|${state.pruefenOnly}|${data.length}|` +
-		data.map((f) => `${f.path}:${Boolean(f.is_review ?? f.is_pruefen)}:${f.reason || f.grund || ""}:${f.size}`).join("|");
+		data.map((f) => `${f.path}:${Boolean(f.is_review ?? f.is_pruefen)}:${Boolean(f.is_processed ?? f.is_abgearbeitet)}:${f.reason || f.grund || ""}:${f.size}`).join("|");
 
 	if (currentHash === lastInboxRenderHash) {
 		return;

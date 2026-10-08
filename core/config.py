@@ -66,6 +66,7 @@ class AppConfig:
     base_dir: str = "."
     watch_dir: str = ""
     target_base_dir: str = ""
+    keep_inbox_files: bool = False
 
     # Dynamic prompt & routing document types
     document_types: dict[str, dict[str, Any]] = field(default_factory=dict)

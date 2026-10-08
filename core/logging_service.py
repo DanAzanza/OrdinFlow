@@ -107,7 +107,7 @@ def compute_log_stats(lines: list[str], valid_doc_types: list[str] | None = None
             split_batches += 1
         if "saved successfully" in line and ("Partial PDF" in line or "partial PDF" in line):
             partial_docs_saved += 1
-        if "Moving file" in line:
+        if "Moving file" in line or "Copying file" in line:
             direct_docs_moved += 1
 
         match_class = re.search(r"Page \d+ classification:\s*(.+)", line)

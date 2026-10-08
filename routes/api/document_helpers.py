@@ -1,4 +1,3 @@
-import json
 import logging
 import os
 import threading
@@ -42,16 +41,7 @@ _MIME_MAP = {
 _is_within_base = is_within_base
 
 
-def load_meta_sidecar(filepath: str) -> dict[str, Any] | None:
-    """Reads and parses the accompanying .meta JSON sidecar file if present."""
-    meta_path = filepath if filepath.endswith(".meta") else filepath + ".meta"
-    if os.path.isfile(meta_path):
-        try:
-            with open(meta_path, encoding="utf-8") as f:
-                return json.load(f)
-        except (OSError, UnicodeError, json.JSONDecodeError, ValueError, TypeError) as e:
-            logger.debug("[DocumentHelpers] Could not load sidecar %s: %s", meta_path, e)
-    return None
+from core.file_service import load_meta_sidecar as load_meta_sidecar
 
 
 def remove_meta_sidecar(filepath: str, use_trash: bool = True) -> None:

@@ -57,6 +57,7 @@ class ConfigUpdateSchema(BaseModel):
 
     watch_dir: str | None = None
     target_base_dir: str | None = None
+    keep_inbox_files: bool | None = None
     dashboard_port: int | None = None
     folder_delimiter: str | None = None
     folder_structure: list[Any] | None = None

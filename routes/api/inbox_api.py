@@ -9,7 +9,7 @@ import urllib.parse
 
 from flask import Blueprint, jsonify, request, send_file
 
-from core.utils import safe_join_path, send_to_trash
+from core.utils import safe_copy, safe_join_path, send_to_trash
 from routes.api.document_helpers import (
     _MIME_MAP,
     _deduplicate_filename,
@@ -52,19 +52,26 @@ def api_inbox():
                 rel_path = os.path.relpath(fp, watch_dir).replace("\\", "/")
 
                 meta_data = load_meta_sidecar(fp)
-                is_review = meta_data is not None
+                is_processed = bool(
+                    meta_data and (meta_data.get("status") == "processed" or meta_data.get("abgearbeitet") is True)
+                )
+                is_review = bool(meta_data and not is_processed)
                 reason = meta_data.get("grund", meta_data.get("reason", "")) if meta_data else ""
                 extracted = meta_data.get("extracted", {}) if meta_data else {}
+                status = "processed" if is_processed else ("review" if is_review else "pending")
 
                 result.append(
                     {
                         "name": f,
                         "path": rel_path,
+                        "status": status,
                         "reason": reason,
                         "grund": reason,  # Backward compatibility alias
                         "extracted": extracted,
                         "is_review": is_review,
                         "is_pruefen": is_review,  # Backward compatibility alias
+                        "is_processed": is_processed,
+                        "is_abgearbeitet": is_processed,
                         "size": stat.st_size,
                         "modified": time.strftime("%Y-%m-%d %H:%M", time.localtime(stat.st_mtime)),
                         "preview_url": f"/api/inbox/preview/{urllib.parse.quote(rel_path, safe='/')}"
@@ -181,20 +188,43 @@ def api_inbox_assign(filename: str):
     if not _is_within_base(target_path, DashboardState.config.target_base_dir):
         return jsonify({"error": "Target file outside base directory"}), 403
 
-    _remove_meta_sidecar(src_path)
+    if DashboardState.processor:
+        with DashboardState.processor.processing_lock:
+            if src_path in DashboardState.processor.processing_files:
+                return jsonify({"error": "File is currently being processed"}), 409
 
-    try:
-        shutil.move(src_path, target_path)
-        logger.info(
-            "[Dashboard] Manual assignment: %s → %s/%s",
-            filename,
-            folder_name,
-            target_filename,
-        )
-        return jsonify({"status": "ok", "folder": folder_name, "file": target_filename})
-    except OSError as e:
-        logger.error("[Dashboard] Manual assignment move error %s -> %s: %s", src_path, target_path, e, exc_info=True)
-        return jsonify({"error": "Failed to assign file"}), 500
+    keep_source = bool(getattr(DashboardState.config, "keep_inbox_files", False))
+    if keep_source:
+        try:
+            safe_copy(src_path, target_path)
+            if DashboardState.processor:
+                DashboardState.processor.file_service.mark_as_processed(
+                    src_path, extracted=data, routed_paths=[target_path]
+                )
+            logger.info(
+                "[Dashboard] Manual assignment (retained): %s → %s/%s",
+                filename,
+                folder_name,
+                target_filename,
+            )
+            return jsonify({"status": "ok", "folder": folder_name, "file": target_filename})
+        except OSError as e:
+            logger.error("[Dashboard] Manual assignment copy error %s -> %s: %s", src_path, target_path, e, exc_info=True)
+            return jsonify({"error": "Failed to assign file"}), 500
+    else:
+        _remove_meta_sidecar(src_path)
+        try:
+            shutil.move(src_path, target_path)
+            logger.info(
+                "[Dashboard] Manual assignment: %s → %s/%s",
+                filename,
+                folder_name,
+                target_filename,
+            )
+            return jsonify({"status": "ok", "folder": folder_name, "file": target_filename})
+        except OSError as e:
+            logger.error("[Dashboard] Manual assignment move error %s -> %s: %s", src_path, target_path, e, exc_info=True)
+            return jsonify({"error": "Failed to assign file"}), 500
 
 
 @inbox_api_bp.route("/api/inbox/<path:filename>/auto_assign", methods=["POST"])
@@ -251,15 +281,33 @@ def api_inbox_auto_assign(filename: str):
     target_filename = _render_target_filename(data, doc_type, ext)
     target_filename, target_path = _deduplicate_filename(target_dir, target_filename)
 
-    _remove_meta_sidecar(src_path)
+    if DashboardState.processor:
+        with DashboardState.processor.processing_lock:
+            if src_path in DashboardState.processor.processing_files:
+                return jsonify({"error": "File is currently being processed"}), 409
 
-    try:
-        shutil.move(src_path, target_path)
-        logger.info("[Dashboard] Auto-assign: %s → %s", filename, target_filename)
-        return jsonify({"status": "ok"})
-    except OSError as e:
-        logger.error("[Dashboard] Auto-assign move error %s -> %s: %s", src_path, target_path, e, exc_info=True)
-        return jsonify({"error": "Failed to auto-assign file"}), 500
+    keep_source = bool(getattr(DashboardState.config, "keep_inbox_files", False))
+    if keep_source:
+        try:
+            safe_copy(src_path, target_path)
+            if DashboardState.processor:
+                DashboardState.processor.file_service.mark_as_processed(
+                    src_path, extracted=data, routed_paths=[target_path]
+                )
+            logger.info("[Dashboard] Auto-assign (retained): %s → %s", filename, target_filename)
+            return jsonify({"status": "ok"})
+        except OSError as e:
+            logger.error("[Dashboard] Auto-assign copy error %s -> %s: %s", src_path, target_path, e, exc_info=True)
+            return jsonify({"error": "Failed to auto-assign file"}), 500
+    else:
+        _remove_meta_sidecar(src_path)
+        try:
+            shutil.move(src_path, target_path)
+            logger.info("[Dashboard] Auto-assign: %s → %s", filename, target_filename)
+            return jsonify({"status": "ok"})
+        except OSError as e:
+            logger.error("[Dashboard] Auto-assign move error %s -> %s: %s", src_path, target_path, e, exc_info=True)
+            return jsonify({"error": "Failed to auto-assign file"}), 500
 
 
 @inbox_api_bp.route("/api/inbox/preview/<path:subpath>")

@@ -124,7 +124,16 @@ class ImportEngine(BaseSkill):
                         if os.path.splitext(f.lower())[1] not in self.allowed_extensions:
                             continue
                         if os.path.exists(fp + ".meta"):
-                            continue
+                            from core.file_service import is_file_processed_and_fresh, load_meta_sidecar
+                            if is_file_processed_and_fresh(fp):
+                                continue
+                            try:
+                                meta_info = load_meta_sidecar(fp)
+                                if meta_info and (meta_info.get("status") == "review" or "grund" in meta_info or "reason" in meta_info):
+                                    continue
+                            except Exception as e:
+                                logger.debug(f"[ImportEngine] Error reading sidecar for {fp}: {e}")
+                                continue
                         unprocessed_files.append(fp)
 
                 total = len(unprocessed_files)

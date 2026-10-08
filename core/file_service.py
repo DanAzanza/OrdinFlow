@@ -26,6 +26,7 @@ from core.utils import (
     deduplicate_path,
     is_missing_value,
     remove_source_with_meta,
+    safe_copy,
     safe_move,
 )
 
@@ -35,6 +36,45 @@ def _clean_folder_match_name(name: str) -> str:
         return ""
     name = name.replace(".", " ")
     return name.lower().replace("-", " ").strip()
+
+
+def is_file_processed_and_fresh(filepath: str) -> bool:
+    """Checks whether a file has already been processed and its .meta sidecar is fresh."""
+    meta_path = filepath + ".meta"
+    if not os.path.isfile(meta_path):
+        return False
+    try:
+        with open(meta_path, "r", encoding="utf-8") as f:
+            meta = json.load(f)
+        if not isinstance(meta, dict):
+            return False
+        is_processed = (meta.get("status") == "processed") or bool(meta.get("abgearbeitet"))
+        if not is_processed:
+            return False
+
+        # Freshness check: if source file has been modified or resized since processing, it is NOT considered fresh
+        if os.path.exists(filepath):
+            curr_stat = os.stat(filepath)
+            stored_mtime = meta.get("source_mtime", 0.0)
+            stored_size = meta.get("source_size", 0)
+            # If file was modified (> 1.5s delta to absorb filesystem timestamp jitter) or size changed:
+            if curr_stat.st_mtime > stored_mtime + 1.5 or (stored_size > 0 and curr_stat.st_size != stored_size):
+                return False
+        return True
+    except (OSError, json.JSONDecodeError, UnicodeError, ValueError, TypeError):
+        return False
+
+
+def load_meta_sidecar(filepath: str) -> dict[str, Any] | None:
+    """Reads and parses the accompanying .meta JSON sidecar file if present."""
+    meta_path = filepath if filepath.endswith(".meta") else filepath + ".meta"
+    if os.path.isfile(meta_path):
+        try:
+            with open(meta_path, encoding="utf-8") as f:
+                return json.load(f)
+        except (OSError, UnicodeError, json.JSONDecodeError, ValueError, TypeError) as e:
+            logger.debug("[FileService] Could not load sidecar %s: %s", meta_path, e)
+    return None
 
 
 class FileService:
@@ -130,6 +170,13 @@ class FileService:
         safe_move(filepath, target_filepath)
         return target_filepath
 
+    def copy_file(self, filepath: str, target_dir: str, target_filename: str) -> str:
+        """Safely copies a file into the target directory."""
+        target_filepath = deduplicate_path(os.path.join(target_dir, target_filename))
+        logger.info(f"[+] Copying file '{os.path.basename(filepath)}' -> '{target_filepath}'")
+        safe_copy(filepath, target_filepath)
+        return target_filepath
+
     def mark_for_review(
         self,
         filepath: str,
@@ -216,6 +263,112 @@ class FileService:
                 except OSError:
                     pass
 
+    def mark_as_processed(
+        self,
+        filepath: str,
+        extracted: dict[str, Any] | None = None,
+        routed_paths: list[str] | None = None,
+    ) -> bool:
+        """Creates or updates a sidecar .meta JSON file to flag documents as processed."""
+        meta_path = filepath + ".meta"
+        now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds")
+        stat = None
+        if os.path.exists(filepath):
+            try:
+                stat = os.stat(filepath)
+            except OSError:
+                stat = None
+
+        meta: dict[str, Any] = {
+            "status": "processed",
+            "abgearbeitet": True,
+            "zeit": now_iso,
+            "timestamp": now_iso,
+            "filename": os.path.basename(filepath),
+            "dateiname": os.path.basename(filepath),
+            "source_mtime": stat.st_mtime if stat else 0.0,
+            "source_size": stat.st_size if stat else 0,
+        }
+        if routed_paths:
+            meta["target_files"] = list(routed_paths)
+
+        if extracted:
+            extracted_raw = {}
+            for k, v in extracted.items():
+                if k == "page_results" and isinstance(v, list):
+                    clean_page_results = []
+                    for pr in v:
+                        if isinstance(pr, dict):
+                            clean_pr = {}
+                            for pr_k, pr_v in pr.items():
+                                if pr_k not in ["images", "raw_images", "_img", "raw"]:
+                                    if isinstance(pr_v, str):
+                                        clean_pr[pr_k] = clean_path_component(pr_v)
+                                    elif isinstance(pr_v, (set, tuple)):
+                                        clean_pr[pr_k] = list(pr_v)
+                                    else:
+                                        clean_pr[pr_k] = pr_v
+                            clean_page_results.append(clean_pr)
+                    extracted_raw["page_results"] = clean_page_results
+                elif k not in ["images", "raw_images", "_img", "raw"]:
+                    if isinstance(v, str):
+                        extracted_raw[k] = clean_path_component(v)
+                    elif isinstance(v, (set, tuple)):
+                        extracted_raw[k] = list(v)
+                    else:
+                        extracted_raw[k] = v
+            meta["extracted"] = extracted_raw
+
+        # If existing .meta exists, preserve user-added metadata / fields but clear review markers
+        if os.path.exists(meta_path):
+            try:
+                with open(meta_path, "r", encoding="utf-8") as f:
+                    existing = json.load(f)
+                if isinstance(existing, dict):
+                    merged = dict(existing)
+                    merged.update(meta)
+                    merged.pop("grund", None)
+                    merged.pop("reason", None)
+                    meta = merged
+            except Exception as e:
+                logger.debug("[FileService] Could not read existing .meta '%s': %s", meta_path, e)
+
+        # Write to unique temp file ending with .tmp.meta (atomic replace with retry)
+        tmp_path = f"{filepath}.{uuid.uuid4().hex}.tmp.meta"
+        try:
+            with open(tmp_path, "w", encoding="utf-8") as f:
+                json.dump(meta, f, ensure_ascii=False, indent=2)
+
+            delays = [0.05, 0.1, 0.25, 0.5, 1.0]
+            replaced = False
+            for attempt, delay in enumerate(delays, start=1):
+                try:
+                    os.replace(tmp_path, meta_path)
+                    replaced = True
+                    break
+                except OSError:
+                    if attempt == len(delays):
+                        raise
+                    time.sleep(delay)
+
+            if replaced:
+                logger.info("[*] Marked file as processed: '%s'", os.path.basename(filepath))
+                return True
+            return False
+        except (OSError, TypeError, ValueError) as e:
+            logger.error(f"[!] Error writing sidecar file '{meta_path}': {e}")
+            return False
+        finally:
+            if os.path.exists(tmp_path):
+                try:
+                    os.remove(tmp_path)
+                except OSError:
+                    pass
+
+    def is_file_processed(self, filepath: str) -> bool:
+        """Checks whether a file has already been processed and its .meta sidecar is fresh."""
+        return is_file_processed_and_fresh(filepath)
+
     def split_multi_page_pdf(
         self,
         filepath: str,
@@ -224,6 +377,7 @@ class FileService:
         find_doc_type_cfg_fn: Any,
         optional_fields: set | None = None,
         save_empty_pages: bool = False,
+        keep_source: bool = False,
     ) -> bool:
         """Splits a batch PDF into multiple partial PDFs based on page groups."""
         if not self.can_split_pdf:
@@ -320,7 +474,28 @@ class FileService:
                         f"[+] Partial PDF '{os.path.basename(target_filepath)}' (pages {g_pages}) saved successfully."
                     )
 
-            remove_source_with_meta(filepath)
+            if keep_source:
+                marked = self.mark_as_processed(
+                    filepath, extracted=extracted_base, routed_paths=saved_files
+                )
+                if not marked:
+                    logger.error(
+                        f"[!] Failed to mark source file '{filepath}' as processed after split. Rolling back output files."
+                    )
+                    for sf in saved_files:
+                        try:
+                            if os.path.exists(sf):
+                                os.remove(sf)
+                        except OSError:
+                            pass
+                    self.mark_for_review(
+                        filepath,
+                        reason="Failed to write processed .meta sidecar after split",
+                        extracted=extracted_base,
+                    )
+                    return False
+            else:
+                remove_source_with_meta(filepath)
             return True
         except Exception as e:
             logger.error(f"[!] Error reading or splitting '{filepath}': {e}")
@@ -330,9 +505,16 @@ class FileService:
                         os.remove(sf)
                 except OSError:
                     pass
+            self.mark_for_review(filepath, reason=f"PDF splitting error: {e}", extracted=extracted_base)
             return False
 
-    def save_filtered_pdf(self, src_path: str, dst_path: str, kept_pages: list[int]) -> str | None:
+    def save_filtered_pdf(
+        self,
+        src_path: str,
+        dst_path: str,
+        kept_pages: list[int],
+        keep_source: bool = False,
+    ) -> str | None:
         """Saves a PDF without empty pages. Returns target_filepath on success, None on failure."""
         if not self.can_split_pdf:
             logger.error("[FileService] PyMuPDF is not installed. Cannot filter PDF pages.")
@@ -354,24 +536,41 @@ class FileService:
 
         target_filepath = deduplicate_path(dst_path)
         try:
+            target_dir = os.path.dirname(target_filepath)
+            if target_dir:
+                os.makedirs(target_dir, exist_ok=True)
             with fitz.open(src_path) as doc:  # type: ignore[assignment]
                 with fitz.open() as new_doc:  # type: ignore[assignment]
                     for p_idx in kept_pages:
                         new_doc.insert_pdf(doc, from_page=p_idx - 1, to_page=p_idx - 1)
                     new_doc.save(target_filepath, garbage=4, deflate=True, clean=True)
 
-            removed = remove_source_with_meta(src_path)
-            if not removed and os.path.exists(src_path):
-                logger.error(
-                    "[!] Failed to remove source file '%s' after saving filtered PDF. Cleaning up output to prevent duplicate processing.",
-                    src_path,
-                )
-                try:
-                    if os.path.exists(target_filepath):
-                        os.remove(target_filepath)
-                except OSError:
-                    pass
-                return None
+            if keep_source:
+                marked = self.mark_as_processed(src_path, routed_paths=[target_filepath])
+                if not marked:
+                    logger.error(
+                        "[!] Failed to mark source file '%s' as processed after saving filtered PDF. Cleaning up output to prevent duplicate processing.",
+                        src_path,
+                    )
+                    try:
+                        if os.path.exists(target_filepath):
+                            os.remove(target_filepath)
+                    except OSError:
+                        pass
+                    return None
+            else:
+                removed = remove_source_with_meta(src_path)
+                if not removed and os.path.exists(src_path):
+                    logger.error(
+                        "[!] Failed to remove source file '%s' after saving filtered PDF. Cleaning up output to prevent duplicate processing.",
+                        src_path,
+                    )
+                    try:
+                        if os.path.exists(target_filepath):
+                            os.remove(target_filepath)
+                    except OSError:
+                        pass
+                    return None
 
             return target_filepath
         except Exception as e:

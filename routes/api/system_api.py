@@ -32,6 +32,7 @@ _pick_path_dialog = pick_path_dialog
 _CONFIG_SAFE_KEYS = [
     "watch_dir",
     "target_base_dir",
+    "keep_inbox_files",
     "dashboard_port",
     "document_types",
     "folder_structure",
