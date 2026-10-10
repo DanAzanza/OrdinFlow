@@ -3,12 +3,13 @@
 import logging
 import os
 from pathlib import Path
+import sys
 import threading
 import time
 from dataclasses import asdict
 from typing import Any
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, Response, jsonify, request
 
 from core.jobs import job_queue
 from core.logging_service import compute_log_stats, get_empty_log_stats
@@ -62,6 +63,7 @@ _CONFIG_SAFE_KEYS = [
     "tier1_dimension",
     "tier2_dimension",
     "tier3_dimension",
+    "vision_patch_size",
 ]
 
 
@@ -92,6 +94,40 @@ def api_status():
 @system_api_bp.route("/api/jobs", methods=["GET"])
 def api_jobs_list():
     return jsonify({"jobs": job_queue.list_jobs()})
+
+
+@system_api_bp.route("/api/events", methods=["GET"])
+def api_events():
+    """Streams real-time log, status, and queue notifications via Server-Sent Events."""
+    import json
+    import queue
+    from core.state import event_broadcaster
+
+    q = event_broadcaster.subscribe()
+
+    def stream():
+        try:
+            while not DashboardState.shutdown_event.is_set():
+                try:
+                    event = q.get(timeout=10.0)
+                    yield f"data: {json.dumps(event)}\n\n"
+                except queue.Empty:
+                    # Keep-alive comment ping to flush socket and catch disconnected clients
+                    yield ": ping\n\n"
+        except (GeneratorExit, OSError):
+            pass
+        finally:
+            event_broadcaster.unsubscribe(q)
+
+    return Response(
+        stream(),
+        mimetype="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+            "Connection": "keep-alive",
+        },
+    )
 
 
 
@@ -149,14 +185,19 @@ def api_get_logs():
 
 @system_api_bp.route("/api/log/clear", methods=["POST"])
 def api_clear_logs():
+    import glob
+
     memory_log_handler.clear()
 
     # Safely truncate active FileHandlers without file-lock collisions
+    active_dirs: set[str] = set()
     root = logging.getLogger()
     for handler in list(root.handlers):
         if isinstance(handler, logging.FileHandler):
             handler.acquire()
             try:
+                if handler.baseFilename:
+                    active_dirs.add(os.path.dirname(handler.baseFilename))
                 if handler.stream and not getattr(handler.stream, "closed", False):
                     try:
                         handler.stream.seek(0)
@@ -167,32 +208,66 @@ def api_clear_logs():
             finally:
                 handler.release()
 
-    for log_name in ["main.log", "document_router.log", "crash.log"]:
-        if os.path.exists(log_name):
-            try:
-                with open(log_name, "w", encoding="utf-8"):
-                    pass
-            except OSError as e:
-                logger.warning("Could not clear log file %s: %s", log_name, e)
+    active_dirs.add(os.getcwd())
+    if sys.platform == "win32":
+        appdata = os.environ.get("LOCALAPPDATA")
+        if appdata:
+            active_dirs.add(os.path.join(appdata, "OrdinFlow", "logs"))
+
+    for d in active_dirs:
+        if not os.path.exists(d):
+            continue
+        for prefix in ["main.log", "document_router.log", "service.log", "crash.log"]:
+            for log_file in glob.glob(os.path.join(d, f"{prefix}*")):
+                try:
+                    with open(log_file, "w", encoding="utf-8"):
+                        pass
+                except OSError as e:
+                    logger.debug("Could not clear log file %s: %s", log_file, e)
 
     return jsonify({"status": "cleared"})
 
 
 @system_api_bp.route("/api/log/stats", methods=["GET"])
 def api_get_log_stats():
-    """Parses main.log to compute accurate server-side historical statistics."""
-    log_path = "main.log" if os.path.exists("main.log") else "document_router.log"
-    if not os.path.exists(log_path):
+    """Parses main.log and rotated backups chronologically to compute accurate server-side historical statistics."""
+    lines: list[str] = []
+    base_dir = "."
+    if not os.path.exists("main.log") and not os.path.exists("document_router.log"):
+        root = logging.getLogger()
+        for handler in root.handlers:
+            if isinstance(handler, logging.FileHandler) and handler.baseFilename:
+                base_dir = os.path.dirname(handler.baseFilename)
+                break
+
+    # Read backups in chronological order (main.log.3 -> main.log.2 -> main.log.1 -> main.log)
+    log_candidates: list[str] = []
+    for i in range(3, 0, -1):
+        backup_file = os.path.join(base_dir, f"main.log.{i}")
+        if os.path.exists(backup_file):
+            log_candidates.append(backup_file)
+
+    current_file = os.path.join(base_dir, "main.log")
+    if os.path.exists(current_file):
+        log_candidates.append(current_file)
+    elif os.path.exists(os.path.join(base_dir, "document_router.log")):
+        log_candidates.append(os.path.join(base_dir, "document_router.log"))
+
+    if not log_candidates:
         return jsonify(get_empty_log_stats())
 
-    try:
-        with open(log_path, encoding="utf-8", errors="replace") as f:
-            lines = f.readlines()
-    except OSError as e:
-        logger.debug("[SystemApi] Could not read log file %s: %s", log_path, e)
-        lines = []
+    for log_path in log_candidates:
+        try:
+            with open(log_path, encoding="utf-8", errors="replace") as f:
+                lines.extend(f.readlines())
+        except OSError as e:
+            logger.debug("[SystemApi] Could not read log file %s: %s", log_path, e)
 
-    valid_types = list(DashboardState.config.document_types.keys()) if (DashboardState.config and DashboardState.config.document_types) else None
+    valid_types = (
+        list(DashboardState.config.document_types.keys())
+        if (DashboardState.config and DashboardState.config.document_types)
+        else None
+    )
     return jsonify(compute_log_stats(lines, valid_doc_types=valid_types))
 
 

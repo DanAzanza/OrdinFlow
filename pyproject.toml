@@ -1,9 +1,51 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "ordinflow"
 version = "0.9.0"
 description = "Local AI-powered document management and RPA workflow engine"
 readme = "README.md"
 requires-python = ">=3.10"
+dependencies = [
+    "Flask>=3.0.0",
+    "numpy>=1.24.0",
+    "opencv-python>=4.8.0",
+    "Pillow>=10.0.0",
+    "pydantic>=2.0.0",
+    "PyYAML>=6.0",
+    "rapidocr-onnxruntime>=1.2.0",
+    "regex>=2024.0.0",
+    "pymupdf>=1.23.0",
+    "pynput>=1.7.6",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-mock>=3.12.0",
+    "ruff>=0.5.0",
+    "pyright>=1.1.350",
+]
+server = [
+    "instructor>=1.0.0",
+    "openai>=1.0.0",
+]
+
+[tool.setuptools]
+packages = [
+    "core",
+    "core.skills",
+    "core.skills.engines",
+    "routes",
+    "routes.api",
+]
+py-modules = ["main", "dashboard"]
+
+[tool.setuptools.package-data]
+"*" = ["templates/**/*", "static/**/*", "settings/**/*"]
+
 
 [tool.ruff]
 target-version = "py312"

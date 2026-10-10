@@ -20,7 +20,7 @@ try:
         if _appdata:
             _log_dir = os.path.join(_appdata, "OrdinFlow", "logs")
             os.makedirs(_log_dir, exist_ok=True)
-    _crash_log = os.path.join(_log_dir, "crash.log")
+    _crash_log = os.path.join(_log_dir, "service.log")
     _log_f = open(_crash_log, "a", encoding="utf-8", buffering=1)
     if sys.stderr is None:
         sys.stderr = _log_f
@@ -116,12 +116,26 @@ from core.skills.queue import get_skill_queue_manager
 from core.utils import memory_log_handler
 
 
-class FlushingFileHandler(logging.FileHandler):
-    """FileHandler that flushes after every emit to prevent stale disk logs."""
+from logging.handlers import RotatingFileHandler
+
+
+class FlushingRotatingFileHandler(RotatingFileHandler):
+    """RotatingFileHandler that flushes after every emit and recovers safely from Windows lock retries."""
 
     def emit(self, record):
         super().emit(record)
         self.flush()
+
+    def doRollover(self):
+        try:
+            super().doRollover()
+        except PermissionError:
+            # Windows transient file lock recovery: ensure stream remains cleanly opened in append mode
+            if not self.stream or getattr(self.stream, "closed", False):
+                self.stream = self._open()
+
+
+FlushingFileHandler = FlushingRotatingFileHandler  # Backward compatibility alias
 
 
 class SafeStreamHandler(logging.StreamHandler):
@@ -150,7 +164,13 @@ def setup_logging():
             os.makedirs(log_dir, exist_ok=True)
     log_path = os.path.join(log_dir, "main.log")
 
-    file_handler = FlushingFileHandler(log_path, mode="a", encoding="utf-8")
+    file_handler = FlushingRotatingFileHandler(
+        log_path,
+        mode="a",
+        maxBytes=10 * 1024 * 1024,
+        backupCount=3,
+        encoding="utf-8",
+    )
     file_handler.setLevel(logging.INFO)
     file_handler.setFormatter(formatter)
 

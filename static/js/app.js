@@ -424,9 +424,10 @@ let jobsPollTimer = null;
 let syncPollTimer = null;
 
 function startUiPolling() {
-	if (!statusPollTimer) statusPollTimer = setInterval(fetchStatus, 4000);
-	if (!jobsPollTimer) jobsPollTimer = setInterval(pollJobs, 2000);
-	if (!syncPollTimer) syncPollTimer = setInterval(syncAppState, 6000);
+	initServerEvents();
+	if (!statusPollTimer) statusPollTimer = setInterval(fetchStatus, 6000);
+	if (!jobsPollTimer) jobsPollTimer = setInterval(pollJobs, 5000);
+	if (!syncPollTimer) syncPollTimer = setInterval(syncAppState, 10000);
 }
 
 function stopUiPolling() {

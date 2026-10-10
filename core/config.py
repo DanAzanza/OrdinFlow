@@ -59,8 +59,10 @@ class AppConfig:
     tier1_dimension: int = 1120
     tier2_dimension: int = 1344
     tier3_dimension: int = 1568
+    vision_patch_size: int = 28
     vision_api_timeout: float = 120.0
     vision_api_retries: int = 3
+    app_version: str = "0.9.0"
 
     # Path settings (calculated via setup_paths)
     base_dir: str = "."

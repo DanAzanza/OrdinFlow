@@ -5,7 +5,7 @@
 [![Python](https://img.shields.io/badge/Python-3.10%2B%20%2864--bit%29-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
 [![Type Checking: Pyright](https://img.shields.io/badge/Type%20Checking-Pyright%20Strict-2b5b84?style=flat-square)](https://github.com/microsoft/pyright)
 [![Linter: Ruff](https://img.shields.io/badge/Linter-Ruff-black?style=flat-square&logo=ruff)](https://github.com/astral-sh/ruff)
-[![Tests: Pytest](https://img.shields.io/badge/Tests-217%20Passed-brightgreen?style=flat-square&logo=pytest)](https://pytest.org/)
+[![Tests: Pytest](https://img.shields.io/badge/Tests-294%20Passed-brightgreen?style=flat-square&logo=pytest)](https://pytest.org/)
 [![Privacy: 100% Air--Gapped](https://img.shields.io/badge/Privacy-100%25%20Air--Gapped%20%2F%20GDPR-blue?style=flat-square)](docs/legal/PRIVACY_POLICY.md)
 [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-orange?style=flat-square)](LICENSE)
 

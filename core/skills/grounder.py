@@ -368,9 +368,9 @@ class SoMGrounder:
         half_w = int(w * 0.55)
         half_h = int(h * 0.55)
 
-        # Align tile sizes to multiples of 28 for zero-padding Qwen visual patch tokenization
-        tile_w = max(28, (half_w // patch_multiple) * patch_multiple)
-        tile_h = max(28, (half_h // patch_multiple) * patch_multiple)
+        # Align tile sizes to multiples of patch_multiple for zero-padding visual patch tokenization
+        tile_w = max(patch_multiple, (half_w // patch_multiple) * patch_multiple)
+        tile_h = max(patch_multiple, (half_h // patch_multiple) * patch_multiple)
 
         tiles: list[tuple[Image.Image, int, int]] = []
 

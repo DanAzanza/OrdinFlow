@@ -9,7 +9,12 @@ ui_bp = Blueprint("ui", __name__)
 
 @ui_bp.route("/")
 def index():
-    return render_template("index.html", session_token=DashboardState.session_token)
+    app_version = getattr(DashboardState.config, "app_version", "0.9.0") if DashboardState.config else "0.9.0"
+    return render_template(
+        "index.html",
+        session_token=DashboardState.session_token,
+        app_version=app_version,
+    )
 
 
 @ui_bp.route("/favicon.ico")

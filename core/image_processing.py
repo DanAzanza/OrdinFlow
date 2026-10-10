@@ -87,8 +87,9 @@ def _encode_pil_fallback(
     max_dim: int | None = None,
     white_border: int = 0,
     upscale: bool = True,
+    patch_size: int = 28,
 ) -> str:
-    """Fallback PIL-based scaler with letterbox padding to multiples of 28."""
+    """Fallback PIL-based scaler with letterbox padding to multiples of patch_size."""
     img = pil_image.copy()
     if img.mode != "RGB":
         img = img.convert("RGB")
@@ -102,16 +103,16 @@ def _encode_pil_fallback(
     if max_dim is not None and max_dim > 0:
         w, h = img.size
         longest_side = max(w, h)
-        target_max = (max_dim // 28) * 28 if max_dim >= 28 else 28
-        if longest_side > 0 and (longest_side != target_max or (w % 28 != 0 or h % 28 != 0)) and (longest_side > target_max or upscale):
+        target_max = (max_dim // patch_size) * patch_size if max_dim >= patch_size else patch_size
+        if longest_side > 0 and (longest_side != target_max or (w % patch_size != 0 or h % patch_size != 0)) and (longest_side > target_max or upscale):
             scale = target_max / float(longest_side)
             scaled_w = max(1, int(round(w * scale)))
             scaled_h = max(1, int(round(h * scale)))
             img = img.resize((scaled_w, scaled_h), resample=Image.Resampling.LANCZOS)
 
-            # Bottom-right letterbox padding to 28px grid
-            pad_w = ((scaled_w + 27) // 28) * 28
-            pad_h = ((scaled_h + 27) // 28) * 28
+            # Bottom-right letterbox padding to patch_size grid
+            pad_w = ((scaled_w + patch_size - 1) // patch_size) * patch_size
+            pad_h = ((scaled_h + patch_size - 1) // patch_size) * patch_size
             pad_right = pad_w - scaled_w
             pad_bottom = pad_h - scaled_h
             if pad_right > 0 or pad_bottom > 0:
@@ -272,9 +273,10 @@ class ImagePreprocessor:
 
             img_h, img_w = img.shape[:2]
             longest_side = max(img_h, img_w)
-            target_max = (max_dim // 28) * 28 if max_dim >= 28 else 28
+            patch_size = getattr(self.config, "vision_patch_size", 28) or 28
+            target_max = (max_dim // patch_size) * patch_size if max_dim >= patch_size else patch_size
 
-            if max_dim > 0 and longest_side > 0 and (longest_side != target_max or (img_w % 28 != 0 or img_h % 28 != 0)):
+            if max_dim > 0 and longest_side > 0 and (longest_side != target_max or (img_w % patch_size != 0 or img_h % patch_size != 0)):
                 scale = target_max / float(longest_side)
                 scaled_w = max(1, int(round(img_w * scale)))
                 scaled_h = max(1, int(round(img_h * scale)))
@@ -282,9 +284,9 @@ class ImagePreprocessor:
                 interp = cv2.INTER_AREA if scale < 1.0 else cv2.INTER_LANCZOS4
                 img = cv2.resize(img, (scaled_w, scaled_h), interpolation=interp)
 
-                # Bottom-right letterbox padding to multiple of 28
-                pad_w = ((scaled_w + 27) // 28) * 28
-                pad_h = ((scaled_h + 27) // 28) * 28
+                # Bottom-right letterbox padding to multiple of patch_size
+                pad_w = ((scaled_w + patch_size - 1) // patch_size) * patch_size
+                pad_h = ((scaled_h + patch_size - 1) // patch_size) * patch_size
                 pad_right = pad_w - scaled_w
                 pad_bottom = pad_h - scaled_h
 
@@ -298,11 +300,13 @@ class ImagePreprocessor:
             return base64.b64encode(buffer.tobytes()).decode("utf-8")
         except Exception:
             logger.exception("[!] Error during scaling and encoding")
+            patch_size = getattr(self.config, "vision_patch_size", 28) or 28
             return _encode_pil_fallback(
                 pil_image,
                 max_dim=max_dim,
                 white_border=0,
                 upscale=upscale,
+                patch_size=patch_size,
             )
 
     def get_prepared_page_image(

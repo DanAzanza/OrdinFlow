@@ -87,6 +87,7 @@ class ConfigUpdateSchema(BaseModel):
     tier1_dimension: int | None = None
     tier2_dimension: int | None = None
     tier3_dimension: int | None = None
+    vision_patch_size: int | None = None
 
     def to_clean_dict(self) -> dict[str, Any]:
         return self.model_dump(exclude_unset=True)

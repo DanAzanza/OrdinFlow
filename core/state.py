@@ -6,9 +6,52 @@ in a decoupled service interface (`DMSService`) and `DashboardState`.
 
 from __future__ import annotations
 
+import queue
 import threading
 import time
 from typing import Any
+
+
+class EventBroadcaster:
+    """Thread-safe pub-sub event broadcaster for Server-Sent Events (SSE).
+
+    Uses bounded queues with drop-oldest overflow to guarantee zero blocking
+    on worker threads. Never calls Python logging directly.
+    """
+
+    def __init__(self, maxsize: int = 200) -> None:
+        self._subscribers: set[queue.Queue[dict[str, Any]]] = set()
+        self._lock = threading.Lock()
+        self._maxsize = maxsize
+
+    def subscribe(self) -> queue.Queue[dict[str, Any]]:
+        q: queue.Queue[dict[str, Any]] = queue.Queue(maxsize=self._maxsize)
+        with self._lock:
+            self._subscribers.add(q)
+        return q
+
+    def unsubscribe(self, q: queue.Queue[dict[str, Any]]) -> None:
+        with self._lock:
+            self._subscribers.discard(q)
+
+    def broadcast(self, event: dict[str, Any]) -> None:
+        with self._lock:
+            subscribers = list(self._subscribers)
+        for q in subscribers:
+            try:
+                q.put_nowait(event)
+            except queue.Full:
+                try:
+                    q.get_nowait()
+                except queue.Empty:
+                    pass
+                try:
+                    q.put_nowait(event)
+                except queue.Full:
+                    pass
+
+
+event_broadcaster = EventBroadcaster()
 
 
 class DMSService:

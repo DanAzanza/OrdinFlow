@@ -6,10 +6,21 @@ if (state.lastLogId === undefined) state.lastLogId = 0;
 if (!state.logLevelFilter) state.logLevelFilter = "ALL";
 if (state.autoScroll === undefined) state.autoScroll = true;
 
+window.AppEvents.on("server:log", (entry) => {
+	if (!entry || entry.id === undefined) return;
+	if (entry.id <= state.lastLogId) return;
+	state.lastLogId = entry.id;
+	state.logRecords.push(entry);
+	if (state.logRecords.length > 1500) {
+		state.logRecords = state.logRecords.slice(-1500);
+	}
+	renderLogLines();
+});
+
 function startLogPolling() {
 	stopLogPolling();
 	fetchLogDelta();
-	state.logPollInterval = setInterval(fetchLogDelta, 1200);
+	state.logPollInterval = setInterval(fetchLogDelta, 4000);
 }
 
 function stopLogPolling() {

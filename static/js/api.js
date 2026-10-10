@@ -24,6 +24,31 @@ window.AppEvents = {
 	},
 };
 
+let _serverEventSource = null;
+
+function initServerEvents() {
+	if (typeof EventSource === "undefined" || _serverEventSource) return;
+	try {
+		_serverEventSource = new EventSource("/api/events");
+		_serverEventSource.onmessage = (event) => {
+			if (!event.data) return;
+			try {
+				const parsed = JSON.parse(event.data);
+				if (parsed && parsed.type) {
+					window.AppEvents.emit(`server:${parsed.type}`, parsed.data);
+				}
+			} catch (_) {
+				// Ignore non-JSON comment pings
+			}
+		};
+		_serverEventSource.onerror = () => {
+			// Auto-reconnect managed by browser EventSource
+		};
+	} catch (e) {
+		console.debug("[SSE] EventSource init skipped:", e);
+	}
+}
+
 const state = {
 	cases: [],
 	inbox: [],

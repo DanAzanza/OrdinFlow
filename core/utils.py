@@ -26,16 +26,23 @@ class MemoryLogHandler(logging.Handler):
     def emit(self, record: logging.LogRecord) -> None:
         try:
             msg = record.getMessage()
+            entry: dict[str, Any] | None = None
             with self._lock:
                 self.seq_id += 1
-                self.records.append(
-                    {
-                        "id": self.seq_id,
-                        "level": record.levelname,
-                        "message": msg,
-                        "time": time.strftime("%H:%M:%S", time.localtime(record.created)),
-                    }
-                )
+                entry = {
+                    "id": self.seq_id,
+                    "level": record.levelname,
+                    "message": msg,
+                    "time": time.strftime("%H:%M:%S", time.localtime(record.created)),
+                }
+                self.records.append(entry)
+            if entry is not None:
+                try:
+                    from core.state import event_broadcaster
+
+                    event_broadcaster.broadcast({"type": "log", "data": entry})
+                except Exception:  # noqa: S110
+                    pass
         except Exception:
             self.handleError(record)
 
@@ -50,8 +57,19 @@ class MemoryLogHandler(logging.Handler):
                 self._initialized_from_file = True
                 return
         try:
+            recent: list[str] = []
+            backup_candidate = f"{log_path}.1"
             with open(log_path, encoding="utf-8", errors="replace") as f:
                 recent = list(deque(f, maxlen=limit))
+
+            if len(recent) < limit and os.path.exists(backup_candidate):
+                try:
+                    remaining = limit - len(recent)
+                    with open(backup_candidate, encoding="utf-8", errors="replace") as bf:
+                        prev_lines = list(deque(bf, maxlen=remaining))
+                        recent = prev_lines + recent
+                except OSError:
+                    pass
             parsed: list[dict[str, Any]] = []
             for line in recent:
                 line_str = line.strip()

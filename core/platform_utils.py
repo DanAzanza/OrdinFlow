@@ -9,6 +9,7 @@ from pathlib import Path
 import string
 import subprocess
 import sys
+from typing import Any
 
 from core.utils import sanitize_safe_path
 
@@ -48,38 +49,41 @@ def pick_path_dialog(
                 elif p.is_file():
                     init_dir = str(p.parent)
 
-    # 1. Try tkinter dialog
-    try:
-        import tkinter as tk
-        from tkinter import filedialog
+    # 1. Try tkinter dialog (strictly if running on main thread to avoid Win32 COM/Tcl apartment lockups)
+    import threading
 
-        root = tk.Tk()
-        root.withdraw()
-        root.attributes("-topmost", True)
+    if threading.current_thread() is threading.main_thread():
+        try:
+            import tkinter as tk
+            from tkinter import filedialog
 
-        if picker_type == "file":
-            filetypes = (
-                [("GGUF Models (*.gguf)", "*.gguf"), ("All Files (*.*)", "*.*")]
-                if any(x in title.lower() for x in ("model", "gguf", "projector", "mmproj"))
-                else [("All Files (*.*)", "*.*")]
-            )
-            selected = filedialog.askopenfilename(
-                initialdir=init_dir,
-                title=title or "Select File",
-                filetypes=filetypes,
-            )
-        else:
-            selected = filedialog.askdirectory(
-                initialdir=init_dir,
-                title=title or "Select Folder",
-            )
-        root.destroy()
-        if selected:
-            selected_path = os.path.normpath(selected)
-    except Exception as e:
-        logger.debug("[PlatformUtils] Native tkinter dialog failed: %s", e)
+            root = tk.Tk()
+            root.withdraw()
+            root.attributes("-topmost", True)
 
-    # 2. PowerShell fallback on Windows if tkinter didn't produce a path
+            if picker_type == "file":
+                filetypes = (
+                    [("GGUF Models (*.gguf)", "*.gguf"), ("All Files (*.*)", "*.*")]
+                    if any(x in title.lower() for x in ("model", "gguf", "projector", "mmproj"))
+                    else [("All Files (*.*)", "*.*")]
+                )
+                selected = filedialog.askopenfilename(
+                    initialdir=init_dir,
+                    title=title or "Select File",
+                    filetypes=filetypes,
+                )
+            else:
+                selected = filedialog.askdirectory(
+                    initialdir=init_dir,
+                    title=title or "Select Folder",
+                )
+            root.destroy()
+            if selected:
+                selected_path = os.path.normpath(selected)
+        except Exception as e:
+            logger.debug("[PlatformUtils] Native tkinter dialog failed: %s", e)
+
+    # 2. PowerShell fallback on Windows in STA mode without flashing console window
     if not selected_path and (sys.platform == "win32" or os.name == "nt"):
         try:
             fallback_title = "Select File" if picker_type == "file" else "Select Folder"
@@ -106,11 +110,15 @@ def pick_path_dialog(
                 )
 
             encoded_cmd = base64.b64encode(ps_script.encode("utf-16le")).decode("ascii")
+            run_kwargs: dict[str, Any] = {}
+            if sys.platform == "win32":
+                run_kwargs["creationflags"] = 0x08000000  # CREATE_NO_WINDOW
             res = subprocess.run(
-                ["powershell", "-NoProfile", "-NonInteractive", "-EncodedCommand", encoded_cmd],
+                ["powershell", "-NoProfile", "-STA", "-EncodedCommand", encoded_cmd],
                 capture_output=True,
                 text=True,
                 timeout=30,
+                **run_kwargs,
             )
             if res.returncode == 0 and res.stdout.strip():
                 selected_path = os.path.normpath(res.stdout.strip())

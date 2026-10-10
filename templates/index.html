@@ -6,7 +6,7 @@
         <meta name="description" content="OrdinFlow - Autonomous Document Routing and Local Skill Execution Engine" />
         <meta name="ordinflow-token" content="{{ session_token or '' }}" />
         <title>OrdinFlow</title>
-        <link rel="stylesheet" href="/static/css/app.css" />
+        <link rel="stylesheet" href="/static/css/app.css?v={{ app_version }}" />
     </head>
     <body>
         <div class="app-shell" id="appShell">
@@ -722,21 +722,21 @@
         <!-- ═══════ TOAST CONTAINER ═══════ -->
         <div class="toast-container" id="toasts"></div>
 
-        <script src="/static/js/api.js"></script>
-        <script src="/static/js/inbox_drawer.js"></script>
-        <script src="/static/js/inbox.js"></script>
-        <script src="/static/js/cases.js"></script>
-        <script src="/static/js/config_tab.js"></script>
-        <script src="/static/js/doctypes_tab.js"></script>
-        <script src="/static/js/skills_queue.js"></script>
-        <script src="/static/js/skills_recorder.js"></script>
-        <script src="/static/js/skills_steps.js"></script>
-        <script src="/static/js/skills_copilot.js"></script>
-        <script src="/static/js/skills_doctypes.js"></script>
-        <script src="/static/js/skills_tab.js"></script>
-        <script src="/static/js/skills_creation.js"></script>
-        <script src="/static/js/skills_yaml.js"></script>
-        <script src="/static/js/log_tab.js"></script>
-        <script src="/static/js/app.js"></script>
+        <script src="/static/js/api.js?v={{ app_version }}"></script>
+        <script src="/static/js/inbox_drawer.js?v={{ app_version }}"></script>
+        <script src="/static/js/inbox.js?v={{ app_version }}"></script>
+        <script src="/static/js/cases.js?v={{ app_version }}"></script>
+        <script src="/static/js/config_tab.js?v={{ app_version }}"></script>
+        <script src="/static/js/doctypes_tab.js?v={{ app_version }}"></script>
+        <script src="/static/js/skills_queue.js?v={{ app_version }}"></script>
+        <script src="/static/js/skills_recorder.js?v={{ app_version }}"></script>
+        <script src="/static/js/skills_steps.js?v={{ app_version }}"></script>
+        <script src="/static/js/skills_copilot.js?v={{ app_version }}"></script>
+        <script src="/static/js/skills_doctypes.js?v={{ app_version }}"></script>
+        <script src="/static/js/skills_tab.js?v={{ app_version }}"></script>
+        <script src="/static/js/skills_creation.js?v={{ app_version }}"></script>
+        <script src="/static/js/skills_yaml.js?v={{ app_version }}"></script>
+        <script src="/static/js/log_tab.js?v={{ app_version }}"></script>
+        <script src="/static/js/app.js?v={{ app_version }}"></script>
     </body>
 </html>
