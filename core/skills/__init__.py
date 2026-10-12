@@ -2,6 +2,7 @@
 
 from core.skills.base import BaseSkill
 from core.skills.engines.export_engine import ExportEngine
+from core.skills.engines.gdt_engine import GDTEngine
 from core.skills.engines.import_engine import ImportEngine
 from core.skills.exceptions import SkillActionError
 from core.skills.grounder import SoMGrounder
@@ -22,6 +23,7 @@ __all__ = [
     "BaseSkill",
     "ImportEngine",
     "ExportEngine",
+    "GDTEngine",
     "SkillExecutor",
     "SkillActionError",
     "SkillManager",

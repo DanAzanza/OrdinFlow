@@ -147,10 +147,13 @@ def paste_text_via_clipboard(text: str, press_enter: bool = False) -> bool:
         # 4. Mandatory yield delay (80ms) so target app processes WM_PASTE before clipboard restoration
         time.sleep(0.08)
 
-        # 5. Restore previous clipboard text if available
-        if prev_text is not None and _open_clipboard_with_retry(user32):
+        # 5. Restore previous clipboard text or empty clipboard to eliminate PII leakage
+        if _open_clipboard_with_retry(user32):
             try:
-                _set_clipboard_unicode(user32, kernel32, prev_text)
+                if prev_text is not None:
+                    _set_clipboard_unicode(user32, kernel32, prev_text)
+                else:
+                    user32.EmptyClipboard()
             finally:
                 user32.CloseClipboard()
 

@@ -95,3 +95,18 @@
 * Document values (names, case IDs) originate from untrusted OCR/VLM output and must NEVER be interpolated into command strings via string formatting/replace.
 * Values are injected strictly via `$env:ORDINFLOW_<KEY>` process environment variables. PowerShell scripts consume `$env:ORDINFLOW_*` directly.
 
+---
+
+## 5. Medical PVS & RPA Integration Quirks
+
+### 🏥 German PVS GDT 2.1 / 3.0 Parser Quirks & Watcher Races
+* **Strict Byte Length vs. Char Length**: GDT lines follow `LLLLFFFFDDDD...\r\n`. `LLLL` is the byte count of the whole line including `LLLL` itself and `\r\n` (`len(data) + 10`). In CP437 byte count equals char count, but byte measurements must always occur *after* encoding to prevent buffer overflows in legacy PVS.
+* **Deterministic Tag 8100 Fixed Width**: Tag 8100 (total file length in bytes) must be formatted as fixed 18 bytes (`00188100%08d\r\n`). Variable-width length formatting triggers iterative circular length recalculations.
+* **70-Character Line Limit**: Legacy DOS/Windows PVS parsers (Medistar, TurboMed, Albis) truncate or crash if Tag 6220 (Befund) exceeds 70 characters. Free text must be word-wrapped into consecutive 6220 tags.
+* **Directory Watcher Ingestion Race**: PVS directory watchers scan folders continuously and ingest incomplete files if written directly. Exports must write to `.gdt.tmp`, call `os.fsync()`, and atomically swap via `os.replace()`. Optional semaphore trigger files (`.sem` / `.ok`) must be written strictly *after* the `.gdt` rename.
+
+### 🛡️ Win32 RPA Focus Guard, Modal Hierarchies & Lock Screens
+* **Modal Child Hierarchy (`GA_ROOTOWNER`)**: Strict window title matching fails when target apps open modal file dialogs ("Speichern unter..."). The focus guard must inspect `GetAncestor(hwnd, GA_ROOTOWNER)` and match the target PID (`GetWindowThreadProcessId`) to permit legitimate modal child dialogs while blocking focus theft by unrelated foreground apps.
+* **Detached Desktop / Lock Screen**: When Windows is locked (`LockApp.exe`, `LogonUI.exe`) or screen saver is active, `GetForegroundWindow()` returns 0 or the lock screen handle. Keystroke simulation must fail-closed immediately to avoid typing sensitive data into login screens or failing silently.
+* **PII Clipboard Sanitization**: Pasting patient metadata via clipboard requires explicitly clearing the Win32 clipboard (`EmptyClipboard()`) in `finally` blocks to prevent sensitive patient data from leaking into Windows Clipboard History (`Win+V`).
+

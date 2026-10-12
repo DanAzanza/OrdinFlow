@@ -235,6 +235,7 @@ class ExportEngine(BaseSkill):
                     action_type=action_type,
                     context=context,
                     substitute_fn=self._substitute_placeholders,
+                    target_window=self.target_window,
                 ):
                     return False
 
@@ -458,6 +459,41 @@ class ExportEngine(BaseSkill):
                 if var_name:
                     context[var_name] = self._substitute_placeholders(raw_val, context)
                     logger.info("  [Action %s] SET_VARIABLE: {%s} = %r", step_id, var_name, context[var_name])
+
+            # 15. EXPORT_GDT (Direct PVS Gerätedatenträger Export)
+            elif action_type == "EXPORT_GDT":
+                from core.skills.engines.gdt_engine import export_case_to_gdt
+
+                target_dir = self._substitute_placeholders(
+                    str(step.get("target_dir") or step.get("export_dir") or "./PVS_Transfer"),
+                    context,
+                )
+                codepage = str(step.get("codepage") or "cp437")
+                sender_id = str(step.get("sender_id") or "ORDINFLOW")
+                receiver_id = str(step.get("receiver_id") or "PVS")
+                write_sem = bool(step.get("write_semaphore", False))
+                try:
+                    gdt_path = export_case_to_gdt(
+                        data=dict(context),
+                        target_dir=target_dir,
+                        codepage=codepage,
+                        sender_id=sender_id,
+                        receiver_id=receiver_id,
+                        write_semaphore=write_sem,
+                    )
+                    context["last_gdt_file"] = gdt_path
+                    logger.info("  [Action %s] EXPORT_GDT exported: %s", step_id, gdt_path)
+                except Exception as e:
+                    err_msg = f"EXPORT_GDT failed in step {step_id}: {e}"
+                    logger.error("  [!] %s", err_msg)
+                    if not handle_action_error(
+                        step=step,
+                        step_id=step_id,
+                        error_msg=err_msg,
+                        context=context,
+                        save_screenshot_fn=lambda sid, msg: self._save_failure_screenshot(sid, msg, None),
+                    ):
+                        return False
 
             # Optional post-step delay
             delay_ms = int(step.get("delay_ms", 300))

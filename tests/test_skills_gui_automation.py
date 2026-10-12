@@ -256,6 +256,10 @@ def test_mouse_click_uia_fast_path(monkeypatch):
         "core.skills.action_executor.send_native_click",
         lambda x, y, button="left", double=False: click_coords.append((x, y)) or True,
     )
+    monkeypatch.setattr(
+        "core.skills.action_executor.verify_and_ensure_focus",
+        lambda win: (True, ""),
+    )
 
     step = {
         "id": "uia_btn_click",

@@ -56,6 +56,10 @@ if sys.platform == "win32":
         user32.IsHungAppWindow.restype = wintypes.BOOL
         user32.SetCursorPos.argtypes = [ctypes.c_int, ctypes.c_int]
         user32.SetCursorPos.restype = wintypes.BOOL
+        user32.GetAncestor.argtypes = [wintypes.HWND, ctypes.c_uint]
+        user32.GetAncestor.restype = wintypes.HWND
+
+    GA_ROOTOWNER = 3
 
 
 def find_window_hwnd(title_pattern: str, require_visible: bool = True) -> int | None:
@@ -124,6 +128,121 @@ def get_active_window_title() -> str:
         except (AttributeError, OSError, RuntimeError, ValueError):
             pass
     return "Remote Desktop*"
+
+
+def get_foreground_hwnd() -> int | None:
+    """Returns the HWND of the currently active foreground window on Windows."""
+    if sys.platform != "win32":
+        return None
+    try:
+        hwnd = ctypes.windll.user32.GetForegroundWindow()
+        return int(hwnd) if hwnd else None
+    except Exception:
+        return None
+
+
+def get_window_pid(hwnd: int) -> int | None:
+    """Returns the process ID (PID) of the window."""
+    if sys.platform != "win32" or not hwnd:
+        return None
+    try:
+        pid = wintypes.DWORD()
+        ctypes.windll.user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+        return int(pid.value) if pid.value else None
+    except Exception:
+        return None
+
+
+def get_window_root_owner(hwnd: int) -> int | None:
+    """Returns the root owner HWND of a window (GA_ROOTOWNER = 3)."""
+    if sys.platform != "win32" or not hwnd:
+        return None
+    try:
+        owner = ctypes.windll.user32.GetAncestor(hwnd, 3)  # GA_ROOTOWNER = 3
+        return int(owner) if owner else None
+    except Exception:
+        return None
+
+
+def is_desktop_locked_or_minimized() -> tuple[bool, str]:
+    """Detects if the Windows desktop is locked (Win+L) or detached in RDP/Citrix."""
+    if sys.platform != "win32":
+        return False, ""
+    try:
+        fg = ctypes.windll.user32.GetForegroundWindow()
+        if not fg:
+            return True, "No active foreground window (desktop surface detached or RDP minimized)"
+        title = get_active_window_title().lower()
+        if any(lock_ind in title for lock_ind in ("lockapp", "logonui", "windows-sicherheit", "windows security")):
+            return True, f"Windows lock screen active ({title})"
+    except Exception as e:
+        logger.debug("[WindowManager] is_desktop_locked_or_minimized error: %s", e)
+    return False, ""
+
+
+def is_target_or_child_active(target_pattern: str, target_hwnd: int | None = None) -> bool:
+    """Checks whether the foreground window matches target pattern, shares PID, or is an owned child modal."""
+    if sys.platform != "win32" or not target_pattern:
+        return True
+    try:
+        fg_hwnd = get_foreground_hwnd()
+        if not fg_hwnd:
+            return False
+
+        active_title = get_active_window_title().strip()
+        clean_pat = target_pattern.lower().replace("*", "").strip()
+
+        # 1. Direct title pattern match
+        if clean_pat in active_title.lower():
+            return True
+
+        # 2. Check HWND hierarchy
+        t_hwnd = target_hwnd if target_hwnd else find_window_hwnd(target_pattern)
+        if not t_hwnd:
+            return False
+
+        if fg_hwnd == t_hwnd:
+            return True
+
+        # 3. Check Root Owner (e.g. child modal dialog)
+        root_owner = get_window_root_owner(fg_hwnd)
+        if root_owner and (root_owner == t_hwnd or root_owner == get_window_root_owner(t_hwnd)):
+            return True
+
+        # 4. Check matching Process ID (PID)
+        fg_pid = get_window_pid(fg_hwnd)
+        t_pid = get_window_pid(t_hwnd)
+        if fg_pid and t_pid and fg_pid == t_pid:
+            return True
+
+    except Exception as e:
+        logger.debug("[WindowManager] is_target_or_child_active error: %s", e)
+
+    return False
+
+
+def verify_and_ensure_focus(target_pattern: str | None, auto_activate: bool = True) -> tuple[bool, str]:
+    """Verifies that the target application or one of its child dialogs has focus before input dispatch."""
+    if sys.platform != "win32" or not target_pattern:
+        return True, ""
+
+    locked, lock_reason = is_desktop_locked_or_minimized()
+    if locked:
+        return False, f"Desktop locked or detached: {lock_reason}"
+
+    if is_target_or_child_active(target_pattern):
+        return True, ""
+
+    if auto_activate:
+        t_hwnd = find_window_hwnd(target_pattern)
+        if t_hwnd:
+            activate_window(t_hwnd)
+            time.sleep(0.12)
+            if is_target_or_child_active(target_pattern, t_hwnd):
+                return True, ""
+
+    active_title = get_active_window_title()
+    return False, f"Target window '{target_pattern}' is not active (currently active: '{active_title}')"
 
 
 def save_failure_screenshot(step_id: str, desc: str = "", window_title: str | None = None) -> str | None:

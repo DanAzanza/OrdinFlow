@@ -290,7 +290,7 @@ function initDrawerDocSections(docType, extractedData = {}) {
 	}
 
 	const rawDoc = String(docType || "").trim();
-	const isCompound = rawDoc.includes("+") && !dokArtOptions.includes(rawDoc);
+	const isCompound = rawDoc.includes("+") && !docTypeOptions.includes(rawDoc);
 	if (isCompound) {
 		const parts = rawDoc.split("+").map(s => s.trim()).filter(Boolean);
 		if (parts.length > 1) {
@@ -306,7 +306,7 @@ function initDrawerDocSections(docType, extractedData = {}) {
 	return [
 		{
 			id: "sec_" + Date.now() + "_0_" + Math.floor(Math.random() * 1000),
-			docType: rawDoc || dokArtOptions[0] || "Document",
+			docType: rawDoc || docTypeOptions[0] || "Document",
 			pages: "all",
 			extracted: Object.assign({}, extractedData)
 		}
@@ -385,7 +385,7 @@ function buildGenericInspectorForm(docType = null, extractedData = {}) {
 	state.drawerDocSections.forEach((sec, idx) => {
 		const curDocType = sec.docType;
 		const docTypes = getImportSkillsDocTypes();
-		const docCfg = docTypes[curDokArt] || (state.config && state.config.document_types ? state.config.document_types[curDokArt] : null);
+		const docCfg = docTypes[curDocType] || (state.config && state.config.document_types ? state.config.document_types[curDocType] : null);
 		const extractionFieldsConfig = (docCfg && docCfg.extraction_fields) ? docCfg.extraction_fields : null;
 		const isDependent = docCfg && (docCfg.dependent === true || (docCfg.routing && docCfg.routing.dependent === true));
 
@@ -441,8 +441,8 @@ function buildGenericInspectorForm(docType = null, extractedData = {}) {
 			}
 		}
 
-		const hasMatch = dokArtOptions.includes(curDokArt);
-		const optionsList = hasMatch ? dokArtOptions : (curDokArt ? [curDokArt, ...dokArtOptions] : dokArtOptions);
+		const hasMatch = docTypeOptions.includes(curDocType);
+		const optionsList = hasMatch ? docTypeOptions : (curDocType ? [curDocType, ...docTypeOptions] : docTypeOptions);
 
 		html += `
 			<div class="drawer-section-card" data-secid="${escapeHtml(String(sec.id))}">
@@ -525,8 +525,8 @@ function buildGenericInspectorForm(docType = null, extractedData = {}) {
 		` : ""}
 
 		<div class="inbox-drawer-action-row">
-			<button type="button" class="btn btn-primary btn-sm inbox-drawer-btn-flex" onclick="submitDrawerInspector()">✅ Approve & Move</button>
-			<button type="button" class="btn btn-danger btn-sm" onclick="inspectorDeleteCurrent()">🗑️ Delete document</button>
+			<button type="button" class="btn btn-primary btn-sm inbox-drawer-btn-flex inspector-submit-btn" onclick="submitDrawerInspector()">✅ Approve & Move <kbd class="kbd-badge">Ctrl+↵</kbd></button>
+			<button type="button" class="btn btn-danger btn-sm" onclick="inspectorDeleteCurrent()">🗑️ Delete document <kbd class="kbd-badge">Alt+Del</kbd></button>
 		</div>`;
 
 	return html;
@@ -578,8 +578,8 @@ function buildFolderInspectorForm(folder, extractedData = {}) {
 
 	html += `
 		<div class="inbox-drawer-action-row">
-			<button type="button" class="btn btn-primary btn-sm inbox-drawer-btn-flex" onclick="submitDrawerInspector()">✅ Save</button>
-			<button type="button" class="btn btn-danger btn-sm" onclick="inspectorDeleteCurrent()">🗑️ Delete folder</button>
+			<button type="button" class="btn btn-primary btn-sm inbox-drawer-btn-flex inspector-submit-btn" onclick="submitDrawerInspector()">✅ Save <kbd class="kbd-badge">Ctrl+↵</kbd></button>
+			<button type="button" class="btn btn-danger btn-sm" onclick="inspectorDeleteCurrent()">🗑️ Delete folder <kbd class="kbd-badge">Alt+Del</kbd></button>
 		</div>
 	`;
 
@@ -587,7 +587,11 @@ function buildFolderInspectorForm(folder, extractedData = {}) {
 	return html;
 }
 
+let isSubmittingDrawer = false;
+
 async function submitDrawerInspector() {
+	if (isSubmittingDrawer) return;
+
 	const context = state.inspectorContext || "inbox";
 	const filename = state.inspectorFile;
 	const folder = state.inspectorFolder;
@@ -603,6 +607,10 @@ async function submitDrawerInspector() {
 			if (fieldKey) payload[fieldKey] = el.value.trim();
 		});
 
+		isSubmittingDrawer = true;
+		const submitBtns = document.querySelectorAll(".inspector-submit-btn");
+		submitBtns.forEach((b) => { b.disabled = true; });
+
 		try {
 			const res = await api("/api/cases/" + encodeURIComponent(folder), {
 				method: "PUT",
@@ -615,6 +623,9 @@ async function submitDrawerInspector() {
 			AppEvents.emit("cases:refresh");
 		} catch (e) {
 			toast("Error saving folder: " + e.message, "error");
+		} finally {
+			isSubmittingDrawer = false;
+			submitBtns.forEach((b) => { b.disabled = false; });
 		}
 		return;
 	}
@@ -651,6 +662,10 @@ async function submitDrawerInspector() {
 		documents: documentsPayload
 	};
 
+	isSubmittingDrawer = true;
+	const submitBtns = document.querySelectorAll(".inspector-submit-btn");
+	submitBtns.forEach((b) => { b.disabled = true; });
+
 	try {
 		const res = await api("/api/split_inspector/submit", {
 			method: "POST",
@@ -663,6 +678,9 @@ async function submitDrawerInspector() {
 		AppEvents.emit("cases:refresh");
 	} catch (e) {
 		toast("Approval error: " + e.message, "error");
+	} finally {
+		isSubmittingDrawer = false;
+		submitBtns.forEach((b) => { b.disabled = false; });
 	}
 }
 
@@ -673,12 +691,14 @@ async function inspectorDeleteCurrent() {
 
 	if (context === "folder_edit") {
 		if (!folder) return;
+		if (!confirm(`Fall-Ordner '${folder}' wirklich löschen?`)) return;
 		closeAppInspector();
 		deleteFolder(folder);
 		return;
 	}
 
 	if (!fn) return;
+	if (!confirm(`Dokument '${fn}' wirklich in den Papierkorb verschieben?`)) return;
 	closeAppInspector();
 	if (context === "cases") {
 		deleteFile("cases", folder, fn);

@@ -5,7 +5,7 @@
 [![Python](https://img.shields.io/badge/Python-3.10%2B%20%2864--bit%29-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
 [![Type Checking: Pyright](https://img.shields.io/badge/Type%20Checking-Pyright%20Standard-2b5b84?style=flat-square)](https://github.com/microsoft/pyright)
 [![Linter: Ruff](https://img.shields.io/badge/Linter-Ruff-black?style=flat-square&logo=ruff)](https://github.com/astral-sh/ruff)
-[![Tests: Pytest](https://img.shields.io/badge/Tests-294%20Passed-brightgreen?style=flat-square&logo=pytest)](https://pytest.org/)
+[![Tests: Pytest](https://img.shields.io/badge/Tests-309%20Passed-brightgreen?style=flat-square&logo=pytest)](https://pytest.org/)
 [![Privacy: 100% Air--Gapped](https://img.shields.io/badge/Privacy-100%25%20Air--Gapped%20%2F%20GDPR-blue?style=flat-square)](docs/legal/PRIVACY_POLICY.md)
 [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-orange?style=flat-square)](LICENSE)
 
@@ -95,6 +95,7 @@ The Inbox view provides live oversight over all ingested documents. If a documen
 - **Field-Level Confidence Badges:** Visual indicators highlighting fields verified across both OCR and Vision-LLM.
 - **Multipage Splitting:** Automatically detects and splits multi-document PDF collations into individual case files.
 - **One-Click Rapid Assignment:** Manually review, adjust, or reprocess files with instant live feedback.
+- **Keyboard-Driven Rapid Review:** Streamlined ergonomics for medical practice staff — navigate the queue via arrow keys (`↑`/`↓` or `j`/`k`), open the drawer with `Enter`, confirm/route with `Ctrl+Enter`, delete with `Delete`, and close with `Esc`.
 
 ---
 
@@ -123,6 +124,15 @@ Define new document types, recognition rules, and extraction fields in seconds w
 *Visual Schema Builder: Custom document types, semantic extraction prompts, and validation rules.*
 
 </div>
+
+---
+
+### 5. Native Medical PVS GDT 2.1 / 3.0 Export & Hardened RPA
+Beyond general desktop automation, OrdinFlow includes a specialized GDT engine compliant with the German QMS / bvitg GDT 2.1 and 3.0 specification (**Satzart 6302 - Befundübermittlung**) for direct, headless electronic health record integration into German Praxisverwaltungssysteme (*CGM Medistar, TurboMed, CGM ALBIS, medatixx / x.iserv, Tomedo, DURIA*):
+- **Deterministic GDT Parser Compatibility:** Generates exact 4-digit tags (`FFFF`), strict byte-length headers (`LLLL`), deterministic Tag 8100 fixed file-length calculation, and 70-character word-wrapping for medical findings to prevent buffer truncation in legacy PVS parsers.
+- **Robust Encoding & NFKD Transliteration:** Native `CP437` (DOS standard) and `ISO-8859-15` (ANSI) support with NFKD ASCII-folding transliteration that preserves German Umlauts (`ä, ö, ü, ß`) while gracefully handling unencodable international characters without `?` corruption.
+- **Atomic File Swaps & Directory Watcher Resilience:** Eliminates incomplete file read races in PVS directory watchers via temporary `.gdt.tmp` writes, filesystem sync (`os.fsync`), and atomic `os.replace` swaps with optional semaphore files (`.sem`).
+- **Win32 Focus Guard & Modal Hierarchy:** Hardens desktop RPA automation by validating foreground window ownership via `GA_ROOTOWNER` and target process ID inheritance (allowing legitimate modal dialogs like *"Speichern unter..."* while instantly aborting upon focus theft), detecting lock screens (`LockApp.exe`), and sanitizing the Windows clipboard after pasting patient data.
 
 ---
 
@@ -262,7 +272,11 @@ OrdinFlow/
 │   ├── utils.py                  # Sidecar helpers, sanitization & date normalizers
 │   ├── vision.py                 # VLM prompt formatting & JSON extraction
 │   ├── voting.py                 # Consensus metric, Levenshtein clustering & weighted voting
-│   └── skills/                   # Agentic RPA engine (grounder, manager, queue, shield)
+│   └── skills/                   # Agentic RPA & integration engines
+│       ├── engines/              # GDT 2.1/3.0 PVS engine, RPA executor, import engine
+│       ├── action_executor.py    # Win32 keystrokes & clicks with RPA focus guard
+│       ├── window_manager.py     # Win32 window focus, modal hierarchy & lock detection
+│       └── grounder.py           # Set-of-Mark visual grounding for desktop UIs
 ├── routes/                       # Flask REST API endpoints & UI handlers
 │   └── api/                      # Cases, inbox, skills CRUD, split & system APIs
 ├── static/ & templates/          # Modern web dashboard UI & stylesheet
@@ -272,7 +286,7 @@ OrdinFlow/
 │   ├── setup_environment.py      # Hardware auto-detection & wheel installer
 │   ├── download_models.py        # Atomic model downloader with GGUF header validation
 │   └── verify_ci.py              # Full CI verification runner (Ruff, Pyright, Pytest)
-├── tests/                        # Comprehensive automated test suite (294+ tests)
+├── tests/                        # Comprehensive automated test suite (309+ tests)
 ├── Install_OrdinFlow.bat         # 1-Click Windows installer & hardware orchestrator
 ├── Start_OrdinFlow.bat           # 1-Click windowless background launcher
 └── main.py                       # CLI & service entrypoint
@@ -288,6 +302,7 @@ OrdinFlow/
 | **VLM Inference** | `llama-cpp-python` / GGUF | In-process native C++ inference; eliminates external heavy model servers and minimizes VRAM footprint. |
 | **Vision Models** | Qwen 2.5 / 3-VL (4B / 7B) | State-of-the-art visual document reasoning and multilingual comprehension. |
 | **OCR Engine** | RapidOCR (`onnxruntime`) | Lightweight deep-learning OCR in ONNX format; zero system `.exe` dependencies (cross-platform, zero setup). |
+| **PVS Integration** | QMS / bvitg GDT 2.1 / 3.0 | Headless Satzart 6302 file transfer for German EHR systems with atomic file swaps and CP437/ISO-8859-15 encoding. |
 | **PDF & Graphics** | PyMuPDF (`fitz`), OpenCV, PIL | Fast C-backed PDF rendering, contour detection, and spatial block extraction. |
 | **Web Dashboard** | Flask, HTML5, Vanilla JS, CSS3 | Clean, dependency-light presentation layer without fragile npm/node build chains. |
 | **Static Typing** | Microsoft Pyright (Standard) | Enforces type consistency across all core orchestrators and routes. |
@@ -297,7 +312,7 @@ OrdinFlow/
 
 ## 🎯 Target Domains & Real-World Use Cases
 
-- 🏥 **Healthcare & Medical Practices:** Autonomous intake of specialist letters, lab reports, and radiological findings designed for compliance with GDPR, HIPAA, and German medical confidentiality (`§ 203 StGB`) through strictly local, air-gapped execution.
+- 🏥 **Healthcare & Medical Practices:** Autonomous intake of specialist letters, lab reports, and radiological findings with direct **GDT 2.1 / 3.0** electronic transfer into German PVS systems (*CGM Medistar, TurboMed, CGM ALBIS, medatixx/x.iserv, Tomedo, DURIA*), designed for compliance with GDPR, HIPAA, and German medical confidentiality (`§ 203 StGB`) through strictly local, air-gapped execution.
 - ⚖️ **Legal & Notary Offices:** Processing fee statements, court orders, deeds, and contracts while preserving attorney-client privilege.
 - 📐 **Engineering & Architecture:** Ingestion of technical drawings, schematics, inspection logs, and on-site photo documentation.
 - 🏢 **Finance & Commercial Offices:** Invoice reconciliation, receipt sorting, and automated entry into legacy on-premise accounting software.
@@ -322,7 +337,7 @@ ruff check .
 # 2. Static Type Analysis
 npx pyright core/ routes/
 
-# 3. Automated Test Suite (294+ tests)
+# 3. Automated Test Suite (309+ tests)
 python -m pytest -q
 ```
 

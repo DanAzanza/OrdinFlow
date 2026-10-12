@@ -18,7 +18,12 @@ from typing import Any
 from core.skills.exceptions import SkillActionError
 from core.skills.shield import input_shield
 from core.skills.text_helpers import paste_text_via_clipboard, type_unicode_text
-from core.skills.window_manager import ensure_window_ready, handle_known_dialog_popups, save_failure_screenshot
+from core.skills.window_manager import (
+    ensure_window_ready,
+    handle_known_dialog_popups,
+    save_failure_screenshot,
+    verify_and_ensure_focus,
+)
 from core.utils import (
     RESERVED_WIN_NAMES,
     is_sensitive_credential_text,
@@ -198,6 +203,16 @@ def execute_mouse_click(
             raise SkillActionError(step_id, err_msg, action_type)
         return False
 
+    if win:
+        ok, focus_err = verify_and_ensure_focus(win)
+        if not ok:
+            err_msg = f"Mouse click aborted by Focus Guard: {focus_err}"
+            logger.error("  [!] %s", err_msg)
+            save_failure_screenshot(step_id, err_msg, win)
+            if step.get("on_failure", "stop") == "stop":
+                raise SkillActionError(step_id, err_msg, action_type)
+            return False
+
     with input_shield():
         if action_type == "DOUBLE_CLICK":
             send_native_double_click(coords[0], coords[1])
@@ -215,6 +230,7 @@ def execute_type_text(
     action_type: str,
     context: Mapping[str, Any],
     substitute_fn: Callable[[str, Mapping[str, Any]], str],
+    target_window: str | None = None,
 ) -> bool:
     """Injects Unicode text or clipboard content into the focused control."""
     raw_text = str(step.get("text", "") or step.get("content", ""))
@@ -227,6 +243,17 @@ def execute_type_text(
         if step.get("on_failure", "stop") == "stop":
             raise SkillActionError(step_id, err_msg, action_type)
         return False
+
+    win = substitute_fn(str(step.get("window_title") or target_window or ""), context).strip()
+    if win:
+        ok, focus_err = verify_and_ensure_focus(win)
+        if not ok:
+            err_msg = f"Type text aborted by Focus Guard: {focus_err}"
+            logger.error("  [!] %s", err_msg)
+            save_failure_screenshot(step_id, err_msg, win)
+            if step.get("on_failure", "stop") == "stop":
+                raise SkillActionError(step_id, err_msg, action_type)
+            return False
 
     press_enter = bool(step.get("press_enter", False))
     use_clipboard = bool(
@@ -288,6 +315,17 @@ def execute_type_file_path(
         drive_letter = final_path[0].upper()
         prefix = rdp_prefix.rstrip("\\/")
         final_path = f"{prefix}\\{drive_letter}{final_path[2:]}"
+
+    win = substitute_fn(str(step.get("window_title") or target_window or ""), context).strip()
+    if win:
+        ok, focus_err = verify_and_ensure_focus(win)
+        if not ok:
+            err_msg = f"Type file path aborted by Focus Guard: {focus_err}"
+            logger.error("  [!] %s", err_msg)
+            save_failure_screenshot(step_id, err_msg, win)
+            if step.get("on_failure", "stop") == "stop":
+                raise SkillActionError(step_id, err_msg, "TYPE_FILE_PATH")
+            return False
 
     press_enter = bool(step.get("press_enter", True))
     with input_shield():

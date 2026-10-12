@@ -114,11 +114,12 @@ function initInboxDelegation(list) {
 	});
 }
 
-function renderFileCardHtml(f) {
+function renderFileCardHtml(f, index = 0) {
 	const hasPreview = !!f.preview_url;
 	const isReview = Boolean(f.is_review ?? f.is_pruefen);
 	const isProcessed = Boolean(f.is_processed ?? f.is_abgearbeitet);
 	const reason = f.reason || f.grund || "";
+	const isSelected = index === selectedInboxCardIndex;
 
 	// Check if filename has all information for auto assign
 	const baseName = f.name.replace(/\.[^/.]+$/, "");
@@ -138,7 +139,7 @@ function renderFileCardHtml(f) {
 		tagText = "✓ Abgearbeitet";
 	}
 
-	return `<div class="file-card ${isReview ? "pruefen" : (isProcessed ? "processed" : "")}">
+	return `<div class="file-card ${isReview ? "pruefen" : (isProcessed ? "processed" : "")} ${isSelected ? "keyboard-selected" : ""}" data-inbox-index="${index}" data-card-path="${encodeURIComponent(f.path)}">
       <div class="preview clickable-preview" data-inspect="${encodeURIComponent(f.path)}">
         ${
 					hasPreview
@@ -177,7 +178,8 @@ function renderFileCardHtml(f) {
 function appendMoreInboxCards() {
 	const list = document.getElementById("inboxList");
 	if (!list) return;
-	const nextSlice = currentInboxData.slice(inboxRenderedCount, inboxRenderedCount + 36);
+	const startIndex = inboxRenderedCount;
+	const nextSlice = currentInboxData.slice(startIndex, startIndex + 36);
 	if (nextSlice.length === 0) return;
 
 	inboxRenderedCount += nextSlice.length;
@@ -186,7 +188,7 @@ function appendMoreInboxCards() {
 	if (oldSentinel) oldSentinel.remove();
 
 	const tempDiv = document.createElement("div");
-	tempDiv.innerHTML = nextSlice.map(renderFileCardHtml).join("");
+	tempDiv.innerHTML = nextSlice.map((f, i) => renderFileCardHtml(f, startIndex + i)).join("");
 	while (tempDiv.firstChild) {
 		list.appendChild(tempDiv.firstChild);
 	}
@@ -255,7 +257,7 @@ function renderInbox() {
 	inboxRenderedCount = Math.min(48, data.length);
 
 	const initialSlice = data.slice(0, inboxRenderedCount);
-	let html = initialSlice.map(renderFileCardHtml).join("");
+	let html = initialSlice.map((f, i) => renderFileCardHtml(f, i)).join("");
 	if (inboxRenderedCount < data.length) {
 		html += `<div id="inboxSentinel" class="inbox-sentinel">Showing ${inboxRenderedCount} of ${data.length} files...</div>`;
 	}
@@ -289,6 +291,84 @@ async function retryFile(filename) {
 		AppEvents.emit("inbox:refresh");
 	} catch (e) {
 		toast("Error: " + e.message, "error");
+	}
+}
+
+/* ── Inbox Keyboard Navigation & Selection ── */
+let selectedInboxCardIndex = -1;
+
+function highlightInboxCard(index) {
+	const list = document.getElementById("inboxList");
+	if (!list || !currentInboxData || currentInboxData.length === 0) return;
+
+	if (index < 0) index = 0;
+	if (index >= currentInboxData.length) index = currentInboxData.length - 1;
+
+	selectedInboxCardIndex = index;
+
+	// Load more if user navigates past currently rendered batch
+	while (selectedInboxCardIndex >= inboxRenderedCount && inboxRenderedCount < currentInboxData.length) {
+		appendMoreInboxCards();
+	}
+
+	const cards = list.querySelectorAll(".file-card");
+	cards.forEach((c) => c.classList.remove("keyboard-selected"));
+
+	const targetCard = list.querySelector(`.file-card[data-inbox-index="${selectedInboxCardIndex}"]`) || cards[selectedInboxCardIndex];
+	if (targetCard) {
+		targetCard.classList.add("keyboard-selected");
+		targetCard.scrollIntoView({ block: "nearest", behavior: "smooth" });
+	}
+}
+
+function handleInboxKeyboardNavigation(e) {
+	if (!currentInboxData || currentInboxData.length === 0) return;
+
+	// ArrowDown or J -> Next document
+	if (e.key === "ArrowDown" || e.key === "j" || e.key === "J") {
+		e.preventDefault();
+		highlightInboxCard(selectedInboxCardIndex + 1);
+		return;
+	}
+
+	// ArrowUp or K -> Previous document
+	if (e.key === "ArrowUp" || e.key === "k" || e.key === "K") {
+		e.preventDefault();
+		highlightInboxCard(selectedInboxCardIndex - 1);
+		return;
+	}
+
+	// Enter or Space -> Open inspector drawer
+	if (e.key === "Enter" || e.key === " ") {
+		if (selectedInboxCardIndex >= 0 && selectedInboxCardIndex < currentInboxData.length) {
+			e.preventDefault();
+			const item = currentInboxData[selectedInboxCardIndex];
+			if (item && item.path) {
+				openSplitInspector(item.path);
+			}
+		}
+		return;
+	}
+
+	// Delete -> Move selected file to trash with confirmation
+	if (e.key === "Delete" || ((e.altKey || e.shiftKey) && e.key === "Backspace")) {
+		if (selectedInboxCardIndex >= 0 && selectedInboxCardIndex < currentInboxData.length) {
+			e.preventDefault();
+			const item = currentInboxData[selectedInboxCardIndex];
+			if (item && item.path) {
+				if (confirm(`Dokument '${item.name}' wirklich in den Papierkorb verschieben?`)) {
+					deleteFile("inbox", "", item.path);
+				}
+			}
+		}
+		return;
+	}
+
+	// F -> Toggle review filter
+	if ((e.key === "f" || e.key === "F") && !e.ctrlKey && !e.metaKey) {
+		e.preventDefault();
+		toggleReviewFilter();
+		return;
 	}
 }
 

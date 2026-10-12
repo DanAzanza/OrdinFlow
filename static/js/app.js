@@ -84,6 +84,8 @@ function toggleSidebar() {
 }
 
 function closeAppInspector() {
+	state.inspectorFile = null;
+	state.inspectorFolder = null;
 	resetAppInspectorContent();
 }
 
@@ -497,3 +499,69 @@ function sanitizeDomId(prefix, ...parts) {
 	const cleanParts = parts.map((p) => encodeURIComponent(String(p || "")).replace(/[^a-zA-Z0-9_-]/g, "_"));
 	return `${prefix}_${cleanParts.join("_")}`;
 }
+
+/* ── Global MFA Keyboard Shortcuts & Review Navigation ── */
+
+function isDrawerInspectorOpen() {
+	const inspector = document.getElementById("appInspector");
+	if (!inspector) return false;
+	if (inspector.classList.contains("hidden-inspector")) return false;
+	return Boolean(state.inspectorFile || document.getElementById("drawerFormWrapper") || document.querySelector(".drawer-section-card"));
+}
+
+function handleGlobalKeydown(e) {
+	const isTextInput = ["INPUT", "TEXTAREA", "SELECT"].includes(e.target?.tagName);
+	const drawerOpen = isDrawerInspectorOpen();
+
+	// 1. In text inputs: allow Ctrl+Enter to submit; Esc to blur; single keys type normally
+	if (isTextInput) {
+		if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
+			if (drawerOpen && typeof submitDrawerInspector === "function") {
+				e.preventDefault();
+				submitDrawerInspector();
+				return;
+			}
+		}
+		if (e.key === "Escape") {
+			e.preventDefault();
+			e.target.blur();
+			return;
+		}
+		return;
+	}
+
+	// 2. Drawer is open: Ctrl+Enter submits, Esc closes, Alt+Del deletes
+	if (drawerOpen) {
+		if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
+			e.preventDefault();
+			if (typeof submitDrawerInspector === "function") {
+				submitDrawerInspector();
+			}
+			return;
+		}
+		if (e.key === "Escape") {
+			e.preventDefault();
+			if (typeof closeAppInspector === "function") {
+				closeAppInspector();
+			}
+			return;
+		}
+		if ((e.altKey || e.shiftKey) && (e.key === "Delete" || e.key === "Backspace")) {
+			e.preventDefault();
+			if (typeof inspectorDeleteCurrent === "function") {
+				inspectorDeleteCurrent();
+			}
+			return;
+		}
+		return;
+	}
+
+	// 3. Inbox list browsing (when drawer is closed)
+	const activeTab = document.querySelector(".nav-item.active")?.dataset?.tab || "inbox";
+	if (activeTab === "inbox" && typeof handleInboxKeyboardNavigation === "function") {
+		handleInboxKeyboardNavigation(e);
+	}
+}
+
+document.addEventListener("keydown", handleGlobalKeydown);
+

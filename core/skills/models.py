@@ -57,6 +57,7 @@ class SkillTaskBlockDict(TypedDict, total=False):
 class SkillType(str, Enum):
     IMPORT = "import"
     EXPORT = "export"
+    GDT = "gdt"
 
 
 class TaskStatus(str, Enum):

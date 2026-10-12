@@ -14,6 +14,7 @@ import yaml
 
 from core.skills.base import BaseSkill
 from core.skills.engines.export_engine import ExportEngine
+from core.skills.engines.gdt_engine import GDTEngine
 from core.skills.engines.import_engine import ImportEngine
 from core.utils import safe_join_path, sanitize_safe_path
 
@@ -195,6 +196,8 @@ class SkillManager:
         skill_type = definition.get("type", "export")
         if skill_type == "import":
             return ImportEngine(definition, processor=processor)
+        elif skill_type in ("gdt", "gdt_export"):
+            return GDTEngine(definition)
         else:
             return ExportEngine(
                 definition,
