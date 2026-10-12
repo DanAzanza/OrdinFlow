@@ -736,6 +736,8 @@ def test_substring_merging_and_ocr_priority():
     # 1. Test Substring Check
     assert _are_similar_or_substring("Wannink", "Bramkamp-Wannink") is True
     assert _are_similar_or_substring("Henning", "Henning Bjarne") is True
+    assert _are_similar_or_substring("Ann", "Johann") is False
+    assert _are_similar_or_substring("Peter", "Trompeter") is False
 
     # 2. Test Voting Cluster Selection
     votes = [

@@ -29,7 +29,10 @@ let _serverEventSource = null;
 function initServerEvents() {
 	if (typeof EventSource === "undefined" || _serverEventSource) return;
 	try {
-		_serverEventSource = new EventSource("/api/events");
+		const tokenMeta = document.querySelector('meta[name="ordinflow-token"]');
+		const token = tokenMeta ? tokenMeta.getAttribute("content") : "";
+		const sseUrl = "/api/events" + (token ? `?token=${encodeURIComponent(token)}` : "");
+		_serverEventSource = new EventSource(sseUrl);
 		_serverEventSource.onmessage = (event) => {
 			if (!event.data) return;
 			try {

@@ -28,8 +28,9 @@ logger = logging.getLogger(__name__)
 def _sanitize_script_var(val: Any) -> str:
     """Sanitizes context variable values inserted into script strings against dangerous shell characters."""
     s = str(val or "")
-    s = re.sub(r"[\x00\r\n;`|&$]", "", s)
+    s = re.sub(r"[\x00\r\n;`|&$()]", "", s)
     s = s.replace("'", "''")
+    s = s.replace('"', '`"')
     return s.strip()
 
 
@@ -44,10 +45,10 @@ def execute_script_step(
     step_id = str(step.get("id", "script_step"))
     action_type = str(step.get("action_type") or step.get("type", "SCRIPT")).upper()
     raw_cmd = str(step.get("command", "") or step.get("script", "") or step.get("code", ""))
-    if "{document_fullpath}" in raw_cmd:
+    resolved_doc = None
+    if "{document_fullpath}" in raw_cmd or "$env:ORDINFLOW_DOCUMENT_FULLPATH" in raw_cmd:
         raw_fp = str(context.get("document_fullpath", "") or "").strip()
         is_safe, clean_fp = sanitize_safe_path(raw_fp)
-        resolved_doc = None
         if is_safe and clean_fp:
             candidate = Path(clean_fp).resolve()
             if is_within_allowed_roots(candidate) and candidate.is_file():
@@ -63,7 +64,12 @@ def execute_script_step(
             return False
 
     sanitized_context = {
-        k: (_sanitize_script_var(v) if k != "document_fullpath" else str(v)) for k, v in context.items()
+        k: (
+            _sanitize_script_var(v)
+            if k != "document_fullpath"
+            else str(resolved_doc or v).replace("'", "''")
+        )
+        for k, v in context.items()
     }
     cmd_to_run = substitute_fn(raw_cmd, sanitized_context)
     timeout_s = float(step.get("timeout_s", 60.0))
@@ -77,7 +83,7 @@ def execute_script_step(
     for k, v in context.items():
         if isinstance(v, (str, int, float, bool)):
             clean_k = re.sub(r"[^A-Za-z0-9_]", "_", str(k)).upper()
-            proc_env[f"ORDINFLOW_{clean_k}"] = str(v)
+            proc_env[f"ORDINFLOW_{clean_k}"] = str(v).replace("\x00", "")
 
     try:
         if shell_type in ("powershell", "ps1", "pwsh") and sys.platform == "win32":

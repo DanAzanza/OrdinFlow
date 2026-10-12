@@ -3,14 +3,14 @@
 <div align="center">
 
 [![Python](https://img.shields.io/badge/Python-3.10%2B%20%2864--bit%29-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
-[![Type Checking: Pyright](https://img.shields.io/badge/Type%20Checking-Pyright%20Strict-2b5b84?style=flat-square)](https://github.com/microsoft/pyright)
+[![Type Checking: Pyright](https://img.shields.io/badge/Type%20Checking-Pyright%20Standard-2b5b84?style=flat-square)](https://github.com/microsoft/pyright)
 [![Linter: Ruff](https://img.shields.io/badge/Linter-Ruff-black?style=flat-square&logo=ruff)](https://github.com/astral-sh/ruff)
 [![Tests: Pytest](https://img.shields.io/badge/Tests-294%20Passed-brightgreen?style=flat-square&logo=pytest)](https://pytest.org/)
 [![Privacy: 100% Air--Gapped](https://img.shields.io/badge/Privacy-100%25%20Air--Gapped%20%2F%20GDPR-blue?style=flat-square)](docs/legal/PRIVACY_POLICY.md)
 [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-orange?style=flat-square)](LICENSE)
 
 **Autonomous Multimodal Document Management, Visual Information Extraction & Agentic RPA Orchestrator**  
-*100% On-Premise · Air-Gapped & GDPR-Compliant · Dual-Engine Text & Vision Fusion · ~98% Consensus Accuracy*  
+*100% On-Premise · Air-Gapped Architecture · Dual-Engine Text & Vision Fusion · Multi-Tier Consensus Verification*  
 **Designed & Engineered by Daniel Azanza Hartmann**
 
 <br />
@@ -33,10 +33,10 @@ OrdinFlow solves the **three fatal flaws** of existing document management solut
 │             THE 3 FATAL TRAPS                 │     │             THE ORDINFLOW SOLUTION             │
 ├───────────────────────────────────────────────┤     ├────────────────────────────────────────────────┤
 │ 1. THE CLOUD PRIVACY TRAP                     │ ──► │ 100% On-Premise & Air-Gapped                   │
-│    Sending unredacted patient records or      │     │ Zero data leaves your network. Fully compliant │
-│    contracts to US clouds violates GDPR/HIPAA.│     │ with GDPR, HIPAA, and German § 203 StGB.       │
+│    Sending unredacted patient records or      │     │ Zero data leaves your network. Designed for    │
+│    contracts to US clouds violates GDPR/HIPAA.│     │ local GDPR, HIPAA, and German § 203 StGB needs.│
 ├───────────────────────────────────────────────┤     ├────────────────────────────────────────────────┤
-│ 2. THE HALLUCINATION & FRAGILITY TRAP         │ ──► │ Dual-Engine Cross-Verification (~98% Acc.)     │
+│ 2. THE HALLUCINATION & FRAGILITY TRAP         │ ──► │ Dual-Engine Cross-Verification (Multi-Tier)    │
 │    Raw LLMs hallucinate critical numbers;     │     │ Spatial ONNX OCR + Multimodal Vision-LLM       │
 │    pure OCR fails on handwriting & stamps;   │     │ fused through a 3-tier consensus engine.       │
 │    regex breaks on the slightest layout shift.│     │                                                │
@@ -128,7 +128,7 @@ Define new document types, recognition rules, and extraction fields in seconds w
 
 ## 🏗️ System Architecture: The Multi-Resolution Consensus Pipeline
 
-OrdinFlow combines two fundamentally distinct perception models to eliminate hallucinations and achieve **~98% empirical accuracy** on structured administrative documents:
+OrdinFlow combines two fundamentally distinct perception models to eliminate hallucinations and achieve high empirical accuracy on structured administrative documents:
 
 ```mermaid
 flowchart TD
@@ -255,7 +255,6 @@ OrdinFlow/
 │   ├── file_service.py           # Atomic file operations, PDF splitting & lock checks
 │   ├── image_processing.py       # OpenCV preprocessing, scaling & contour normalization
 │   ├── llm_backends.py          # Abstract LLM backend (embedded llama_cpp vs. server)
-│   ├── matcher.py                # Directory tree matcher & fuzzy folder resolution
 │   ├── processor.py              # Main document processing orchestrator & queue manager
 │   ├── routing.py                # Dynamic folder & filename path templating
 │   ├── skill_recorder.py         # Live mouse/keyboard recorder with OCR element snippets
@@ -273,7 +272,7 @@ OrdinFlow/
 │   ├── setup_environment.py      # Hardware auto-detection & wheel installer
 │   ├── download_models.py        # Atomic model downloader with GGUF header validation
 │   └── verify_ci.py              # Full CI verification runner (Ruff, Pyright, Pytest)
-├── tests/                        # Comprehensive automated test suite (217+ tests)
+├── tests/                        # Comprehensive automated test suite (294+ tests)
 ├── Install_OrdinFlow.bat         # 1-Click Windows installer & hardware orchestrator
 ├── Start_OrdinFlow.bat           # 1-Click windowless background launcher
 └── main.py                       # CLI & service entrypoint
@@ -291,14 +290,14 @@ OrdinFlow/
 | **OCR Engine** | RapidOCR (`onnxruntime`) | Lightweight deep-learning OCR in ONNX format; zero system `.exe` dependencies (cross-platform, zero setup). |
 | **PDF & Graphics** | PyMuPDF (`fitz`), OpenCV, PIL | Fast C-backed PDF rendering, contour detection, and spatial block extraction. |
 | **Web Dashboard** | Flask, HTML5, Vanilla JS, CSS3 | Clean, dependency-light presentation layer without fragile npm/node build chains. |
-| **Static Typing** | Microsoft Pyright (Strict) | Enforces strict type consistency across all core orchestrators and routes. |
-| **Code Quality** | Ruff, Bandit, Pytest | High-velocity linting, security scanning, and 100% automated test coverage across all routing logic. |
+| **Static Typing** | Microsoft Pyright (Standard) | Enforces type consistency across all core orchestrators and routes. |
+| **Code Quality** | Ruff, Pytest | High-velocity linting and comprehensive automated test coverage across all routing logic. |
 
 ---
 
 ## 🎯 Target Domains & Real-World Use Cases
 
-- 🏥 **Healthcare & Medical Practices:** Autonomous intake of specialist letters, lab reports, and radiological findings with strict compliance to GDPR, HIPAA, and German medical confidentiality (`§ 203 StGB`).
+- 🏥 **Healthcare & Medical Practices:** Autonomous intake of specialist letters, lab reports, and radiological findings designed for compliance with GDPR, HIPAA, and German medical confidentiality (`§ 203 StGB`) through strictly local, air-gapped execution.
 - ⚖️ **Legal & Notary Offices:** Processing fee statements, court orders, deeds, and contracts while preserving attorney-client privilege.
 - 📐 **Engineering & Architecture:** Ingestion of technical drawings, schematics, inspection logs, and on-site photo documentation.
 - 🏢 **Finance & Commercial Offices:** Invoice reconciliation, receipt sorting, and automated entry into legacy on-premise accounting software.
@@ -323,7 +322,7 @@ ruff check .
 # 2. Static Type Analysis
 npx pyright core/ routes/
 
-# 3. Automated Test Suite (217+ tests)
+# 3. Automated Test Suite (294+ tests)
 python -m pytest -q
 ```
 

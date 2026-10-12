@@ -246,8 +246,9 @@ def api_cases_detail(folder_name: str):
 
             stat = os.stat(fp)
             has_preview = f.lower().endswith(".pdf")
+            token_q = f"?token={urllib.parse.quote(DashboardState.session_token)}" if DashboardState.session_token else ""
             preview_url = (
-                f"/api/preview/Cases/{urllib.parse.quote(folder_name, safe='/')}/{urllib.parse.quote(f, safe='/')}"
+                f"/api/preview/Cases/{urllib.parse.quote(folder_name, safe='/')}/{urllib.parse.quote(f, safe='/')}{token_q}"
                 if has_preview
                 else ""
             )

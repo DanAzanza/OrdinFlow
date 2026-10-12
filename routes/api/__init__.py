@@ -33,28 +33,25 @@ def check_api_security():
     if current_app.config.get("TESTING"):
         return None
 
-    if request.headers.get("X-OrdinFlow-Test-Bypass"):
-        return None
-
     # 1. Host validation against DNS rebinding
     raw_host = request.host.split(":")[0].strip().lower()
     allowed_hosts = {"127.0.0.1", "localhost", "::1", "[::1]"}
     if raw_host not in allowed_hosts:
         return jsonify({"error": "Forbidden: Invalid Host header"}), 403
 
-    # 2. Mutating API calls require valid session token
-    if request.method in ("POST", "PUT", "DELETE", "PATCH"):
-        # Exempt heartbeat ping
-        if request.path.rstrip("/").endswith("/api/heartbeat"):
-            return None
+    # Public, unauthenticated endpoints (heartbeat & readiness/status healthchecks)
+    path = request.path.rstrip("/")
+    if path.endswith("/api/heartbeat") or path.endswith("/api/status"):
+        return None
 
-        expected_token = DashboardState.session_token
-        if not expected_token:
-            return None
+    # 2. Token validation for all other API endpoints (fail-closed)
+    expected_token = DashboardState.session_token
+    if not expected_token:
+        return jsonify({"error": "Unauthorized: Session token not initialized"}), 403
 
-        token = request.headers.get("X-OrdinFlow-Token")
-        if not token or token != expected_token:
-            return jsonify({"error": "Unauthorized: Invalid or missing session token"}), 403
+    token = request.headers.get("X-OrdinFlow-Token") or request.args.get("token")
+    if not token or token != expected_token:
+        return jsonify({"error": "Unauthorized: Invalid or missing session token"}), 403
 
     return None
 

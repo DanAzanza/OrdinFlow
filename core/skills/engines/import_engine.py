@@ -60,6 +60,8 @@ class ImportEngine(BaseSkill):
                 error="DocumentProcessor not initialized in DashboardState.",
             )
 
+        processor.reset_context()
+
         # Temporarily apply document types from this specific skill if defined
         original_doc_types = processor.config.document_types
         if self.document_types:
@@ -224,5 +226,6 @@ class ImportEngine(BaseSkill):
             logger.error("[ImportEngine] Execution failure: %s", e, exc_info=True)
             return TaskResult(success=False, error=str(e))
         finally:
-            # Restore original document types
+            # Restore original document types and clear inter-document context
             processor.config.document_types = original_doc_types
+            processor.reset_context()

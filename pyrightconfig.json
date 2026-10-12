@@ -3,6 +3,7 @@
   "pythonVersion": "3.12",
   "venvPath": ".",
   "venv": "venv",
+  "typeCheckingMode": "standard",
   "reportMissingImports": false,
   "reportMissingModuleSource": false
 }

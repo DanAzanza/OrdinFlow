@@ -90,13 +90,9 @@ def are_similar_or_substring(a: str, b: str, threshold: float = 0.80) -> bool:
     ):
         return True
 
-    # Direct substring inclusion
-    if norm_a in norm_b or norm_b in norm_a:
-        return True
-
-    # Token/word subset check (e.g. 'Wannink' inside 'Bramkamp-Wannink')
-    clean_a = re.sub(r"[-,\s]+", " ", norm_a).split()
-    clean_b = re.sub(r"[-,\s]+", " ", norm_b).split()
+    # Whole-word token subset check (e.g. 'Wannink' inside 'Bramkamp-Wannink', 'Henning' in 'Henning Bjarne')
+    clean_a = [t for t in re.sub(r"[-,\s]+", " ", norm_a).split() if len(t) >= 3]
+    clean_b = [t for t in re.sub(r"[-,\s]+", " ", norm_b).split() if len(t) >= 3]
     set_a = set(clean_a)
     set_b = set(clean_b)
     if set_a and set_b and (set_a.issubset(set_b) or set_b.issubset(set_a)):
@@ -145,7 +141,9 @@ def pick_best_representative(members: list[tuple[str, float]]) -> str:
         for other in counts:
             if other != v:
                 norm_o = normalize_for_clustering(other)
-                if norm_o and (norm_o in norm_v or set(norm_o.split()).issubset(set(norm_v.split()))):
+                tokens_o = set(norm_o.split())
+                tokens_v = set(norm_v.split())
+                if tokens_o and tokens_o.issubset(tokens_v):
                     subsumes += 1
         informative_bonus = 1 if (subsumes > 0 and counts[v] >= 0.25 * total_w) else 0
         return (informative_bonus, counts[v], len(v), casing_score(v))

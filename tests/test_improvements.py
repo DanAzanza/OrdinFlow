@@ -61,7 +61,7 @@ def test_api_events_sse_endpoint():
     app.register_blueprint(api_bp)
 
     client = app.test_client()
-    res = client.get("/api/events", headers={"X-OrdinFlow-Test-Bypass": "1"})
+    res = client.get("/api/events")
 
     assert res.status_code == 200
     assert "text/event-stream" in res.content_type

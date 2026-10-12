@@ -73,6 +73,16 @@ class DocumentProcessor:
         self.last_context: dict = {}
         self.last_optional_fields: set = set()
         self.last_extraction_fields: set = set()
+        self.last_context_dir: str | None = None
+        self.last_context_time: float = 0.0
+
+    def reset_context(self) -> None:
+        """Resets inter-document context memory to prevent data leakage across distinct batches."""
+        self.last_context = {}
+        self.last_optional_fields = set()
+        self.last_extraction_fields = set()
+        self.last_context_dir = None
+        self.last_context_time = 0.0
 
     # --- Pause/Resume Control ---
     def pause(self):
@@ -167,6 +177,33 @@ class DocumentProcessor:
     def _copy_file(self, filepath: str, target_dir: str, target_filename: str) -> str:
         return self.file_service.copy_file(filepath, target_dir, target_filename)
 
+    def _transfer_and_mark_routed_file(
+        self,
+        filepath: str,
+        target_dir: str,
+        target_filename: str,
+        extracted: dict[str, Any],
+        keep_source: bool,
+    ) -> bool:
+        """Transfers file to destination, writes sidecar metadata, and rolls back on failure."""
+        if keep_source:
+            target_fp = self._copy_file(filepath, target_dir, target_filename)
+            marked = self.file_service.mark_as_processed(
+                filepath, extracted=extracted, routed_paths=[target_fp]
+            )
+            if not marked:
+                try:
+                    if os.path.exists(target_fp):
+                        os.remove(target_fp)
+                except OSError:
+                    pass
+                self._mark_for_review(filepath, "Failed to write processed .meta sidecar", extracted)
+                return False
+            return True
+        else:
+            self._move_and_compress_file(filepath, target_dir, target_filename)
+            return True
+
     def _mark_for_review(
         self,
         filepath: str,
@@ -243,7 +280,14 @@ class DocumentProcessor:
         final_doc["page_results"] = page_results
 
         logger.debug(f"[+] Consolidated final result: {format_result(final_doc)}")
-        logger.info(f"[+] Final extraction result for document: {format_result(final_doc)}")
+        doc_type = final_doc.get("Document", "Unknown")
+        extracted_fields_count = len([
+            k for k in final_doc.keys()
+            if k not in ("page_results", "Document", "description", "vision_description")
+        ])
+        logger.info(
+            f"[+] Extraction complete for document: type='{doc_type}', {extracted_fields_count} fields extracted"
+        )
         return final_doc
 
     # --- Main Processing Logic ---
@@ -323,13 +367,23 @@ class DocumentProcessor:
                     return False
 
                 is_dependent_doc = bool(matched_info.get("dependent", False))
+                curr_dir = os.path.dirname(os.path.abspath(filepath))
+                is_context_fresh = (
+                    bool(self.last_context)
+                    and (self.last_context_dir is None or self.last_context_dir == curr_dir)
+                    and (self.last_context_time == 0.0 or (time.time() - self.last_context_time <= 300.0))
+                )
 
-                if is_dependent_doc and self.last_context:
+                if is_dependent_doc and is_context_fresh:
                     for k, v in self.last_context.items():
                         if is_missing_value(extracted.get(k)):
                             extracted[k] = v
                     optional_fields = optional_fields | self.last_optional_fields
                     extraction_fields = extraction_fields | self.last_extraction_fields
+                elif is_dependent_doc and not is_context_fresh:
+                    logger.info(
+                        f"[*] Dependent document '{filename}' has no fresh parent context in '{curr_dir}'. Routing independently."
+                    )
 
                 for k, v in list(extracted.items()):
                     if isinstance(v, str) and not is_missing_value(v):
@@ -339,6 +393,8 @@ class DocumentProcessor:
                     self.last_context = dict(extracted)
                     self.last_optional_fields = set(optional_fields)
                     self.last_extraction_fields = set(extraction_fields)
+                    self.last_context_dir = curr_dir
+                    self.last_context_time = time.time()
                 is_valid, reason = self._validate_extracted_data(extracted)
 
             if not os.path.exists(filepath):
@@ -381,22 +437,11 @@ class DocumentProcessor:
                             _record_stat("failed", time.time() - start_time)
                             return False
                         target_dir, target_filename = _route_single_file()
-                        if keep_source:
-                            target_fp = self._copy_file(filepath, target_dir, target_filename)
-                            marked = self.file_service.mark_as_processed(
-                                filepath, extracted=extracted, routed_paths=[target_fp]
-                            )
-                            if not marked:
-                                try:
-                                    if os.path.exists(target_fp):
-                                        os.remove(target_fp)
-                                except OSError:
-                                    pass
-                                self._mark_for_review(filepath, "Failed to write processed .meta sidecar", extracted)
-                                _record_stat("failed", time.time() - start_time)
-                                return False
-                        else:
-                            self._move_and_compress_file(filepath, target_dir, target_filename)
+                        if not self._transfer_and_mark_routed_file(
+                            filepath, target_dir, target_filename, extracted, keep_source
+                        ):
+                            _record_stat("failed", time.time() - start_time)
+                            return False
                 else:
                     target_dir, target_filename = _route_single_file()
                     target_filepath = os.path.join(target_dir, target_filename)
@@ -429,41 +474,17 @@ class DocumentProcessor:
                                 "[!] Filtering empty pages failed for '%s'. Falling back to full document move.",
                                 filename,
                             )
-                            if keep_source:
-                                target_fp = self._copy_file(filepath, target_dir, target_filename)
-                                marked = self.file_service.mark_as_processed(
-                                    filepath, extracted=extracted, routed_paths=[target_fp]
-                                )
-                                if not marked:
-                                    try:
-                                        if os.path.exists(target_fp):
-                                            os.remove(target_fp)
-                                    except OSError:
-                                        pass
-                                    self._mark_for_review(
-                                        filepath, "Failed to write processed .meta sidecar", extracted
-                                    )
-                                    _record_stat("failed", time.time() - start_time)
-                                    return False
-                            else:
-                                self._move_and_compress_file(filepath, target_dir, target_filename)
-                    else:
-                        if keep_source:
-                            target_fp = self._copy_file(filepath, target_dir, target_filename)
-                            marked = self.file_service.mark_as_processed(
-                                filepath, extracted=extracted, routed_paths=[target_fp]
-                            )
-                            if not marked:
-                                try:
-                                    if os.path.exists(target_fp):
-                                        os.remove(target_fp)
-                                except OSError:
-                                    pass
-                                self._mark_for_review(filepath, "Failed to write processed .meta sidecar", extracted)
+                            if not self._transfer_and_mark_routed_file(
+                                filepath, target_dir, target_filename, extracted, keep_source
+                            ):
                                 _record_stat("failed", time.time() - start_time)
                                 return False
-                        else:
-                            self._move_and_compress_file(filepath, target_dir, target_filename)
+                    else:
+                        if not self._transfer_and_mark_routed_file(
+                            filepath, target_dir, target_filename, extracted, keep_source
+                        ):
+                            _record_stat("failed", time.time() - start_time)
+                            return False
 
                 duration = time.time() - start_time
                 _record_stat("success", duration)

@@ -74,7 +74,10 @@ def api_inbox():
                         "is_abgearbeitet": is_processed,
                         "size": stat.st_size,
                         "modified": time.strftime("%Y-%m-%d %H:%M", time.localtime(stat.st_mtime)),
-                        "preview_url": f"/api/inbox/preview/{urllib.parse.quote(rel_path, safe='/')}"
+                        "preview_url": (
+                            f"/api/inbox/preview/{urllib.parse.quote(rel_path, safe='/')}"
+                            + (f"?token={urllib.parse.quote(DashboardState.session_token)}" if DashboardState.session_token else "")
+                        )
                         if f.lower().endswith(".pdf")
                         else "",
                         "file_url": f"/api/file/inbox/{rel_path}",
