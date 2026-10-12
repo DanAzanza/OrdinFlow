@@ -70,3 +70,28 @@
 ### 🪟 Windows 8.3 Short Path Trap (`RUNNER~1` vs. `runneradmin`)
 * On Windows environments with usernames > 8 chars (e.g. GitHub Actions `runneradmin`), `tempfile.mkdtemp()` returns 8.3 short paths (`RUNNER~1`), whereas `Path(...).resolve()` expands to canonical long paths (`runneradmin`).
 * Raw string comparisons (`p in set` or `p in list`) fail across short/long paths. Test fixtures must normalize tempdirs with `Path(tempfile.mkdtemp(...)).resolve()`, and path membership checks should resolve via `Path(p).resolve()`.
+
+---
+
+## 4. Multi-User & Runtime Security Contracts
+
+### 🔒 Windows Terminal Server / Citrix Threat Model (`127.0.0.1:8080`)
+* OrdinFlow target deployments include medical practices and legal offices on shared Windows Terminal Server / Citrix RDS hosts.
+* On shared terminal servers, all concurrently logged-in users share `localhost` (`127.0.0.1`). Unauthenticated endpoints or fail-open token logic allow other local OS users to read patient files or inject skills.
+* Every mutating endpoint and SSE event stream (`/api/events`) requires authentication via `X-OrdinFlow-Token` or `?token=...`. Test bypass headers (`X-OrdinFlow-Test-Bypass`) are strictly forbidden in production routes.
+
+### 🛡️ Medical PII Logging Policy (§ 203 StGB, DSGVO / GDPR)
+* Medical documentation requires strict minimization. `core/processor.py` and downstream routers must NEVER log raw extracted JSON payloads (patient names, dates of birth, diagnoses) at `INFO` level.
+* Production logs at `INFO` or above are restricted to operational metadata (document IDs, classification labels, latency, destination folder). Raw extracted fields are only permissible in local developer `DEBUG` logs.
+
+### ⏱️ Dependent Document Context Boundary (`last_context`)
+* When routing multi-page or dependent medical records (e.g. lab annexes following a primary doctor letter), `last_context` inheritance is strictly bounded:
+  1. Maximum age limit: **300 seconds** (5 minutes).
+  2. Spatial scope: Same parent directory.
+* Context must never leak across separate folders, patient batches, or restart boundaries.
+
+### 📜 PowerShell Skill Execution Contract
+* `core/skills/script_runner.py` passes extracted document values to PowerShell.
+* Document values (names, case IDs) originate from untrusted OCR/VLM output and must NEVER be interpolated into command strings via string formatting/replace.
+* Values are injected strictly via `$env:ORDINFLOW_<KEY>` process environment variables. PowerShell scripts consume `$env:ORDINFLOW_*` directly.
+
