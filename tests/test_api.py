@@ -1,3 +1,5 @@
+import json
+
 from routes.state import DashboardState
 
 
@@ -700,5 +702,26 @@ def test_api_cases_detail_file_url(client, tmp_path):
         file_item = data["files"][0]
         assert file_item["name"] == "Befund 01.pdf"
         assert file_item["file_url"] == "/api/file/cases/2026-09-01__Software__Mueller__Hans/Befund%2001.pdf"
+    finally:
+        DashboardState.config.target_base_dir = orig_target_base
+
+
+def test_api_file_meta_cases_nested(client, tmp_path):
+    """GET /api/file/meta/cases/<path:folder>/<filename> correctly loads metadata from nested case directories."""
+    orig_target_base = DashboardState.config.target_base_dir
+    nested_folder = tmp_path / "2026" / "Software__Mueller__Hans"
+    nested_folder.mkdir(parents=True, exist_ok=True)
+    doc = nested_folder / "Report.pdf"
+    doc.write_text("dummy", encoding="utf-8")
+    meta = nested_folder / "Report.pdf.meta"
+    meta.write_text(json.dumps({"Document": "Report", "extracted": {"Patient": "Mueller"}}), encoding="utf-8")
+
+    DashboardState.config.target_base_dir = str(tmp_path)
+    try:
+        res = client.get("/api/file/meta/cases/2026/Software__Mueller__Hans/Report.pdf")
+        assert res.status_code == 200
+        data = res.get_json()
+        assert data["Document"] == "Report"
+        assert data["extracted"]["Patient"] == "Mueller"
     finally:
         DashboardState.config.target_base_dir = orig_target_base

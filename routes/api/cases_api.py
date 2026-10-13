@@ -338,7 +338,7 @@ def api_cases_edit(folder_name: str):
         return jsonify({"error": "Failed to rename folder"}), 500
 
 
-@cases_api_bp.route("/api/file/meta/cases/<folder>/<filename>")
+@cases_api_bp.route("/api/file/meta/cases/<path:folder>/<filename>")
 def api_file_meta_cases(folder: str, filename: str):
     if not DashboardState.config:
         return jsonify({"error": "Config not available"}), 503

@@ -232,3 +232,50 @@ def test_gdt_engine_base_skill_execution():
         assert res.data is not None
         assert "gdt_file" in res.data
         assert os.path.isfile(res.data["gdt_file"])
+
+
+def test_gdt_engine_missing_target_dir_fails():
+    """GDTEngine must cleanly fail if target_dir is not configured."""
+    engine = GDTEngine({"id": "gdt_no_dir", "name": "GDT"})
+    task = SkillTask(
+        id="task_fail",
+        skill_id="gdt_no_dir",
+        skill_name="GDT",
+        skill_type="gdt",
+        context={"PatientID": "P42"},
+    )
+    res = engine.execute(task)
+    assert res.success is False
+    assert "missing 'target_dir'" in res.error
+
+
+def test_gdt_engine_execution_error_handling():
+    """GDTEngine must catch and return TaskResult with error when payload creation fails."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmp_path = str(Path(tmpdir).resolve())
+        engine = GDTEngine({"id": "gdt_err", "name": "GDT", "target_dir": tmp_path})
+        task = SkillTask(
+            id="task_err",
+            skill_id="gdt_err",
+            skill_name="GDT",
+            skill_type="gdt",
+            context={"Nachname": "Mustermann"},
+        )
+        res = engine.execute(task)
+        assert res.success is False
+        assert "Patient ID" in res.error
+
+
+def test_gdt_pdf_path_tags_emitted():
+    """Providing PDFPath must emit tags 6227 (path) and 6228 (basename)."""
+    data = {
+        "PatientID": "P123",
+        "PDFPath": "C:\\Praxis\\Befunde\\Report_2026.pdf",
+    }
+    payload = build_gdt_6310_payload(data)
+    lines = payload.split(b"\r\n")
+    tags = [line[3:7].decode("ascii") for line in lines if len(line) >= 7]
+    assert "6227" in tags
+    assert "6228" in tags
+    line_6228 = next(line for line in lines if len(line) >= 7 and line[3:7] == b"6228")
+    assert b"Report_2026.pdf" in line_6228

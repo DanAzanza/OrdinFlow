@@ -71,6 +71,14 @@
 * On Windows environments with usernames > 8 chars (e.g. GitHub Actions `runneradmin`), `tempfile.mkdtemp()` returns 8.3 short paths (`RUNNER~1`), whereas `Path(...).resolve()` expands to canonical long paths (`runneradmin`).
 * Raw string comparisons (`p in set` or `p in list`) fail across short/long paths. Test fixtures must normalize tempdirs with `Path(tempfile.mkdtemp(...)).resolve()`, and path membership checks should resolve via `Path(p).resolve()`.
 
+### 🗂️ Flask `<path:folder>` vs `<folder>` in Nested Case Routes
+* Case directories can be organized into hierarchical subfolders (e.g. `2026/Dr_Mueller_Hans`).
+* REST routes targeting cases (e.g. `/api/file/meta/cases/<path:folder>/<filename>`) must use Flask's `<path:folder>` converter rather than default `<folder>`, which breaks on `/` and causes silent 404s. Directory containment security is strictly enforced downstream via `_resolve_and_guard`.
+
+### 🛡️ Allowed Roots Security Boundary in File Exports
+* `export_case_to_gdt` and export actions enforce `is_within_allowed_roots(path)` to prevent rogue file writes across the filesystem.
+* Test fixtures or export configurations must reside within configured target roots or temporary directories (`tempfile.TemporaryDirectory()`). Arbitrary paths fail closed with permission errors.
+
 ---
 
 ## 4. Multi-User & Runtime Security Contracts
