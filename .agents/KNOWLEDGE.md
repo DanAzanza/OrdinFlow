@@ -52,20 +52,17 @@
 ### 📄 Sidecar `.meta` Lifecycle Trap
 * `.meta` sidecars are NOT created for clean ingestions. They exist strictly for:
   1. **Quarantine / Review (`status: "review"`)**: Failed classification, broken validation, incomplete page splitting.
-  2. **Downstream RPA Export**: Execution timestamps written by `CaseRouter.mark_file_skill_executed`.
+  2. **Downstream RPA Export**: Execution timestamps written by `core.skills.case_router.mark_file_skill_executed`.
 * Never write tests or code expecting `.meta` files for clean, routed documents.
 
 ### 🧪 Test Isolation on Gitignored Local Skills
 * `settings/skills/*.yaml` (except `*.example.yaml`) are gitignored practice configs. Automated tests in `tests/` must NEVER assert local disk skills; use in-memory fixtures or `temp_skills_dir`.
 
 ### 📄 0-Page Dummy PDF Trap in Test Fixtures
-* `wait_until_unlocked` in `core/utils.py` retries 5 times with 1.0s sleep when `len(doc) == 0`. Dummy PDF test fixtures must always contain $\ge 1$ page (`MINIMAL_1PAGE_PDF_BYTES`) to avoid 5.0s CI delays per test.
+* `wait_until_unlocked` in `core/utils.py` checks `len(doc) > 0` and retries up to 6 times with 0.5s delay when `len(doc) == 0`. Dummy PDF test fixtures must always contain $\ge 1$ page (`MINIMAL_1PAGE_PDF_BYTES`) to avoid 2.5s CI delays per test.
 
 ### 🌐 German Domain & Terminology Exemption
 * In OrdinFlow, German medical terms (Arztbriefe, Befunde, patient metadata) and runtime YAML configuration values in `settings/` (`"Privat"`, `"Kasse"`, `"Abgerechnet"`) are strictly exempt from English-only naming. Never translate domain concepts.
-
-### 🔘 Frontend Button Type Trap (`<button type="button">`)
-* HTML `<button>` defaults to `type="submit"`. In vanilla JS dialogs, unannotated buttons submit forms and reload pages. Non-submitting buttons must explicitly specify `type="button"`.
 
 ### 🪟 Windows 8.3 Short Path Trap (`RUNNER~1` vs. `runneradmin`)
 * On Windows environments with usernames > 8 chars (e.g. GitHub Actions `runneradmin`), `tempfile.mkdtemp()` returns 8.3 short paths (`RUNNER~1`), whereas `Path(...).resolve()` expands to canonical long paths (`runneradmin`).
