@@ -118,6 +118,16 @@ def test_subsumption_string_clustering():
     assert clusters[0]["representative"] == "Max Mustermann"
 
 
+def test_distinct_first_names_prevent_false_consensus_clustering():
+    """Verifies that different persons with shared surnames are NEVER merged into the same cluster."""
+    votes = [("Hans Müller", 1.0), ("Anna Müller", 1.25)]
+    clusters = cluster_votes(votes, threshold=0.80)
+    assert len(clusters) == 2
+    reps = {c["representative"] for c in clusters}
+    assert "Hans Müller" in reps
+    assert "Anna Müller" in reps
+
+
 def test_action_executor_masks_secret_and_disables_clipboard():
     """Verifies that sensitive credentials force use_clipboard = False."""
     from core.skills.action_executor import execute_type_text

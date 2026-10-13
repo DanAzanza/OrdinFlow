@@ -1,14 +1,14 @@
-# OrdinFlow PVS GDT Export Skill (Satzart 6302 - Befundübermittlung)
+# OrdinFlow PVS GDT Export Skill (Satzart 6310 - Daten einer Untersuchung / Befundübermittlung)
 # Compatible with German Medical Practice Management Systems (Medistar, TurboMed, CGM ALBIS, x.iserv, Tomedo)
 id: "pvs_gdt_export"
 name: "PVS GDT Export (Befundübermittlung)"
 type: "gdt"
 enabled: true
-description: "Exports processed patient documents and findings directly as standard GDT Satzart 6302 into the PVS transfer folder."
+description: "Exports processed patient documents and findings directly as standard GDT 2.1 Satzart 6310 into the PVS transfer folder."
 
 # Configuration for PVS directory exchange
 target_dir: "./PVS_Transfer"
-codepage: "cp437" # cp437 (DOS default) or iso-8859-15 (ANSI)
+codepage: "cp437" # cp437 (DOS default) or iso-8859-1 (ANSI)
 sender_id: "ORDINFLOW"
 receiver_id: "PVS"
 filename_prefix: "ORDINFLOW"

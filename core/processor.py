@@ -75,6 +75,7 @@ class DocumentProcessor:
         self.last_extraction_fields: set = set()
         self.last_context_dir: str | None = None
         self.last_context_time: float = 0.0
+        self.last_context_filename: str = ""
 
     def reset_context(self) -> None:
         """Resets inter-document context memory to prevent data leakage across distinct batches."""
@@ -83,6 +84,7 @@ class DocumentProcessor:
         self.last_extraction_fields = set()
         self.last_context_dir = None
         self.last_context_time = 0.0
+        self.last_context_filename = ""
 
     # --- Pause/Resume Control ---
     def pause(self):
@@ -297,6 +299,7 @@ class DocumentProcessor:
         split_multi_documents: bool = True,
         save_empty_pages: bool = False,
         force: bool = False,
+        doc_types_override: dict[str, Any] | None = None,
     ) -> bool:
         """Classifies, extracts, and routes a document."""
         start_time = time.time()
@@ -352,7 +355,9 @@ class DocumentProcessor:
 
             if extracted:
                 raw_doc_type = clean_path_component(extracted.get("Document", ""))
-                matched_type, matched_info = self.llm_extractor.find_doc_type_config(raw_doc_type)
+                matched_type, matched_info = self.llm_extractor.find_doc_type_config(
+                    raw_doc_type, doc_types_override=doc_types_override
+                )
 
                 if matched_info:
                     routing_cfg = matched_info.get("routing") or {}
@@ -371,15 +376,37 @@ class DocumentProcessor:
                 is_context_fresh = (
                     bool(self.last_context)
                     and (self.last_context_dir is None or self.last_context_dir == curr_dir)
-                    and (self.last_context_time == 0.0 or (time.time() - self.last_context_time <= 300.0))
+                    and (self.last_context_time == 0.0 or (time.time() - self.last_context_time <= 60.0))
                 )
 
+                inherited_fields: dict[str, Any] = {}
                 if is_dependent_doc and is_context_fresh:
                     for k, v in self.last_context.items():
                         if is_missing_value(extracted.get(k)):
                             extracted[k] = v
+                            inherited_fields[k] = v
+                    if inherited_fields:
+                        extracted["_inherited_fields"] = list(inherited_fields.keys())
+                        if self.last_context_filename:
+                            extracted["_inherited_from"] = self.last_context_filename
+                        logger.info(
+                            f"[*] Dependent document '{filename}' inherited fields {list(inherited_fields.keys())} from '{self.last_context_filename}'."
+                        )
                     optional_fields = optional_fields | self.last_optional_fields
                     extraction_fields = extraction_fields | self.last_extraction_fields
+
+                    # If explicitly configured to require review on inheritance, route to review
+                    if matched_info.get("review_on_inheritance", False):
+                        logger.warning(
+                            f"[!] Dependent document '{filename}' requires confirmation on inheritance. Routing to review."
+                        )
+                        self._mark_for_review(
+                            filepath,
+                            f"Dependent document inherited {list(inherited_fields.keys())} from '{self.last_context_filename}' – confirmation required",
+                            extracted=extracted,
+                        )
+                        _record_stat("skipped", time.time() - start_time)
+                        return False
                 elif is_dependent_doc and not is_context_fresh:
                     logger.info(
                         f"[*] Dependent document '{filename}' has no fresh parent context in '{curr_dir}'. Routing independently."
@@ -395,6 +422,8 @@ class DocumentProcessor:
                     self.last_extraction_fields = set(extraction_fields)
                     self.last_context_dir = curr_dir
                     self.last_context_time = time.time()
+                    self.last_context_filename = filename
+
                 is_valid, reason = self._validate_extracted_data(extracted)
 
             if not os.path.exists(filepath):

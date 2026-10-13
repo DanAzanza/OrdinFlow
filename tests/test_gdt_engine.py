@@ -1,11 +1,16 @@
-"""Automated tests for OrdinFlow German Medical GDT (Gerätedatenträger) Export Engine.
+"""Automated tests for OrdinFlow German Medical GDT 2.1 (Gerätedatenträger) Export Engine.
 
-Validates strict adherence to QMS / bvitg GDT 2.1 / 3.0 specification:
+Validates strict adherence to QMS / bvitg GDT 2.1 specification (Satzart 6310):
+- 3-digit line length (LLL = len + 9)
 - 4-digit tags (FFFF)
-- Accurate byte length calculation (LLLL) across CP437 and ISO-8859-15
+- Satzart 6310 (Daten einer Untersuchung)
+- Tag 8315 (Receiver) & Tag 8316 (Sender)
+- Tag 9206 (Zeichensatz: 2 = CP437, 3 = ISO 8859-1)
+- Accurate byte length calculation across CP437 and ISO-8859-1
 - Total Satzlänge (Tag 8100) mathematical parity
 - Transliteration and ASCII-folding for unencodable characters
-- Line wrapping of long Befund reports
+- Line wrapping of long Befund reports (<= 70 chars per 6220 tag)
+- Safe handling of missing DOB (omitted, never synthetically injected with today's date)
 - Atomic, non-clobbering disk export
 """
 
@@ -18,37 +23,38 @@ import pytest
 
 from core.skills.engines.gdt_engine import (
     GDTEngine,
-    build_gdt_6302_payload,
+    build_gdt_6310_payload,
     export_case_to_gdt,
     format_gdt_line,
     normalize_gdt_date,
     normalize_gdt_time,
-    normalize_insurance_status,
     transliterate_to_codepage,
     wrap_gdt_text,
 )
 from core.skills.models import SkillTask
 
 
-def test_gdt_line_format_strict_dimensions():
-    """Every line must strictly follow LLLLFFFFDDDD...\\r\\n where tag is 4 digits."""
-    line = format_gdt_line("8000", "6302", "cp437")
+def test_gdt_line_format_strict_3_digit_dimensions():
+    """Every line must strictly follow LLLFFFFDDDD...\\r\\n where LLL is 3 digits and FFFF is 4 digits."""
+    line = format_gdt_line("8000", "6310", "cp437")
     assert line.endswith(b"\r\n")
-    # Length of line in bytes
+    # Length of line in bytes: 3 (LLL) + 4 (8000) + 4 (6310) + 2 (\r\n) = 13 bytes
     byte_len = len(line)
-    # First 4 bytes are length ASCII digits
-    header_len = int(line[:4].decode("ascii"))
+    assert byte_len == 13
+    assert line == b"01380006310\r\n"
+    # First 3 bytes are length ASCII digits
+    header_len = int(line[:3].decode("ascii"))
     assert header_len == byte_len
     # Next 4 bytes are tag
-    tag = line[4:8].decode("ascii")
+    tag = line[3:7].decode("ascii")
     assert tag == "8000"
     # Content
-    content = line[8:-2].decode("ascii")
-    assert content == "6302"
+    content = line[7:-2].decode("ascii")
+    assert content == "6310"
 
 
 def test_gdt_invalid_tag_length_raises():
-    """3-digit or non-numeric tags must be rejected immediately."""
+    """Tags not exactly 4 digits or non-numeric must be rejected immediately."""
     with pytest.raises(ValueError, match="Tag must be exactly 4 digits"):
         format_gdt_line("800", "test", "cp437")
     with pytest.raises(ValueError, match="Tag must be exactly 4 digits"):
@@ -60,7 +66,7 @@ def test_gdt_invalid_tag_length_raises():
 def test_gdt_byte_vs_char_length_with_umlauts():
     """In CP437, Umlauts are single bytes (e.g. 0x81, 0x94, 0x84, 0xE1). Byte count must match exactly."""
     line = format_gdt_line("3101", "Müller-Schöneß", "cp437")
-    assert len(line) == int(line[:4].decode("ascii"))
+    assert len(line) == int(line[:3].decode("ascii"))
     assert b"M\x81ller-Sch\x94ne\xe1" in line
 
 
@@ -68,13 +74,19 @@ def test_gdt_unencodable_chars_transliteration():
     """Characters outside CP437 (Turkish, Slavic, French, emojis) must transliterate cleanly without '?' corruption."""
     raw_name = "Dr. Françoise Çelik-Milošević 😊"
     trans = transliterate_to_codepage(raw_name, "cp437")
-    # Must be encodable to CP437 without raising
     encoded = trans.encode("cp437")
     assert b"?" not in encoded
-    # Accents are folded: ç -> c, š -> s, ć -> c
     assert "Francoise" in trans
     assert "Celik" in trans
     assert "Milosevic" in trans
+
+
+def test_gdt_line_length_overflow_clamping():
+    """Values exceeding GDT 2.1 3-digit line bounds (>990 bytes) must clamp at max 999 bytes total."""
+    oversized = "A" * 1500
+    line = format_gdt_line("6220", oversized, "cp437")
+    assert len(line) == 999
+    assert line[:3] == b"999"
 
 
 def test_gdt_satzlaenge_8100_convergence():
@@ -86,15 +98,22 @@ def test_gdt_satzlaenge_8100_convergence():
         "Geburtsdatum": "15.03.1980",
         "Befund": "Patient klagt über thorakale Schmerzen seit 3 Tagen. EKG zeigt unauffälligen Sinusrhythmus.",
     }
-    payload = build_gdt_6302_payload(data, codepage="cp437")
+    payload = build_gdt_6310_payload(data, codepage="cp437")
     total_bytes = len(payload)
 
-    # Extract tag 8100 line (line index 1)
+    # Extract tag 8100 line (line index 1 in header)
     lines = payload.split(b"\r\n")
     tag_8100_line = lines[1]
-    assert tag_8100_line[4:8] == b"8100"
-    reported_bytes = int(tag_8100_line[8:].decode("ascii"))
+    assert tag_8100_line[3:7] == b"8100"
+    reported_bytes = int(tag_8100_line[7:].decode("ascii"))
     assert reported_bytes == total_bytes
+
+    # Check header tags compliance
+    assert lines[0] == b"01380006310"  # Satzart 6310
+    assert lines[2] == b"014921802.10"  # Version 02.10
+    assert lines[3] == b"0128315PVS"    # Receiver ID 8315
+    assert lines[4] == b"0178316ORDINFLO"  # Sender ID 8316 (max 8 chars)
+    assert lines[5] == b"01092062"     # Charset 2 (CP437)
 
 
 def test_gdt_befundtext_line_wrapping():
@@ -115,37 +134,49 @@ def test_gdt_befundtext_line_wrapping():
         "Nachname": "Schmidt",
         "Befund": long_report,
     }
-    payload = build_gdt_6302_payload(data)
-    # Count occurrences of tag 6220
-    count_6220 = sum(1 for line in payload.split(b"\r\n") if len(line) >= 8 and line[4:8] == b"6220")
+    payload = build_gdt_6310_payload(data)
+    count_6220 = sum(1 for line in payload.split(b"\r\n") if len(line) >= 7 and line[3:7] == b"6220")
     assert count_6220 == len(chunks)
 
 
 def test_gdt_rejects_missing_mandatory_patient_id():
-    """GDT Satzart 6302 without Patient ID (Tag 3000) must fail fast."""
+    """GDT Satzart 6310 without Patient ID (Tag 3000) must fail fast."""
     data = {
         "Nachname": "Mustermann",
         "Vorname": "Max",
     }
-    with pytest.raises(ValueError, match="non-empty Patient ID"):
-        build_gdt_6302_payload(data)
+    with pytest.raises(ValueError, match="Patient ID"):
+        build_gdt_6310_payload(data)
+
+
+def test_gdt_omits_missing_dob_safely():
+    """Tag 3103 (DOB) is omitted if missing/invalid, never synthetically injected with today's date."""
+    data = {
+        "PatientID": "P12345",
+        "Nachname": "Mustermann",
+        "Vorname": "Max",
+        # No Geburtsdatum provided
+    }
+    payload = build_gdt_6310_payload(data)
+    lines = payload.split(b"\r\n")
+    # Tag 3103 must NOT be present
+    tags = [line[3:7].decode("ascii") for line in lines if len(line) >= 7]
+    assert "3103" not in tags
+    assert "3000" in tags
 
 
 def test_gdt_date_and_time_normalization():
-    """Various date and time formats must normalize to DDMMYYYY and HHMMSS."""
+    """Various date and time formats normalize to DDMMYYYY and HHMMSS, rejecting invalid values."""
     assert normalize_gdt_date("15.03.1980") == "15031980"
     assert normalize_gdt_date("1980-03-15") == "15031980"
     assert normalize_gdt_date("15/03/1980") == "15031980"
     assert normalize_gdt_date("15031980") == "15031980"
+    assert normalize_gdt_date("", allow_fallback=False) is None
+    assert normalize_gdt_date("invalid", allow_fallback=False) is None
 
     assert normalize_gdt_time("14:30:15") == "143015"
     assert normalize_gdt_time("14:30") == "143000"
     assert normalize_gdt_time("143015") == "143015"
-
-    assert normalize_insurance_status("Privat") == "2"
-    assert normalize_insurance_status("PKV") == "2"
-    assert normalize_insurance_status("Kasse") == "1"
-    assert normalize_insurance_status("GKV") == "1"
 
 
 def test_gdt_atomic_export_and_semaphore():

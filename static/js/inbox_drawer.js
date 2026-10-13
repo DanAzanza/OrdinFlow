@@ -135,8 +135,8 @@ async function openSplitInspector(contextOrFilename, folder = null, filename = n
 			if (d && d.files && d.files.length > 0) {
 				const firstFile = d.files.find(f => f.has_preview) || d.files[0];
 				const safeFirst = encodeURIComponent(firstFile.name);
-				fileUrl = `/api/file/cases/${safeFolder}/${safeFirst}`;
-				previewUrl = firstFile.preview_url || `/api/preview/Cases/${safeFolder}/${safeFirst}`;
+				fileUrl = withAuthToken(`/api/file/cases/${safeFolder}/${safeFirst}`);
+				previewUrl = withAuthToken(firstFile.preview_url || `/api/preview/Cases/${safeFolder}/${safeFirst}`);
 				state.inspectorFile = firstFile.name;
 			}
 		} catch (e) {
@@ -154,9 +154,9 @@ async function openSplitInspector(contextOrFilename, folder = null, filename = n
 				<div class="inspector-card">
 					<div class="inspector-preview-wrap">
 						${(previewUrl || fileUrl)
-							? ((previewUrl || fileUrl).endsWith(".pdf") || (state.inspectorFile || "").toLowerCase().endsWith(".pdf")
-								? `<iframe src="${escapeHtml(fileUrl || previewUrl)}#toolbar=0&navpanes=0&view=FitH"></iframe>`
-								: `<img src="${escapeHtml(previewUrl || fileUrl)}" alt="Preview" />`)
+							? ((typeof isPdfUrl === "function" ? (isPdfUrl(fileUrl || previewUrl) || isPdfUrl(state.inspectorFile)) : (previewUrl || fileUrl).toLowerCase().includes(".pdf"))
+								? `<iframe src="${escapeHtml(withAuthToken(fileUrl || previewUrl))}#toolbar=0&navpanes=0&view=FitH"></iframe>`
+								: `<img src="${escapeHtml(withAuthToken(previewUrl || fileUrl))}" alt="Preview" />`)
 							: `<div class="inbox-drawer-folder-empty">📁 Folder contains no preview files</div>`
 						}
 					</div>
@@ -183,14 +183,14 @@ async function openSplitInspector(contextOrFilename, folder = null, filename = n
 	if (context === "cases") {
 		const safeFolder = encodeURIComponent(folder);
 		const safeFile = encodeURIComponent(targetFile);
-		fileUrl = `/api/file/cases/${safeFolder}/${safeFile}`;
-		previewUrl = `/api/preview/Cases/${safeFolder}/${safeFile}`;
+		fileUrl = withAuthToken(`/api/file/cases/${safeFolder}/${safeFile}`);
+		previewUrl = withAuthToken(`/api/preview/Cases/${safeFolder}/${safeFile}`);
 	} else {
 		fileObj = (state.inbox || []).find(
 			(f) => f.path === targetFile || f.name === targetFile,
 		) || { name: targetFile, path: targetFile };
-		fileUrl = fileObj.file_url || `/api/file/inbox/${encodeURIComponent(targetFile)}`;
-		previewUrl = fileObj.preview_url || "";
+		fileUrl = withAuthToken(fileObj.file_url || `/api/file/inbox/${encodeURIComponent(targetFile)}`);
+		previewUrl = withAuthToken(fileObj.preview_url || "");
 
 		if (fileObj.extracted && Object.keys(fileObj.extracted).length > 0) {
 			extractedData = Object.assign({}, fileObj.extracted);
@@ -235,9 +235,9 @@ async function openSplitInspector(contextOrFilename, folder = null, filename = n
 			html: `
 				<div class="inspector-card">
 					<div class="inspector-preview-wrap">
-						${(previewUrl || fileUrl).endsWith(".pdf") || (targetFile || "").toLowerCase().endsWith(".pdf")
-								? `<iframe src="${escapeHtml(fileUrl || previewUrl)}#toolbar=0&navpanes=0&view=FitH"></iframe>`
-								: `<img src="${escapeHtml(previewUrl || fileUrl)}" alt="Preview" />`
+						${(typeof isPdfUrl === "function" ? (isPdfUrl(fileUrl || previewUrl) || isPdfUrl(targetFile)) : (previewUrl || fileUrl).toLowerCase().includes(".pdf"))
+								? `<iframe src="${escapeHtml(withAuthToken(fileUrl || previewUrl))}#toolbar=0&navpanes=0&view=FitH"></iframe>`
+								: `<img src="${escapeHtml(withAuthToken(previewUrl || fileUrl))}" alt="Preview" />`
 						}
 					</div>
 				</div>
@@ -378,7 +378,7 @@ function buildGenericInspectorForm(docType = null, extractedData = {}) {
 
 	const docTypeOptions = getDocTypeOptions();
 	const isMulti = state.drawerDocSections.length > 1;
-	const isPdf = (state.inspectorFile || "").toLowerCase().endsWith(".pdf");
+	const isPdf = typeof isPdfUrl === "function" ? isPdfUrl(state.inspectorFile) : (state.inspectorFile || "").toLowerCase().includes(".pdf");
 
 	let html = `<div id="drawerSectionsList" class="drawer-sections-flex">`;
 

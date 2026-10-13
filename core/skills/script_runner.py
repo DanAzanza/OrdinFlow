@@ -25,15 +25,6 @@ from core.utils import is_within_allowed_roots, sanitize_safe_path
 logger = logging.getLogger(__name__)
 
 
-def _sanitize_script_var(val: Any) -> str:
-    """Sanitizes context variable values inserted into script strings against dangerous shell characters."""
-    s = str(val or "")
-    s = re.sub(r"[\x00\r\n;`|&$()]", "", s)
-    s = s.replace("'", "''")
-    s = s.replace('"', '`"')
-    return s.strip()
-
-
 def execute_script_step(
     step: Mapping[str, Any],
     context: Mapping[str, Any],
@@ -41,12 +32,19 @@ def execute_script_step(
     wait_for_queue_fn: Callable[..., bool] | None = None,
     reporter: Callable[[TaskProgress], None] | None = None,
 ) -> bool:
-    """Executes a PowerShell / Shell / CLI command step with bounded timeouts."""
+    """Executes a PowerShell / Shell / CLI command step with bounded timeouts and safe parameterization."""
     step_id = str(step.get("id", "script_step"))
     action_type = str(step.get("action_type") or step.get("type", "SCRIPT")).upper()
-    raw_cmd = str(step.get("command", "") or step.get("script", "") or step.get("code", ""))
+    raw_cmd = str(step.get("command", "") or step.get("script", "") or step.get("code", "")).strip()
+    timeout_s = float(step.get("timeout_s", 60.0))
+    shell_type = str(step.get("shell", "powershell")).lower()
+
+    if not raw_cmd:
+        logger.warning("[ScriptRunner] Empty command string provided.")
+        return True
+
     resolved_doc = None
-    if "{document_fullpath}" in raw_cmd or "$env:ORDINFLOW_DOCUMENT_FULLPATH" in raw_cmd:
+    if "{document_fullpath}" in raw_cmd or "$env:ORDINFLOW_DOCUMENT_FULLPATH" in raw_cmd or "%ORDINFLOW_DOCUMENT_FULLPATH%" in raw_cmd:
         raw_fp = str(context.get("document_fullpath", "") or "").strip()
         is_safe, clean_fp = sanitize_safe_path(raw_fp)
         if is_safe and clean_fp:
@@ -63,27 +61,31 @@ def execute_script_step(
                 raise SkillActionError(step_id, err_msg, action_type)
             return False
 
-    sanitized_context = {
-        k: (
-            _sanitize_script_var(v)
-            if k != "document_fullpath"
-            else str(resolved_doc or v).replace("'", "''")
-        )
-        for k, v in context.items()
-    }
-    cmd_to_run = substitute_fn(raw_cmd, sanitized_context)
-    timeout_s = float(step.get("timeout_s", 60.0))
-    shell_type = str(step.get("shell", "powershell")).lower()
-
-    if not cmd_to_run:
-        return True
-
-    # Prepare safe environment variables with context values for scripts
+    # 1. Prepare safe process environment variables (cap at 8192 chars for Windows environment block safety)
     proc_env = dict(os.environ)
     for k, v in context.items():
         if isinstance(v, (str, int, float, bool)):
             clean_k = re.sub(r"[^A-Za-z0-9_]", "_", str(k)).upper()
-            proc_env[f"ORDINFLOW_{clean_k}"] = str(v).replace("\x00", "")
+            val_str = str(resolved_doc if k == "document_fullpath" and resolved_doc else v)
+            proc_env[f"ORDINFLOW_{clean_k}"] = val_str.replace("\x00", "")[:8192]
+
+    # 2. Safe command formulation: NEVER interpolate unescaped document text directly into command lines.
+    # Instead, rewrite legacy {KEY} placeholders to native shell environment variable references.
+    if shell_type in ("powershell", "ps1", "pwsh"):
+        def _to_ps_env(m: re.Match[str]) -> str:
+            clean_k = re.sub(r"[^A-Za-z0-9_]", "_", m.group(1)).upper()
+            return f"$env:ORDINFLOW_{clean_k}"
+
+        cmd_to_run = re.sub(r"\{([A-Za-z0-9_]+)\}", _to_ps_env, raw_cmd)
+    elif shell_type in ("cmd", "bat"):
+        def _to_cmd_env(m: re.Match[str]) -> str:
+            clean_k = re.sub(r"[^A-Za-z0-9_]", "_", m.group(1)).upper()
+            return f"%ORDINFLOW_{clean_k}%"
+
+        cmd_to_run = re.sub(r"\{([A-Za-z0-9_]+)\}", _to_cmd_env, raw_cmd)
+    else:
+        # CLI direct binary execution: only rewrite validated document_fullpath
+        cmd_to_run = raw_cmd.replace("{document_fullpath}", str(resolved_doc or ""))
 
     try:
         if shell_type in ("powershell", "ps1", "pwsh") and sys.platform == "win32":

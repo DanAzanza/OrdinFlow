@@ -202,7 +202,24 @@ class LLMExtractor:
         """Clears the document types cache after a configuration change."""
         self._doc_types_cache = None
 
-    def _get_effective_document_types(self) -> dict:
+    def _get_effective_document_types(self, doc_types_override: dict[str, Any] | None = None) -> dict:
+        if doc_types_override is not None:
+            scoped_types = {k: dict(v) for k, v in doc_types_override.items()}
+            for matched_type, matched_info in scoped_types.items():
+                matched_info.setdefault("extraction_fields", {})
+                matched_info.setdefault("validation", {"signature_required": False})
+                routing = matched_info.setdefault(
+                    "routing",
+                    {
+                        "archive": True,
+                        "folder_template": "",
+                        "filename_template": matched_type,
+                    },
+                )
+                routing.setdefault("folder_template", "")
+                routing.setdefault("filename_template", matched_type)
+            return scoped_types
+
         if getattr(self, "_doc_types_cache", None) is not None:
             return self._doc_types_cache  # type: ignore[return-value]
         doc_types = getattr(self.config, "document_types", None) or {}
@@ -283,9 +300,9 @@ class LLMExtractor:
             logger.error(f"[!] Unable to salvage JSON response. Raw: {raw!r}")
             return None
 
-    def classify_image(self, b64_image: str) -> dict[str, Any]:
+    def classify_image(self, b64_image: str, doc_types_override: dict[str, Any] | None = None) -> dict[str, Any]:
         """Classifies an image using the configured LLM backend and dynamic GBNF grammar."""
-        doc_types = self._get_effective_document_types()
+        doc_types = self._get_effective_document_types(doc_types_override=doc_types_override)
         type_descriptions = []
         for dt, info in doc_types.items():
             desc = (info.get("classification_desc") or "").strip()
@@ -322,11 +339,11 @@ class LLMExtractor:
         # No valid match found -> UNKNOWN for human triage
         return {"Document": "UNKNOWN"}
 
-    def find_doc_type_config(self, doc_type: str) -> tuple[str, dict]:
+    def find_doc_type_config(self, doc_type: str, doc_types_override: dict[str, Any] | None = None) -> tuple[str, dict]:
         """Returns the document configuration for the given type. Case-insensitive."""
         if not isinstance(doc_type, str) or not doc_type.strip():
             return "UNKNOWN", {}
-        doc_types = self._get_effective_document_types()
+        doc_types = self._get_effective_document_types(doc_types_override=doc_types_override)
         # 1. Try exact match first (fast path)
         if doc_type in doc_types:
             return doc_type, doc_types[doc_type]

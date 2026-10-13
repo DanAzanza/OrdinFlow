@@ -87,6 +87,24 @@ function safePathEncode(path) {
 	return String(path).split("/").map(encodeURIComponent).join("/");
 }
 
+function withAuthToken(url) {
+	if (!url) return "";
+	const tokenMeta = document.querySelector('meta[name="ordinflow-token"]');
+	const token = tokenMeta ? tokenMeta.getAttribute("content") : "";
+	if (!token) return url;
+	const [baseAndQuery, hash] = url.split("#");
+	if (baseAndQuery.includes("token=")) return url;
+	const separator = baseAndQuery.includes("?") ? "&" : "?";
+	const authed = `${baseAndQuery}${separator}token=${encodeURIComponent(token)}`;
+	return hash ? `${authed}#${hash}` : authed;
+}
+
+function isPdfUrl(urlOrPath) {
+	if (!urlOrPath) return false;
+	const clean = String(urlOrPath).split(/[?#]/)[0].toLowerCase();
+	return clean.endsWith(".pdf");
+}
+
 function formatDateString(dateStr) {
 	if (!dateStr || dateStr === "–") return "–";
 	const s = String(dateStr).trim();

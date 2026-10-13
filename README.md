@@ -5,7 +5,7 @@
 [![Python](https://img.shields.io/badge/Python-3.10%2B%20%2864--bit%29-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
 [![Type Checking: Pyright](https://img.shields.io/badge/Type%20Checking-Pyright%20Standard-2b5b84?style=flat-square)](https://github.com/microsoft/pyright)
 [![Linter: Ruff](https://img.shields.io/badge/Linter-Ruff-black?style=flat-square&logo=ruff)](https://github.com/astral-sh/ruff)
-[![Tests: Pytest](https://img.shields.io/badge/Tests-309%20Passed-brightgreen?style=flat-square&logo=pytest)](https://pytest.org/)
+[![Tests: Pytest](https://img.shields.io/badge/Tests-324%20Passed-brightgreen?style=flat-square&logo=pytest)](https://pytest.org/)
 [![Privacy: 100% Air--Gapped](https://img.shields.io/badge/Privacy-100%25%20Air--Gapped%20%2F%20GDPR-blue?style=flat-square)](docs/legal/PRIVACY_POLICY.md)
 [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-orange?style=flat-square)](LICENSE)
 
@@ -127,10 +127,10 @@ Define new document types, recognition rules, and extraction fields in seconds w
 
 ---
 
-### 5. Native Medical PVS GDT 2.1 / 3.0 Export & Hardened RPA
-Beyond general desktop automation, OrdinFlow includes a specialized GDT engine compliant with the German QMS / bvitg GDT 2.1 and 3.0 specification (**Satzart 6302 - Befundübermittlung**) for direct, headless electronic health record integration into German Praxisverwaltungssysteme (*CGM Medistar, TurboMed, CGM ALBIS, medatixx / x.iserv, Tomedo, DURIA*):
-- **Deterministic GDT Parser Compatibility:** Generates exact 4-digit tags (`FFFF`), strict byte-length headers (`LLLL`), deterministic Tag 8100 fixed file-length calculation, and 70-character word-wrapping for medical findings to prevent buffer truncation in legacy PVS parsers.
-- **Robust Encoding & NFKD Transliteration:** Native `CP437` (DOS standard) and `ISO-8859-15` (ANSI) support with NFKD ASCII-folding transliteration that preserves German Umlauts (`ä, ö, ü, ß`) while gracefully handling unencodable international characters without `?` corruption.
+### 5. Native Medical PVS GDT 2.1 Export & Hardened RPA
+Beyond general desktop automation, OrdinFlow includes a specialized GDT engine compliant with the German QMS / bvitg GDT 2.1 specification (**Satzart 6310 - Daten einer Untersuchung übermitteln**) for direct, headless electronic health record integration into German Praxisverwaltungssysteme (*CGM Medistar, TurboMed, CGM ALBIS, medatixx / x.iserv, Tomedo, DURIA*):
+- **Deterministic GDT 2.1 Compatibility:** Generates exact standard 3-digit byte length prefixes (`LLL`), 4-digit field identifiers (`FFFF`), deterministic Tag 8100 5-digit file length calculation, standard sender/receiver tags (Tag 8316 / 8315), and 70-character word-wrapping for medical findings to prevent buffer truncation in legacy PVS parsers.
+- **Robust Encoding & NFKD Transliteration:** Native `CP437` (IBM DOS, Tag 9206=2) and `ISO-8859-1` (ANSI, Tag 9206=3) support with NFKD ASCII-folding transliteration that preserves German Umlauts (`ä, ö, ü, ß`) while gracefully handling unencodable international characters without `?` corruption.
 - **Atomic File Swaps & Directory Watcher Resilience:** Eliminates incomplete file read races in PVS directory watchers via temporary `.gdt.tmp` writes, filesystem sync (`os.fsync`), and atomic `os.replace` swaps with optional semaphore files (`.sem`).
 - **Win32 Focus Guard & Modal Hierarchy:** Hardens desktop RPA automation by validating foreground window ownership via `GA_ROOTOWNER` and target process ID inheritance (allowing legitimate modal dialogs like *"Speichern unter..."* while instantly aborting upon focus theft), detecting lock screens (`LockApp.exe`), and sanitizing the Windows clipboard after pasting patient data.
 
@@ -337,7 +337,7 @@ ruff check .
 # 2. Static Type Analysis
 npx pyright core/ routes/
 
-# 3. Automated Test Suite (309+ tests)
+# 3. Automated Test Suite (324+ tests)
 python -m pytest -q
 ```
 

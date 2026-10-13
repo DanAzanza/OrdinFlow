@@ -64,9 +64,10 @@ function resetAppInspectorContent() {
 }
 
 function renderDocumentPreview(fileUrl, previewUrl, fileName) {
-	const src = previewUrl || fileUrl;
-	if (!src) return '<div class="no-preview">No preview available</div>';
-	const isPdf = (fileName || src).toLowerCase().endsWith(".pdf");
+	const rawSrc = previewUrl || fileUrl;
+	if (!rawSrc) return '<div class="no-preview">No preview available</div>';
+	const src = typeof withAuthToken === "function" ? withAuthToken(rawSrc) : rawSrc;
+	const isPdf = (typeof isPdfUrl === "function") ? (isPdfUrl(fileName) || isPdfUrl(rawSrc)) : (fileName || rawSrc).toLowerCase().includes(".pdf");
 	if (isPdf) {
 		return `<iframe src="${escapeHtml(src)}#toolbar=0&navpanes=0&view=FitH" loading="lazy"></iframe>`;
 	}

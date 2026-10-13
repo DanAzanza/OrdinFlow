@@ -680,3 +680,25 @@ def test_api_split_inspector_submit_cases_and_security(client, tmp_path):
     data = res_valid.get_json()
     assert data["status"] == "ok"
     assert len(data["results"]) == 1
+
+
+def test_api_cases_detail_file_url(client, tmp_path):
+    """GET /api/cases/<folder> returns file_url for consistent document preview contracts."""
+    orig_target_base = DashboardState.config.target_base_dir
+    test_folder = tmp_path / "2026-09-01__Software__Mueller__Hans"
+    test_folder.mkdir(parents=True, exist_ok=True)
+    test_file = test_folder / "Befund 01.pdf"
+    test_file.write_text("sample content", encoding="utf-8")
+
+    DashboardState.config.target_base_dir = str(tmp_path)
+    try:
+        res = client.get("/api/cases/2026-09-01__Software__Mueller__Hans")
+        assert res.status_code == 200
+        data = res.get_json()
+        assert data["folder"] == "2026-09-01__Software__Mueller__Hans"
+        assert len(data["files"]) == 1
+        file_item = data["files"][0]
+        assert file_item["name"] == "Befund 01.pdf"
+        assert file_item["file_url"] == "/api/file/cases/2026-09-01__Software__Mueller__Hans/Befund%2001.pdf"
+    finally:
+        DashboardState.config.target_base_dir = orig_target_base

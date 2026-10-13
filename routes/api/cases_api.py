@@ -286,6 +286,7 @@ def api_cases_detail(folder_name: str):
                     "modified": time.strftime("%Y-%m-%d %H:%M", time.localtime(stat.st_mtime)),
                     "has_preview": has_preview,
                     "preview_url": preview_url,
+                    "file_url": f"/api/file/cases/{urllib.parse.quote(folder_name, safe='/')}/{urllib.parse.quote(f, safe='/')}",
                     "is_preview": False,
                     "doc_type": doc_type,
                     "executed_skills": executed_skills if isinstance(executed_skills, list) else [],

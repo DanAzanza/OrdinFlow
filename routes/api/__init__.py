@@ -1,4 +1,4 @@
-"""REST API Blueprint registration and export encapsulation."""
+import secrets
 
 from flask import Blueprint, current_app, jsonify, request
 
@@ -50,7 +50,7 @@ def check_api_security():
         return jsonify({"error": "Unauthorized: Session token not initialized"}), 403
 
     token = request.headers.get("X-OrdinFlow-Token") or request.args.get("token")
-    if not token or token != expected_token:
+    if not token or not isinstance(token, str) or not secrets.compare_digest(token, expected_token):
         return jsonify({"error": "Unauthorized: Invalid or missing session token"}), 403
 
     return None

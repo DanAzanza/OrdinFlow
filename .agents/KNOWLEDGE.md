@@ -86,22 +86,31 @@
 
 ### ⏱️ Dependent Document Context Boundary (`last_context`)
 * When routing multi-page or dependent medical records (e.g. lab annexes following a primary doctor letter), `last_context` inheritance is strictly bounded:
-  1. Maximum age limit: **300 seconds** (5 minutes).
+  1. Maximum age limit: **60 seconds** (1 minute).
   2. Spatial scope: Same parent directory.
 * Context must never leak across separate folders, patient batches, or restart boundaries.
+* Inherited fields are transparently tracked in `.meta` (`inherited_fields`, `inherited_from`). Config option `review_on_inheritance: true` routes documents to human review if fields were inherited.
+
+### 🌐 Iframe Auth & URL Hash Fragment Security
+* Endpoints like `/api/file/...` and `/api/preview/...` enforce strict token validation.
+* In browser iframes, appending `?token=...` after a URL hash fragment (e.g. `/api/file/...#toolbar=0?token=...`) breaks RFC 3986 parsing: browsers interpret parameters after `#` as client-side fragments and strip them before HTTP transmission, causing 403 Forbidden responses.
+* Frontend helper `withAuthToken(url)` must split URLs at `#`, append `?token=...` to the pathname/search query, and preserve the `#fragment` at the end.
+* Backend authentication uses `secrets.compare_digest` with explicit `isinstance(token, str)` checking to prevent timing attacks and type confusion.
 
 ### 📜 PowerShell Skill Execution Contract
 * `core/skills/script_runner.py` passes extracted document values to PowerShell.
-* Document values (names, case IDs) originate from untrusted OCR/VLM output and must NEVER be interpolated into command strings via string formatting/replace.
-* Values are injected strictly via `$env:ORDINFLOW_<KEY>` process environment variables. PowerShell scripts consume `$env:ORDINFLOW_*` directly.
+* Document values (names, case IDs) originate from untrusted OCR/VLM output and must NEVER be interpolated into command strings via string formatting/replace or blocklist escaping.
+* Values are injected strictly via `$env:ORDINFLOW_<KEY>` process environment variables (or `%ORDINFLOW_<KEY>%` for cmd.exe), bounded at 8192 characters. PowerShell scripts consume `$env:ORDINFLOW_*` directly.
 
 ---
 
 ## 5. Medical PVS & RPA Integration Quirks
 
-### 🏥 German PVS GDT 2.1 / 3.0 Parser Quirks & Watcher Races
-* **Strict Byte Length vs. Char Length**: GDT lines follow `LLLLFFFFDDDD...\r\n`. `LLLL` is the byte count of the whole line including `LLLL` itself and `\r\n` (`len(data) + 10`). In CP437 byte count equals char count, but byte measurements must always occur *after* encoding to prevent buffer overflows in legacy PVS.
-* **Deterministic Tag 8100 Fixed Width**: Tag 8100 (total file length in bytes) must be formatted as fixed 18 bytes (`00188100%08d\r\n`). Variable-width length formatting triggers iterative circular length recalculations.
+### 🏥 German PVS GDT 2.1 Parser Quirks & Watcher Races
+* **Strict 3-Digit Byte Length Prefix (`LLL`)**: Standard GDT 2.1 lines follow `LLLFFFFDDDD...\r\n`. `LLL` is a 3-digit ASCII length (`len(data_bytes) + 9`), bounded at 999 bytes max. In CP437/ISO-8859-1 byte count equals char count, but byte measurements must always occur *after* encoding to prevent buffer overflows in legacy PVS.
+* **Deterministic Tag 8100 (5-Digit File Length)**: Tag 8100 (total file length in bytes) is formatted as fixed 14 bytes (`0148100%05d\r\n`).
+* **Satzart 6310 (Untersuchungsdaten übermitteln)**: OrdinFlow exports findings to PVS using Satzart 6310. Tag 8315 is Receiver (PVS), Tag 8316 is Sender (ORDINFLOW, max 8 chars), Tag 9206 is Character Set (2 = CP437, 3 = ISO-8859-1).
+* **Fail-Fast Integrity**: Tag 3000 (Patienten-ID) is strictly required; missing patient IDs fail fast with `ValueError` rather than guessing generic IDs. Tag 3103 (Geburtsdatum) must be omitted if unparseable or absent—never synthesize current date into patient master data.
 * **70-Character Line Limit**: Legacy DOS/Windows PVS parsers (Medistar, TurboMed, Albis) truncate or crash if Tag 6220 (Befund) exceeds 70 characters. Free text must be word-wrapped into consecutive 6220 tags.
 * **Directory Watcher Ingestion Race**: PVS directory watchers scan folders continuously and ingest incomplete files if written directly. Exports must write to `.gdt.tmp`, call `os.fsync()`, and atomically swap via `os.replace()`. Optional semaphore trigger files (`.sem` / `.ok`) must be written strictly *after* the `.gdt` rename.
 

@@ -80,7 +80,7 @@ def api_inbox():
                         )
                         if f.lower().endswith(".pdf")
                         else "",
-                        "file_url": f"/api/file/inbox/{rel_path}",
+                        "file_url": f"/api/file/inbox/{urllib.parse.quote(rel_path, safe='/')}",
                     }
                 )
     return jsonify(result)

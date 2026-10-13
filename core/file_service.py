@@ -221,6 +221,10 @@ class FileService:
                     else:
                         extracted_raw[k] = v
             meta["extracted"] = extracted_raw
+            if "_inherited_fields" in extracted:
+                meta["inherited_fields"] = extracted["_inherited_fields"]
+            if "_inherited_from" in extracted:
+                meta["inherited_from"] = extracted["_inherited_from"]
 
         # If existing .meta exists, preserve user-added metadata / fields
         if os.path.exists(meta_path):
@@ -318,6 +322,10 @@ class FileService:
                     else:
                         extracted_raw[k] = v
             meta["extracted"] = extracted_raw
+            if "_inherited_fields" in extracted:
+                meta["inherited_fields"] = extracted["_inherited_fields"]
+            if "_inherited_from" in extracted:
+                meta["inherited_from"] = extracted["_inherited_from"]
 
         # If existing .meta exists, preserve user-added metadata / fields but clear review markers
         if os.path.exists(meta_path):

@@ -334,3 +334,20 @@ def test_inbox_error_branches_and_processor_integration(client, test_sandbox):
         res_del_err = client.delete("/api/inbox/EdgeDoc.pdf")
         assert res_del_err.status_code == 500
 
+
+def test_inbox_listing_url_quoting_special_characters(client, test_sandbox):
+    """GET /api/inbox correctly URL-encodes file_url and preview_url for files with spaces and characters."""
+    _, config, _ = test_sandbox
+    watch_dir = config.watch_dir
+
+    doc = os.path.join(watch_dir, "Arztbrief Dr Mueller 2026.pdf")
+    with open(doc, "wb") as f:
+        f.write(MINIMAL_1PAGE_PDF_BYTES)
+
+    res = client.get("/api/inbox")
+    assert res.status_code == 200
+    items = res.get_json()
+    item = next(it for it in items if it["name"] == "Arztbrief Dr Mueller 2026.pdf")
+    assert item["file_url"] == "/api/file/inbox/Arztbrief%20Dr%20Mueller%202026.pdf"
+    assert "/api/inbox/preview/Arztbrief%20Dr%20Mueller%202026.pdf" in item["preview_url"]
+

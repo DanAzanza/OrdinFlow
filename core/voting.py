@@ -58,6 +58,40 @@ def fuzz_similarity(a: str, b: str) -> float:
     return SequenceMatcher(None, normalize_for_clustering(a), normalize_for_clustering(b)).ratio()
 
 
+_HONORIFICS = {"dr", "prof", "med", "herr", "frau", "dipl", "ing", "rer", "nat"}
+
+
+def _extract_semantic_tokens(normed: str) -> list[str]:
+    """Extracts words/tokens, filtering out common German medical titles and honorifics."""
+    raw_tokens = re.sub(r"[-,\s.]+", " ", normed).split()
+    return [t for t in raw_tokens if t and t not in _HONORIFICS]
+
+
+def _tokens_contradict(tokens_a: list[str], tokens_b: list[str]) -> bool:
+    """Checks whether two token sequences have mutually conflicting distinct words.
+
+    Returns True (hard contradiction) if A contains a word not in B AND B contains a word not in A.
+    Initials (e.g. 'h' for 'hans') are treated as compatible and do not contradict.
+    """
+    if not tokens_a or not tokens_b:
+        return False
+
+    def _matches_any(target: str, candidates: list[str]) -> bool:
+        for cand in candidates:
+            if target == cand or SequenceMatcher(None, target, cand).ratio() >= 0.80:
+                return True
+            if len(target) == 1 and cand.startswith(target):
+                return True
+            if len(cand) == 1 and target.startswith(cand):
+                return True
+        return False
+
+    unmatched_a = [t for t in tokens_a if len(t) >= 2 and not _matches_any(t, tokens_b)]
+    unmatched_b = [t for t in tokens_b if len(t) >= 2 and not _matches_any(t, tokens_a)]
+
+    return len(unmatched_a) > 0 and len(unmatched_b) > 0
+
+
 def are_similar_or_substring(a: str, b: str, threshold: float = 0.80) -> bool:
     """Checks whether two strings are fuzzy similar OR if one is a token/substring subset of the other."""
     # Differing numbers/digits indicate distinct IDs, dates, or amounts and must not be clustered
@@ -74,13 +108,20 @@ def are_similar_or_substring(a: str, b: str, threshold: float = 0.80) -> bool:
         elif digits_a != digits_b:
             return False
 
-    if fuzz_similarity(a, b) >= threshold:
-        return True
-
     norm_a = normalize_for_clustering(a)
     norm_b = normalize_for_clustering(b)
     if not norm_a or not norm_b or len(norm_a) < 3 or len(norm_b) < 3:
         return False
+
+    # Check for hard semantic token contradiction (e.g. 'Hans Müller' vs 'Anna Müller')
+    # If both sides have distinct conflicting words, reject clustering regardless of overall string similarity
+    toks_a = _extract_semantic_tokens(norm_a)
+    toks_b = _extract_semantic_tokens(norm_b)
+    if _tokens_contradict(toks_a, toks_b):
+        return False
+
+    if fuzz_similarity(a, b) >= threshold:
+        return True
 
     # 1-character typo allowance for short names (e.g. Audre vs Andre)
     if (

@@ -62,11 +62,6 @@ class ImportEngine(BaseSkill):
 
         processor.reset_context()
 
-        # Temporarily apply document types from this specific skill if defined
-        original_doc_types = processor.config.document_types
-        if self.document_types:
-            processor.config.document_types = self.document_types
-
         try:
             filepath = task.context.get("filepath")
             if filepath and isinstance(filepath, str) and os.path.isfile(filepath):
@@ -90,6 +85,7 @@ class ImportEngine(BaseSkill):
                     filepath,
                     split_multi_documents=self.split_multi_documents,
                     save_empty_pages=self.save_empty_pages,
+                    doc_types_override=self.document_types if self.document_types else None,
                 )
                 gc.collect()
 
@@ -184,6 +180,7 @@ class ImportEngine(BaseSkill):
                             fp,
                             split_multi_documents=self.split_multi_documents,
                             save_empty_pages=self.save_empty_pages,
+                            doc_types_override=self.document_types if self.document_types else None,
                         )
                         processed.append(fp)
                     except Exception as e:
@@ -226,6 +223,4 @@ class ImportEngine(BaseSkill):
             logger.error("[ImportEngine] Execution failure: %s", e, exc_info=True)
             return TaskResult(success=False, error=str(e))
         finally:
-            # Restore original document types and clear inter-document context
-            processor.config.document_types = original_doc_types
             processor.reset_context()

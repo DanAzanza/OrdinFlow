@@ -1,8 +1,9 @@
 """German Medical GDT (Gerätedatenträger) Export Skill Engine for OrdinFlow.
 
-Compliant with QMS / bvitg GDT 2.1 / 3.0 specification (Satzart 6302 - Befundübermittlung).
-Generates atomic, non-clobbering GDT files with strict 4-digit tags and exact byte lengths
-for integration with German Praxisverwaltungssysteme (Medistar, TurboMed, Albis, x.iserv, etc.).
+Compliant with QMS / bvitg GDT 2.1 specification (Satzart 6310 - Daten einer Untersuchung).
+Generates atomic, non-clobbering GDT files with strict 3-digit length prefixes (LLL)
+and exact byte lengths for direct integration into German Praxisverwaltungssysteme
+(CGM Medistar, CGM TurboMed, CGM ALBIS, medatixx / x.iserv, Tomedo, DURIA, etc.).
 """
 
 from __future__ import annotations
@@ -22,49 +23,69 @@ from core.utils import is_within_allowed_roots, sanitize_safe_path
 
 logger = logging.getLogger(__name__)
 
-# Standard GDT encodings mapping to GDT Tag 9206 (Zeichensatz)
-# 1 = CP437 (DOS standard, default in German PVS)
-# 4 = ISO-8859-15 / ANSI (Windows standard)
+# Standard GDT 2.1 encodings mapping to GDT Tag 9206 (Zeichensatz)
+# 1 = 7-Bit ASCII
+# 2 = IBM CP 437 (DOS standard, default in German PVS)
+# 3 = ISO 8859-1 (ANSI / Windows standard)
 GDT_CODEPAGE_TAGS: dict[str, str] = {
-    "cp437": "1",
-    "ibm437": "1",
-    "437": "1",
-    "iso-8859-15": "4",
-    "iso8859-15": "4",
-    "iso-8859-1": "4",
-    "latin1": "4",
-    "cp1252": "4",
-    "windows-1252": "4",
+    "cp437": "2",
+    "ibm437": "2",
+    "437": "2",
+    "iso-8859-1": "3",
+    "iso8859-1": "3",
+    "latin1": "3",
+    "cp1252": "3",
+    "windows-1252": "3",
+    "iso-8859-15": "3",
+    "iso8859-15": "3",
 }
 
 
-def normalize_gdt_date(raw_date: Any) -> str:
-    """Normalizes various date formats (DD.MM.YYYY, YYYY-MM-DD, DDMMYYYY) to GDT DDMMYYYY format."""
+def normalize_gdt_date(raw_date: Any, allow_fallback: bool = False) -> str | None:
+    """Normalizes date formats (DD.MM.YYYY, YYYY-MM-DD, DDMMYYYY) to GDT DDMMYYYY format.
+
+    For patient demographics (e.g. Geburtsdatum Tag 3103), allow_fallback MUST be False
+    to prevent corrupting patient records with synthetic/today dates.
+    """
     if not raw_date:
-        return time.strftime("%d%m%Y")
+        return time.strftime("%d%m%Y") if allow_fallback else None
     cleaned = str(raw_date).strip()
+    if not cleaned or cleaned in ("-", "–", "unbekannt", "None"):
+        return time.strftime("%d%m%Y") if allow_fallback else None
+
     # DD.MM.YYYY or DD/MM/YYYY or DD-MM-YYYY
     m = re.match(r"^(\d{1,2})[./\-](\d{1,2})[./\-](\d{4})$", cleaned)
     if m:
         day, month, year = int(m.group(1)), int(m.group(2)), m.group(3)
-        return f"{day:02d}{month:02d}{year}"
+        if 1 <= day <= 31 and 1 <= month <= 12:
+            return f"{day:02d}{month:02d}{year}"
+
     # YYYY-MM-DD
     m = re.match(r"^(\d{4})[./\-](\d{1,2})[./\-](\d{1,2})$", cleaned)
     if m:
         year, month, day = m.group(1), int(m.group(2)), int(m.group(3))
-        return f"{day:02d}{month:02d}{year}"
+        if 1 <= day <= 31 and 1 <= month <= 12:
+            return f"{day:02d}{month:02d}{year}"
+
     # Already DDMMYYYY (8 digits)
     m = re.match(r"^\d{8}$", cleaned)
     if m:
-        return cleaned
-    return time.strftime("%d%m%Y")
+        day = int(cleaned[:2])
+        month = int(cleaned[2:4])
+        if 1 <= day <= 31 and 1 <= month <= 12:
+            return cleaned
+
+    return time.strftime("%d%m%Y") if allow_fallback else None
 
 
-def normalize_gdt_time(raw_time: Any) -> str:
+def normalize_gdt_time(raw_time: Any, allow_fallback: bool = True) -> str | None:
     """Normalizes time formats (HH:MM:SS, HH:MM, HHMMSS) to GDT HHMMSS format."""
     if not raw_time:
-        return time.strftime("%H%M%S")
+        return time.strftime("%H%M%S") if allow_fallback else None
     cleaned = str(raw_time).strip()
+    if not cleaned:
+        return time.strftime("%H%M%S") if allow_fallback else None
+
     # HH:MM:SS
     m = re.match(r"^(\d{1,2}):(\d{1,2}):(\d{1,2})$", cleaned)
     if m:
@@ -77,17 +98,7 @@ def normalize_gdt_time(raw_time: Any) -> str:
     m = re.match(r"^\d{6}$", cleaned)
     if m:
         return cleaned
-    return time.strftime("%H%M%S")
-
-
-def normalize_insurance_status(raw_status: Any) -> str:
-    """Maps insurance status strings to GDT tag 3105 values (1 = GKV/Kasse, 2 = PKV/Privat)."""
-    if raw_status is None:
-        return "1"
-    status_str = str(raw_status).strip().lower()
-    if status_str in ("2", "pkv", "privat", "private", "selbstzahler", "beihilfe"):
-        return "2"
-    return "1"
+    return time.strftime("%H%M%S") if allow_fallback else None
 
 
 def transliterate_to_codepage(text: str, codepage: str = "cp437") -> str:
@@ -114,7 +125,7 @@ def transliterate_to_codepage(text: str, codepage: str = "cp437") -> str:
         if ch in char_map:
             interm.append(char_map[ch])
         else:
-            # NFKD decomposition separates base character from diacritics (e.g. 'ç' -> 'c' + combining cedilla)
+            # NFKD decomposition separates base character from diacritics
             decomposed = unicodedata.normalize("NFKD", ch)
             base_char = "".join(c for c in decomposed if not unicodedata.combining(c))
             interm.append(base_char if base_char else " ")
@@ -124,7 +135,6 @@ def transliterate_to_codepage(text: str, codepage: str = "cp437") -> str:
         candidate.encode(canonical_cp)
         return candidate
     except UnicodeEncodeError:
-        # Final safety net: strictly filter unencodables rather than raising or producing '?'
         safe_chars = []
         for ch in candidate:
             try:
@@ -162,7 +172,11 @@ def wrap_gdt_text(text: str, max_chars: int = 70) -> list[str]:
 
 
 def format_gdt_line(tag: str, value: str, codepage: str = "cp437") -> bytes:
-    """Formats a single GDT line: LLLLFFFFDDDD...\\r\\n with strict 4-digit tag and exact byte length."""
+    """Formats a single GDT 2.1 line: LLLFFFFDDDD...\\r\\n with strict 3-digit length and 4-digit tag.
+
+    LLL = 3 (length field) + 4 (tag) + len(val_bytes) + 2 (\\r\\n) = len(val_bytes) + 9.
+    LLL is strictly clamped to max 999 bytes to prevent 4-digit width overflow.
+    """
     if len(tag) != 4 or not tag.isdigit():
         raise ValueError(f"GDT Tag must be exactly 4 digits: {tag!r}")
 
@@ -172,76 +186,88 @@ def format_gdt_line(tag: str, value: str, codepage: str = "cp437") -> bytes:
     trans_val = transliterate_to_codepage(clean_val, canonical_cp)
     val_bytes = trans_val.encode(canonical_cp)
 
-    # Line byte count: 4 (LLLL) + 4 (FFFF) + len(val_bytes) + 2 (\r\n) = len(val_bytes) + 10
-    total_line_len = len(val_bytes) + 10
-    if total_line_len > 9999:
-        val_bytes = val_bytes[: 9999 - 10]
-        total_line_len = 9999
+    # In GDT 2.1, LLL is 3 ASCII digits. Max line length is 999 bytes.
+    # 3 (LLL) + 4 (FFFF) + len(val_bytes) + 2 (\r\n) = len(val_bytes) + 9
+    max_val_bytes = 999 - 9  # 990 bytes max value payload
+    if len(val_bytes) > max_val_bytes:
+        logger.warning("[GDTEngine] Tag %s value length (%d bytes) exceeds GDT 2.1 line limit; truncating to %d bytes", tag, len(val_bytes), max_val_bytes)
+        val_bytes = val_bytes[:max_val_bytes]
 
-    prefix = f"{total_line_len:04d}{tag}".encode(canonical_cp)
+    total_line_len = len(val_bytes) + 9
+    prefix = f"{total_line_len:03d}{tag}".encode(canonical_cp)
     return prefix + val_bytes + b"\r\n"
 
 
-def build_gdt_6302_payload(
+def build_gdt_6310_payload(
     data: dict[str, Any],
     codepage: str = "cp437",
     sender_id: str = "ORDINFLOW",
     receiver_id: str = "PVS",
 ) -> bytes:
-    """Builds a complete, specification-compliant GDT Satzart 6302 (Befundübermittlung) payload."""
+    """Builds a complete, specification-compliant GDT Satzart 6310 (Daten einer Untersuchung) payload.
+
+    Standard GDT 2.1 Header structure:
+      8000: Satzart (6310)
+      8100: Satzlänge (Gesamtlänge in Bytes inkl. CR LF)
+      9218: GDT-Version (02.10)
+      8315: GDT-ID des Empfängers
+      8316: GDT-ID des Senders
+      9206: Zeichensatz (2 = CP437, 3 = ISO 8859-1)
+    """
     canonical_cp = codepage.lower().replace("_", "-")
-    charset_code = GDT_CODEPAGE_TAGS.get(canonical_cp, "1")
+    charset_code = GDT_CODEPAGE_TAGS.get(canonical_cp, "2")
 
     # Header tags
-    line_8000 = format_gdt_line("8000", "6302", canonical_cp)  # Satzart 6302
+    line_8000 = format_gdt_line("8000", "6310", canonical_cp)  # Satzart 6310 (Daten einer Untersuchung)
     line_9218 = format_gdt_line("9218", "02.10", canonical_cp)  # GDT Version 2.10
+    line_8315 = format_gdt_line("8315", str(receiver_id)[:8], canonical_cp)  # Empfänger-ID
+    line_8316 = format_gdt_line("8316", str(sender_id)[:8], canonical_cp)  # Sender-ID
     line_9206 = format_gdt_line("9206", charset_code, canonical_cp)  # Zeichensatz
-    line_8402 = format_gdt_line("8402", str(sender_id)[:8], canonical_cp)  # Sender
-    line_8316 = format_gdt_line("8316", str(receiver_id)[:8], canonical_cp)  # Empfänger
 
     # Patient tags
-    pat_id = str(data.get("PatientID") or data.get("PatientenNr") or data.get("ID") or data.get("id") or "").strip()
+    pat_id = str(data.get("PatientID") or data.get("PatientenNr") or data.get("PatientNr") or "").strip()
     if not pat_id:
-        raise ValueError("GDT Satzart 6302 requires a non-empty Patient ID (Tag 3000).")
-
-    last_name = str(data.get("Nachname") or data.get("LastName") or data.get("Name") or "").strip()
-    first_name = str(data.get("Vorname") or data.get("FirstName") or "").strip()
-    birth_date = normalize_gdt_date(data.get("Geburtsdatum") or data.get("DOB") or data.get("Geburtstag") or "")
-    insurance = normalize_insurance_status(data.get("Versicherungsstatus") or data.get("Versicherung") or data.get("Status"))
+        raise ValueError("GDT Satzart 6310 requires a valid, non-empty Patient ID (Tag 3000).")
 
     line_3000 = format_gdt_line("3000", pat_id, canonical_cp)
-    line_3101 = format_gdt_line("3101", last_name, canonical_cp) if last_name else None
-    line_3102 = format_gdt_line("3102", first_name, canonical_cp) if first_name else None
-    line_3103 = format_gdt_line("3103", birth_date, canonical_cp) if birth_date else None
-    line_3105 = format_gdt_line("3105", insurance, canonical_cp)
 
-    # Befund / Examination tags
-    exam_date = normalize_gdt_date(data.get("Befunddatum") or data.get("Datum") or data.get("Date") or "")
-    exam_time = normalize_gdt_time(data.get("Befundzeit") or data.get("Uhrzeit") or data.get("Time") or "")
+    last_name = str(data.get("Nachname") or data.get("LastName") or "").strip()
+    first_name = str(data.get("Vorname") or data.get("FirstName") or "").strip()
+    # Tag 3103 (Geburtsdatum) is optional in 6310: OMIT if missing, NEVER synthesize current date
+    birth_date = normalize_gdt_date(data.get("Geburtsdatum") or data.get("DOB") or data.get("Geburtstag") or "", allow_fallback=False)
 
-    line_6200 = format_gdt_line("6200", exam_date, canonical_cp)
-    line_6201 = format_gdt_line("6201", exam_time, canonical_cp)
+    # Tag 3105 is strictly Versichertennummer (10-12 alphanumeric characters)
+    insurance_no = str(data.get("Versichertennummer") or data.get("InsuranceNumber") or "").strip()
+
+    # Examination / Befund tags
+    exam_date = normalize_gdt_date(data.get("Befunddatum") or data.get("Datum") or data.get("Date") or "", allow_fallback=True)
+    exam_time = normalize_gdt_time(data.get("Befundzeit") or data.get("Uhrzeit") or data.get("Time") or "", allow_fallback=True)
+
+    line_6200 = format_gdt_line("6200", exam_date or time.strftime("%d%m%Y"), canonical_cp)
+    line_6201 = format_gdt_line("6201", exam_time or time.strftime("%H%M%S"), canonical_cp)
 
     body_lines: list[bytes] = [
         line_8000,
-        # Tag 8100 placeholder inserted later
+        # Tag 8100 inserted at index 1
         line_9218,
-        line_9206,
-        line_8402,
+        line_8315,
         line_8316,
+        line_9206,
         line_3000,
     ]
-    if line_3101:
-        body_lines.append(line_3101)
-    if line_3102:
-        body_lines.append(line_3102)
-    if line_3103:
-        body_lines.append(line_3103)
-    body_lines.append(line_3105)
+    if last_name:
+        body_lines.append(format_gdt_line("3101", last_name, canonical_cp))
+    if first_name:
+        body_lines.append(format_gdt_line("3102", first_name, canonical_cp))
+    if birth_date:
+        body_lines.append(format_gdt_line("3103", birth_date, canonical_cp))
+    if insurance_no:
+        body_lines.append(format_gdt_line("3105", insurance_no, canonical_cp))
+
     body_lines.append(line_6200)
     body_lines.append(line_6201)
 
-    # Befund text lines (wrapped to 70 chars)
+    # Befund text lines (wrapped to 70 chars per GDT standard)
     raw_text = str(
         data.get("Befund")
         or data.get("Befundtext")
@@ -261,15 +287,26 @@ def build_gdt_6302_payload(
         body_lines.append(format_gdt_line("6228", os.path.basename(pdf_path), canonical_cp))
 
     # Deterministic Satzlänge (Tag 8100) calculation:
-    # Tag 8100 line is fixed at 18 bytes: "0018" + "8100" + 8-digit size + "\r\n"
-    tag_8100_fixed_len = 18
+    # Standard GDT 2.1 Tag 8100 line is fixed at 14 bytes:
+    # 3 (LLL='014') + 4 (tag='8100') + 5 (size='%05d') + 2 ('\r\n') = 14 bytes.
+    tag_8100_fixed_len = 14
     other_lines_bytes = sum(len(b) for b in body_lines)
     total_bytes = other_lines_bytes + tag_8100_fixed_len
-    line_8100 = f"00188100{total_bytes:08d}\r\n".encode(canonical_cp)
+
+    if total_bytes <= 99999:
+        line_8100 = f"0148100{total_bytes:05d}\r\n".encode(canonical_cp)
+    else:
+        # 6-digit overflow support: 3 (LLL='015') + 4 (tag='8100') + 6 (size='%06d') + 2 ('\r\n') = 15 bytes
+        total_bytes = other_lines_bytes + 15
+        line_8100 = f"0158100{total_bytes:06d}\r\n".encode(canonical_cp)
 
     # Assemble full payload: Tag 8000 is line 0, Tag 8100 is line 1
     final_lines: list[bytes] = [body_lines[0], line_8100] + body_lines[1:]
     return b"".join(final_lines)
+
+
+# Backwards compatibility alias for downstream integrations
+build_gdt_6302_payload = build_gdt_6310_payload
 
 
 def export_case_to_gdt(
@@ -294,7 +331,7 @@ def export_case_to_gdt(
         raise PermissionError(f"Target directory is outside allowed filesystem roots: {out_dir}")
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    payload = build_gdt_6302_payload(
+    payload = build_gdt_6310_payload(
         data=data,
         codepage=codepage,
         sender_id=sender_id,
