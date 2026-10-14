@@ -232,6 +232,101 @@ def test_api_cases_edit_file_atomic_sidecar(client, tmp_path):
         DashboardState.config.target_base_dir = orig_target_base
 
 
+def test_api_cases_edit_file_schema_validation(client, tmp_path):
+    """POST /api/cases/.../edit validates payload using FlexibleDocumentPayload and handles invalid inputs."""
+    orig_target_base = DashboardState.config.target_base_dir
+    DashboardState.config.target_base_dir = str(tmp_path)
+    src_folder = tmp_path / "2026-08-01__Software__Doe__John"
+    src_folder.mkdir(parents=True, exist_ok=True)
+    pdf_file = src_folder / "Invoice__Doe__2026-08-01.pdf"
+    pdf_file.write_text("dummy pdf", encoding="utf-8")
+
+    try:
+        # 1. Empty payload
+        res_empty = client.post(
+            "/api/cases/2026-08-01__Software__Doe__John/Invoice__Doe__2026-08-01.pdf/edit",
+            json={},
+        )
+        assert res_empty.status_code == 400
+        assert "No data provided" in res_empty.get_json()["error"]
+
+        # 2. Malformed JSON payload
+        res_malformed = client.post(
+            "/api/cases/2026-08-01__Software__Doe__John/Invoice__Doe__2026-08-01.pdf/edit",
+            data="not-json",
+            content_type="application/json",
+        )
+        assert res_malformed.status_code == 400
+
+        # 3. Valid payload with move=False
+        res_valid = client.post(
+            "/api/cases/2026-08-01__Software__Doe__John/Invoice__Doe__2026-08-01.pdf/edit",
+            json={"Document": "Invoice", "Nachname": "Doe", "move": False},
+        )
+        assert res_valid.status_code == 200
+    finally:
+        DashboardState.config.target_base_dir = orig_target_base
+
+
+def test_api_inbox_auto_assign_domain_agnostic(client, tmp_path):
+    """POST /api/inbox/<filename>/auto_assign succeeds with non-person domain metadata."""
+    orig_watch = DashboardState.config.watch_dir
+    orig_target_base = DashboardState.config.target_base_dir
+    orig_folder_structure = DashboardState.config.folder_structure
+    orig_doc_types = DashboardState.config.document_types
+
+    inbox_dir = tmp_path / "inbox"
+    cases_dir = tmp_path / "cases"
+    inbox_dir.mkdir(parents=True, exist_ok=True)
+    cases_dir.mkdir(parents=True, exist_ok=True)
+
+    DashboardState.config.watch_dir = str(inbox_dir)
+    DashboardState.config.target_base_dir = str(cases_dir)
+    DashboardState.config.folder_structure = ["{Category}"]
+    DashboardState.config.document_types = {
+        "Recipe": {
+            "routing": {
+                "filename_template": "{Document}__{Category}",
+            }
+        }
+    }
+
+    try:
+        scan_file = inbox_dir / "Scan_Cake.pdf"
+        scan_file.write_text("%PDF-1.4 dummy", encoding="utf-8")
+        meta_file = inbox_dir / "Scan_Cake.pdf.meta"
+        meta_file.write_text(
+            json.dumps({"extracted": {"Document": "Recipe", "Category": "Cakes"}}),
+            encoding="utf-8",
+        )
+
+        # 1. Successful domain-agnostic auto-assign
+        res = client.post("/api/inbox/Scan_Cake.pdf/auto_assign")
+        assert res.status_code == 200
+        assert res.get_json()["status"] == "ok"
+        assert not scan_file.exists()
+        assert not meta_file.exists()
+        expected_target = cases_dir / "Cakes" / "Recipe__Cakes.pdf"
+        assert expected_target.exists()
+
+        # 2. Negative test: file with insufficient metadata rejected
+        blank_file = inbox_dir / "Unknown.pdf"
+        blank_file.write_text("%PDF-1.4 dummy", encoding="utf-8")
+        blank_meta = inbox_dir / "Unknown.pdf.meta"
+        blank_meta.write_text(
+            json.dumps({"extracted": {"Document": "Recipe", "IrrelevantKey": "Value"}}),
+            encoding="utf-8",
+        )
+        res_insufficient = client.post("/api/inbox/Unknown.pdf/auto_assign")
+        assert res_insufficient.status_code == 400
+        assert "sufficient data" in res_insufficient.get_json()["error"]
+    finally:
+        DashboardState.config.watch_dir = orig_watch
+        DashboardState.config.target_base_dir = orig_target_base
+        DashboardState.config.folder_structure = orig_folder_structure
+        DashboardState.config.document_types = orig_doc_types
+
+
 def test_api_skills_pending_cases_and_run_batch(client, tmp_path):
     orig_target_base = DashboardState.config.target_base_dir
     DashboardState.config.target_base_dir = str(tmp_path)

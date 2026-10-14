@@ -26,6 +26,7 @@ from routes.api.document_helpers import (
     safe_move_with_meta,
 )
 from routes.schemas import (
+    FlexibleDocumentPayload,
     FolderEditSchema,
     validate_schema,
 )
@@ -359,9 +360,16 @@ def api_cases_edit_file(folder_name: str, filename: str):
     if not DashboardState.config:
         return jsonify({"error": "Config not available"}), 503
 
-    data = request.get_json()
-    if not data:
+    raw_json = request.get_json(silent=True)
+    if not raw_json:
         return jsonify({"error": "No data provided"}), 400
+
+    validated, schema_err = validate_schema(FlexibleDocumentPayload, raw_json)
+    if not validated or schema_err:
+        return jsonify({"error": schema_err or "Invalid payload"}), 400
+
+    data = validated.to_clean_dict()
+    move = bool(raw_json.get("move", True)) if isinstance(raw_json, dict) else True
 
     doc_type = str(data.get("document") or data.get("Document") or "Document").strip()
     err = _validate_required_api_fields(data, doc_type)
@@ -373,8 +381,6 @@ def api_cases_edit_file(folder_name: str, filename: str):
         return guard_err[0], guard_err[1]
     if not src_path:
         return jsonify({"error": "File not found"}), 404
-
-    move = data.get("move", True)
     if move:
         new_folder_name = _render_target_folder(data, doc_type)
     else:

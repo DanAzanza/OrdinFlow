@@ -3,17 +3,19 @@
 import json
 import logging
 import os
-import shutil
+import re
 import time
 import urllib.parse
 
 from flask import Blueprint, jsonify, request, send_file
 
-from core.utils import safe_copy, safe_join_path, send_to_trash
+from core.utils import is_missing_value, safe_copy, safe_join_path, safe_move, send_to_trash
 from routes.api.document_helpers import (
     _MIME_MAP,
     _deduplicate_filename,
     _generate_pdf_thumbnail,
+    _get_config_folder_structure,
+    _get_doc_routing_cfg,
     _is_within_base,
     _remove_meta_sidecar,
     _render_target_filename,
@@ -217,7 +219,7 @@ def api_inbox_assign(filename: str):
     else:
         _remove_meta_sidecar(src_path)
         try:
-            shutil.move(src_path, target_path)
+            safe_move(src_path, target_path)
             logger.info(
                 "[Dashboard] Manual assignment: %s → %s/%s",
                 filename,
@@ -271,7 +273,27 @@ def api_inbox_auto_assign(filename: str):
             except (OSError, UnicodeError, json.JSONDecodeError, ValueError, TypeError):
                 logger.debug("Could not load sidecar metadata for %s", src_path)
 
-        if not data or not (data.get("Nachname") or data.get("person") or data.get("Vorname") or data.get("Person")):
+        target_fields: set[str] = set()
+        folder_structure = _get_config_folder_structure() or []
+        for pattern in folder_structure:
+            if isinstance(pattern, str):
+                for match in re.findall(r"\{([A-Za-z0-9_]+)\}", pattern):
+                    target_fields.add(match)
+
+        routing_cfg = _get_doc_routing_cfg(doc_type)
+        if isinstance(routing_cfg, dict):
+            tpl = str(routing_cfg.get("folder_template", "") or "")
+            for match in re.findall(r"\{([A-Za-z0-9_]+)\}", tpl):
+                target_fields.add(match)
+
+        fallback_person_keys = ("Nachname", "Person", "person", "Vorname")
+        has_valid_field = False
+        if target_fields:
+            has_valid_field = any(not is_missing_value(data.get(f)) for f in target_fields)
+        if not has_valid_field:
+            has_valid_field = any(not is_missing_value(data.get(k)) for k in fallback_person_keys)
+
+        if not data or not has_valid_field:
             return jsonify({"error": "Filename or metadata does not contain sufficient data for auto-assign"}), 400
 
     target_folder = _render_target_folder(data, doc_type)
@@ -305,7 +327,7 @@ def api_inbox_auto_assign(filename: str):
     else:
         _remove_meta_sidecar(src_path)
         try:
-            shutil.move(src_path, target_path)
+            safe_move(src_path, target_path)
             logger.info("[Dashboard] Auto-assign: %s → %s", filename, target_filename)
             return jsonify({"status": "ok"})
         except OSError as e:

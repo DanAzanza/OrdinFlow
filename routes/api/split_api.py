@@ -98,11 +98,33 @@ def _slice_pdf_section(pdf_doc: Any, pages: list[int], total_pages: int, target_
 
 
 def _relocate_single_document(src_path: str, target_path: str) -> None:
-    """Relocates source document to target destination using resilient copy."""
+    """Relocates source document to target destination using resilient safe_move."""
     if os.path.abspath(src_path) != os.path.abspath(target_path):
-        from core.utils import safe_copy
+        from core.utils import safe_move
 
-        safe_copy(src_path, target_path)
+        safe_move(src_path, target_path)
+
+
+def _slice_or_move_document(
+    doc_sec: dict[str, Any],
+    src_path: str,
+    ext: str,
+    is_pdf: bool,
+    total_pages: int,
+    pdf_doc: Any,
+    is_multi_doc: bool,
+) -> dict[str, str]:
+    """Renders target destination and slices PDF pages or moves full file via safe_move."""
+    target_folder, target_filename, target_path = _render_destination(doc_sec, ext)
+    pages_to_extract = _parse_pages_input(doc_sec.get("pages"), total_pages)
+    should_slice = (
+        is_pdf and fitz is not None and pdf_doc is not None and (is_multi_doc or len(pages_to_extract) < total_pages)
+    )
+    if should_slice:
+        _slice_pdf_section(pdf_doc, pages_to_extract, total_pages, target_path)
+    else:
+        _relocate_single_document(src_path, target_path)
+    return {"folder": target_folder, "file": target_filename}
 
 
 @split_api_bp.route("/api/split_inspector/submit", methods=["POST"])
