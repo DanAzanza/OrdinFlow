@@ -41,11 +41,11 @@ GDT_CODEPAGE_TAGS: dict[str, str] = {
 }
 
 
-def normalize_gdt_date(raw_date: Any, allow_fallback: bool = False) -> str | None:
+def normalize_gdt_date(raw_date: Any, allow_fallback: bool | None = None) -> str | None:
     """Normalizes date formats (DD.MM.YYYY, YYYY-MM-DD, DDMMYYYY) to GDT DDMMYYYY format.
 
-    For patient demographics (e.g. Geburtsdatum Tag 3103), allow_fallback MUST be False
-    to prevent corrupting patient records with synthetic/today dates.
+    For patient demographics (e.g. Geburtsdatum Tag 3103), this strictly returns None
+    for invalid/missing dates to prevent corrupting patient records with synthetic/today dates.
     """
     if not raw_date:
         return time.strftime("%d%m%Y") if allow_fallback else None
@@ -78,8 +78,11 @@ def normalize_gdt_date(raw_date: Any, allow_fallback: bool = False) -> str | Non
     return time.strftime("%d%m%Y") if allow_fallback else None
 
 
-def normalize_gdt_time(raw_time: Any, allow_fallback: bool = True) -> str | None:
-    """Normalizes time formats (HH:MM:SS, HH:MM, HHMMSS) to GDT HHMMSS format."""
+def normalize_gdt_time(raw_time: Any, allow_fallback: bool | None = None) -> str | None:
+    """Normalizes time formats (HH:MM:SS, HH:MM, HHMMSS) to GDT HHMMSS format.
+
+    Returns None if unparseable or absent unless allow_fallback is explicitly set.
+    """
     if not raw_time:
         return time.strftime("%H%M%S") if allow_fallback else None
     cleaned = str(raw_time).strip()
@@ -234,17 +237,23 @@ def build_gdt_6310_payload(
     last_name = str(data.get("Nachname") or data.get("LastName") or "").strip()
     first_name = str(data.get("Vorname") or data.get("FirstName") or "").strip()
     # Tag 3103 (Geburtsdatum) is optional in 6310: OMIT if missing, NEVER synthesize current date
-    birth_date = normalize_gdt_date(data.get("Geburtsdatum") or data.get("DOB") or data.get("Geburtstag") or "", allow_fallback=False)
+    birth_date = normalize_gdt_date(data.get("Geburtsdatum") or data.get("DOB") or data.get("Geburtstag") or "")
 
     # Tag 3105 is strictly Versichertennummer (10-12 alphanumeric characters)
     insurance_no = str(data.get("Versichertennummer") or data.get("InsuranceNumber") or "").strip()
 
     # Examination / Befund tags
-    exam_date = normalize_gdt_date(data.get("Befunddatum") or data.get("Datum") or data.get("Date") or "", allow_fallback=True)
-    exam_time = normalize_gdt_time(data.get("Befundzeit") or data.get("Uhrzeit") or data.get("Time") or "", allow_fallback=True)
+    exam_date = (
+        normalize_gdt_date(data.get("Befunddatum") or data.get("Datum") or data.get("Date") or "")
+        or time.strftime("%d%m%Y")
+    )
+    exam_time = (
+        normalize_gdt_time(data.get("Befundzeit") or data.get("Uhrzeit") or data.get("Time") or "")
+        or time.strftime("%H%M%S")
+    )
 
-    line_6200 = format_gdt_line("6200", exam_date or time.strftime("%d%m%Y"), canonical_cp)
-    line_6201 = format_gdt_line("6201", exam_time or time.strftime("%H%M%S"), canonical_cp)
+    line_6200 = format_gdt_line("6200", exam_date, canonical_cp)
+    line_6201 = format_gdt_line("6201", exam_time, canonical_cp)
 
     body_lines: list[bytes] = [
         line_8000,

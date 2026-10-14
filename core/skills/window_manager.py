@@ -30,6 +30,9 @@ if sys.platform == "win32":
     user32 = getattr(ctypes.windll, "user32", None)
     kernel32 = getattr(ctypes.windll, "kernel32", None)
 
+    if kernel32:
+        kernel32.GetCurrentThreadId.restype = wintypes.DWORD
+
     if user32:
         user32.GetForegroundWindow.restype = wintypes.HWND
         user32.GetWindowTextLengthW.argtypes = [wintypes.HWND]
@@ -100,14 +103,17 @@ def activate_window(hwnd: int, show_cmd: int = 9) -> bool:
         k32 = ctypes.windll.kernel32
         current_tid = k32.GetCurrentThreadId()
         target_tid = u32.GetWindowThreadProcessId(hwnd, None)
+        attached = False
         if current_tid != target_tid:
-            u32.AttachThreadInput(current_tid, target_tid, True)
-        u32.ShowWindow(hwnd, show_cmd)
-        u32.SetForegroundWindow(hwnd)
-        u32.BringWindowToTop(hwnd)
-        u32.SetFocus(hwnd)
-        if current_tid != target_tid:
-            u32.AttachThreadInput(current_tid, target_tid, False)
+            attached = bool(u32.AttachThreadInput(current_tid, target_tid, True))
+        try:
+            u32.ShowWindow(hwnd, show_cmd)
+            u32.SetForegroundWindow(hwnd)
+            u32.BringWindowToTop(hwnd)
+            u32.SetFocus(hwnd)
+        finally:
+            if attached:
+                u32.AttachThreadInput(current_tid, target_tid, False)
         return True
     except Exception as e:
         logger.debug("[WindowManager] activate_window error: %s", e)

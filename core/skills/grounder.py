@@ -32,35 +32,35 @@ if sys.platform == "win32":
         _gdi32 = ctypes.windll.gdi32
 
         _user32.GetDC.argtypes = [wintypes.HWND]
-        _user32.GetDC.restype = wintypes.HDC
-        _user32.ReleaseDC.argtypes = [wintypes.HWND, wintypes.HDC]
+        _user32.GetDC.restype = ctypes.c_void_p
+        _user32.ReleaseDC.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
         _user32.ReleaseDC.restype = ctypes.c_int
         _user32.GetSystemMetrics.argtypes = [ctypes.c_int]
         _user32.GetSystemMetrics.restype = ctypes.c_int
 
-        _gdi32.CreateCompatibleDC.argtypes = [wintypes.HDC]
-        _gdi32.CreateCompatibleDC.restype = wintypes.HDC
-        _gdi32.CreateCompatibleBitmap.argtypes = [wintypes.HDC, ctypes.c_int, ctypes.c_int]
-        _gdi32.CreateCompatibleBitmap.restype = wintypes.HBITMAP
-        _gdi32.SelectObject.argtypes = [wintypes.HDC, wintypes.HGDIOBJ]
-        _gdi32.SelectObject.restype = wintypes.HGDIOBJ
+        _gdi32.CreateCompatibleDC.argtypes = [ctypes.c_void_p]
+        _gdi32.CreateCompatibleDC.restype = ctypes.c_void_p
+        _gdi32.CreateCompatibleBitmap.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.c_int]
+        _gdi32.CreateCompatibleBitmap.restype = ctypes.c_void_p
+        _gdi32.SelectObject.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
+        _gdi32.SelectObject.restype = ctypes.c_void_p
         _gdi32.BitBlt.argtypes = [
-            wintypes.HDC,
+            ctypes.c_void_p,
             ctypes.c_int,
             ctypes.c_int,
             ctypes.c_int,
             ctypes.c_int,
-            wintypes.HDC,
+            ctypes.c_void_p,
             ctypes.c_int,
             ctypes.c_int,
             wintypes.DWORD,
         ]
         _gdi32.BitBlt.restype = wintypes.BOOL
-        _gdi32.GetBitmapBits.argtypes = [wintypes.HBITMAP, ctypes.c_long, ctypes.c_void_p]
+        _gdi32.GetBitmapBits.argtypes = [ctypes.c_void_p, ctypes.c_long, ctypes.c_void_p]
         _gdi32.GetBitmapBits.restype = ctypes.c_long
-        _gdi32.DeleteObject.argtypes = [wintypes.HGDIOBJ]
+        _gdi32.DeleteObject.argtypes = [ctypes.c_void_p]
         _gdi32.DeleteObject.restype = wintypes.BOOL
-        _gdi32.DeleteDC.argtypes = [wintypes.HDC]
+        _gdi32.DeleteDC.argtypes = [ctypes.c_void_p]
         _gdi32.DeleteDC.restype = wintypes.BOOL
     except (AttributeError, OSError) as e:
         logger.debug("[SoMGrounder] Win32 ctypes prototype init skipped: %s", e)
@@ -213,7 +213,7 @@ class SoMGrounder:
                         buf = (ctypes.c_char * (w_s * h_s * 4))()
                         gdi32.GetBitmapBits(hbmp, len(buf), buf)
                         img = Image.frombuffer("RGBA", (w_s, h_s), buf, "raw", "BGRA", 0, 1)
-                        img._screen_origin = (x_v, y_v)  # type: ignore[attr-defined]
+                        cast(Any, img)._screen_origin = (x_v, y_v)
                         return img
             except Exception as e:
                 logger.debug("[SoMGrounder] Win32 BitBlt capture failed, trying ImageGrab: %s", e)
@@ -227,9 +227,10 @@ class SoMGrounder:
                 if user32 and hdc:
                     user32.ReleaseDC(0, hdc)
 
-        if ImageGrab is not None:
+        if ImageGrab is not None and hasattr(ImageGrab, "grab"):
             try:
-                return ImageGrab.grab()  # type: ignore[attr-defined]
+                grabbed = ImageGrab.grab()
+                return grabbed
             except OSError as e:
                 logger.error("[SoMGrounder] Screenshot via ImageGrab failed: %s", e)
         return None

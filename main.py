@@ -5,8 +5,6 @@ import subprocess
 import sys
 import threading
 import time
-import urllib.request
-from urllib.error import URLError
 
 logger = logging.getLogger(__name__)
 
@@ -49,10 +47,10 @@ def _bootstrap_venv() -> None:
 
     # 3. Check if all core packages are already importable in current python environment
     try:
-        import fitz  # noqa: F401
-        import flask  # noqa: F401
-        import yaml  # noqa: F401
+        import importlib
 
+        for pkg in ("fitz", "flask", "yaml"):
+            importlib.import_module(pkg)
         return
     except ImportError:
         pass
@@ -206,12 +204,16 @@ def is_port_in_use(port: int) -> bool:
 
 def is_ordinflow_running(port: int) -> bool:
     """Checks if an active OrdinFlow backend is already responding to status healthchecks on this port."""
-    url = f"http://127.0.0.1:{port}/api/status"
-    req = urllib.request.Request(url, headers={"User-Agent": "OrdinFlow-Launcher"})
+    import http.client
+
     try:
-        with urllib.request.urlopen(req, timeout=1.5) as resp:  # noqa: S310
-            return bool(resp.status == 200)
-    except (URLError, TimeoutError, OSError):
+        conn = http.client.HTTPConnection("127.0.0.1", port, timeout=1.5)
+        conn.request("GET", "/api/status", headers={"User-Agent": "OrdinFlow-Launcher"})
+        resp = conn.getresponse()
+        is_up = resp.status == 200
+        conn.close()
+        return is_up
+    except (OSError, TimeoutError):
         return False
 
 

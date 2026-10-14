@@ -320,27 +320,36 @@ def test_api_skills_refine_step(client):
 
 
 def test_is_ordinflow_running(monkeypatch):
-    import urllib.request
-    from urllib.error import URLError
-
+    import http.client
     from main import is_ordinflow_running
 
     class MockResp:
         status = 200
 
-        def __enter__(self):
-            return self
-
-        def __exit__(self, *args):
+    class MockConn:
+        def __init__(self, *args, **kwargs):
             pass
 
-    monkeypatch.setattr(urllib.request, "urlopen", lambda req, timeout=1.5: MockResp())
+        def request(self, *args, **kwargs):
+            pass
+
+        def getresponse(self):
+            return MockResp()
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(http.client, "HTTPConnection", MockConn)
     assert is_ordinflow_running(8080) is True
 
-    def raise_err(req, timeout=1.5):
-        raise URLError("Connection refused")
+    class FailingConn:
+        def __init__(self, *args, **kwargs):
+            pass
 
-    monkeypatch.setattr(urllib.request, "urlopen", raise_err)
+        def request(self, *args, **kwargs):
+            raise OSError("Connection refused")
+
+    monkeypatch.setattr(http.client, "HTTPConnection", FailingConn)
     assert is_ordinflow_running(8080) is False
 
 

@@ -146,9 +146,11 @@ class ExtractionPipeline:
         except Exception as e:
             logger.debug("RapidOCR warmup pass skipped: %s", e)
 
-        # 3. Pre-import fitz (PyMuPDF)
+        # 3. Pre-import fitz (PyMuPDF) to load C extensions into memory
         try:
-            import fitz  # noqa: F401
+            import importlib
+
+            importlib.import_module("fitz")
         except ImportError:
             pass
 

@@ -3,13 +3,10 @@ OrdinFlow — Web Dashboard Backend
 """
 
 import logging
-import os
 import subprocess
 import sys
 import threading
 import time
-import urllib.error
-import urllib.request
 import webbrowser
 
 import secrets
@@ -81,15 +78,21 @@ def open_browser(port: int) -> None:
     url = f"http://127.0.0.1:{port}/"
 
     # Wait until Flask server responds with HTTP 200 (max 20 seconds)
+    import http.client
+
     server_ready = False
     for _ in range(40):
         time.sleep(0.5)
         try:
-            with urllib.request.urlopen(f"http://127.0.0.1:{port}/api/status", timeout=1) as resp:  # noqa: S310
-                if resp.status == 200:
-                    server_ready = True
-                    break
-        except (urllib.error.URLError, TimeoutError, OSError):
+            conn = http.client.HTTPConnection("127.0.0.1", port, timeout=1)
+            conn.request("GET", "/api/status")
+            resp = conn.getresponse()
+            if resp.status == 200:
+                server_ready = True
+                conn.close()
+                break
+            conn.close()
+        except (OSError, TimeoutError):
             pass
 
     if not server_ready:
@@ -111,14 +114,6 @@ def open_browser(port: int) -> None:
                 opened = True
         except (OSError, RuntimeError, webbrowser.Error) as e:
             logger.error(f"[Dashboard] Error in webbrowser.open: {e}")
-
-    if not opened and hasattr(os, "startfile"):
-        try:
-            os.startfile(url)  # noqa: S606
-            logger.info(f"[Dashboard] Browser opened via os.startfile({url})")
-            opened = True
-        except (OSError, RuntimeError) as e:
-            logger.error(f"[Dashboard] Error in os.startfile: {e}")
 
 
 def start_dashboard(

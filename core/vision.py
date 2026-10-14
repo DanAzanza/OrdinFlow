@@ -16,37 +16,33 @@ from core.utils import (
 logger = logging.getLogger(__name__)
 
 
-def _repair_and_parse_json(raw_text: str) -> dict[str, Any]:
-    """Robustly parses or repairs malformed/truncated JSON from LLM outputs."""
-    if not raw_text or not isinstance(raw_text, str):
-        return {}
-
+def _extract_json_candidate(raw_text: str) -> str:
+    """Strips think tags, code fences, and extracts outermost brace candidate."""
     text = raw_text.strip()
     text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()
-
     if "```" in text:
         text = re.sub(r"^```[a-zA-Z]*\n?", "", text, flags=re.MULTILINE)
-        text = re.sub(r"\n?```$", "", text, flags=re.MULTILINE)
-        text = text.strip()
+        text = re.sub(r"\n?```$", "", text, flags=re.MULTILINE).strip()
 
     first_brace = text.find("{")
     last_brace = text.rfind("}")
-    if first_brace != -1:
-        if last_brace > first_brace:
-            candidate = text[first_brace : last_brace + 1]
-        else:
-            candidate = text[first_brace:]
-    else:
-        candidate = text
+    if first_brace == -1:
+        return text
+    if last_brace > first_brace:
+        return text[first_brace : last_brace + 1]
+    return text[first_brace:]
 
+
+def _attempt_parse_json(text: str) -> dict[str, Any] | None:
+    """Attempts strict and quote/brace-repaired JSON parsing."""
     try:
-        data = json.loads(candidate)
+        data = json.loads(text)
         if isinstance(data, dict):
             return data
     except json.JSONDecodeError:
         pass
 
-    repaired = candidate.strip()
+    repaired = text.strip()
     if repaired.count('"') % 2 != 0:
         repaired += '"'
     open_braces = repaired.count("{")
@@ -60,8 +56,27 @@ def _repair_and_parse_json(raw_text: str) -> dict[str, Any]:
             return data
     except json.JSONDecodeError:
         pass
+    return None
 
-    harvested = {}
+
+def _parse_primitive(val: str) -> Any:
+    """Parses JSON primitive literal into corresponding Python type."""
+    v_lower = val.lower()
+    if v_lower == "true":
+        return True
+    if v_lower == "false":
+        return False
+    if v_lower == "null":
+        return None
+    try:
+        return float(val) if "." in val else int(val)
+    except ValueError:
+        return val
+
+
+def _harvest_regex_pairs(candidate: str) -> dict[str, Any]:
+    """Regex fallback to harvest key-value pairs from fragmented JSON streams."""
+    harvested: dict[str, Any] = {}
     pattern = re.compile(
         r'"([^"]+)":\s*(?:"([^"\\]*(?:\\.[^"\\]*)*)"|(true|false|null|\d+(?:\.\d+)?))',
         re.IGNORECASE,
@@ -70,24 +85,24 @@ def _repair_and_parse_json(raw_text: str) -> dict[str, Any]:
         key = match.group(1)
         val_str = match.group(2)
         val_primitive = match.group(3)
-
         if val_primitive is not None:
-            v_lower = val_primitive.lower()
-            if v_lower == "true":
-                harvested[key] = True
-            elif v_lower == "false":
-                harvested[key] = False
-            elif v_lower == "null":
-                harvested[key] = None
-            else:
-                try:
-                    harvested[key] = float(val_primitive) if "." in val_primitive else int(val_primitive)
-                except ValueError:
-                    harvested[key] = val_primitive
+            harvested[key] = _parse_primitive(val_primitive)
         elif val_str is not None:
             harvested[key] = val_str
-
     return harvested
+
+
+def _repair_and_parse_json(raw_text: str) -> dict[str, Any]:
+    """Robustly parses or repairs malformed/truncated JSON from LLM outputs."""
+    if not raw_text or not isinstance(raw_text, str):
+        return {}
+
+    candidate = _extract_json_candidate(raw_text)
+    parsed = _attempt_parse_json(candidate)
+    if parsed is not None:
+        return parsed
+
+    return _harvest_regex_pairs(candidate)
 
 
 def _build_classification_gbnf(doc_types: list[str]) -> str:
@@ -220,8 +235,9 @@ class LLMExtractor:
                 routing.setdefault("filename_template", matched_type)
             return scoped_types
 
-        if getattr(self, "_doc_types_cache", None) is not None:
-            return self._doc_types_cache  # type: ignore[return-value]
+        cache = getattr(self, "_doc_types_cache", None)
+        if isinstance(cache, dict):
+            return cache
         doc_types = getattr(self.config, "document_types", None) or {}
         doc_types = {k: dict(v) for k, v in doc_types.items()}
         for matched_type, matched_info in doc_types.items():
@@ -252,7 +268,7 @@ class LLMExtractor:
         last_error = ""
         for attempt in range(retries):
             try:
-                result = self._backend.call_vision_api(payload)  # type: ignore[attr-defined]
+                result = self._backend.call_vision_api(payload)
                 if isinstance(result, str) and len(result.strip()) > 0:
                     return result.strip()
                 logger.debug(f"[-] Empty response from backend (attempt {attempt + 1}/{retries})")

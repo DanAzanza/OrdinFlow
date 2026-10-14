@@ -320,7 +320,9 @@ def api_inbox_preview(subpath: str):
     full_path, err = _resolve_and_guard(subpath, DashboardState.config.watch_dir)
     if err:
         return err
-    return _generate_pdf_thumbnail(full_path)  # type: ignore[arg-type]
+    if not full_path:
+        return jsonify({"error": "File not found"}), 404
+    return _generate_pdf_thumbnail(full_path)
 
 
 @inbox_api_bp.route("/api/file/inbox/<path:subpath>")

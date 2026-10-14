@@ -2,7 +2,6 @@
 
 import logging
 import os
-import shutil
 from typing import Any
 
 from flask import Blueprint, jsonify, request
@@ -66,16 +65,8 @@ def _resolve_split_source(context: str, folder: str | None, filename: str) -> tu
         return _resolve_and_guard(filename, DashboardState.config.watch_dir, require_type="file")
 
 
-def _slice_or_move_document(
-    doc_sec: dict[str, Any],
-    src_path: str,
-    ext: str,
-    is_pdf: bool,
-    total_pages: int,
-    pdf_doc: Any,
-    is_multi_doc: bool,
-) -> dict[str, str]:
-    """Renders target destination and slices PDF pages or moves full file."""
+def _render_destination(doc_sec: dict[str, Any], ext: str) -> tuple[str, str, str]:
+    """Renders target folder, deduplicated filename, and validated destination path."""
     data = dict(doc_sec)
     doc_type = str(
         data.get("document") or data.get("Document") or data.get("dokument") or data.get("Dokument") or "Document"
@@ -92,23 +83,26 @@ def _slice_or_move_document(
     target_filename, target_path = _deduplicate_filename(target_dir, target_filename)
     if not _is_within_base(target_path, DashboardState.config.target_base_dir):
         raise PermissionError(f"Access denied: Target file outside base '{target_filename}'")
+    return target_folder, target_filename, target_path
 
-    pages_to_extract = _parse_pages_input(data.get("pages"), total_pages)
-    should_slice = (
-        is_pdf and fitz is not None and pdf_doc is not None and (is_multi_doc or len(pages_to_extract) < total_pages)
-    )
 
-    if should_slice and fitz is not None and pdf_doc is not None:
-        with fitz.open() as new_doc:
-            for p_idx in pages_to_extract:
-                if 1 <= p_idx <= total_pages:
-                    new_doc.insert_pdf(pdf_doc, from_page=p_idx - 1, to_page=p_idx - 1)
-            new_doc.save(target_path, garbage=4, deflate=True, clean=True)
-    else:
-        if os.path.abspath(src_path) != os.path.abspath(target_path):
-            shutil.move(src_path, target_path)
+def _slice_pdf_section(pdf_doc: Any, pages: list[int], total_pages: int, target_path: str) -> None:
+    """Slices specific page numbers from an in-memory PDF document into target_path."""
+    if fitz is None or pdf_doc is None:
+        raise RuntimeError("PyMuPDF engine is required for PDF slicing")
+    with fitz.open() as new_doc:
+        for p_idx in pages:
+            if 1 <= p_idx <= total_pages:
+                new_doc.insert_pdf(pdf_doc, from_page=p_idx - 1, to_page=p_idx - 1)
+        new_doc.save(target_path, garbage=4, deflate=True, clean=True)
 
-    return {"folder": target_folder, "file": target_filename}
+
+def _relocate_single_document(src_path: str, target_path: str) -> None:
+    """Relocates source document to target destination using resilient copy."""
+    if os.path.abspath(src_path) != os.path.abspath(target_path):
+        from core.utils import safe_copy
+
+        safe_copy(src_path, target_path)
 
 
 @split_api_bp.route("/api/split_inspector/submit", methods=["POST"])
@@ -187,16 +181,19 @@ def api_split_inspector_submit():
     try:
         try:
             for doc_sec in documents_input:
-                res = _slice_or_move_document(
-                    doc_sec=doc_sec,
-                    src_path=src_path,
-                    ext=ext,
-                    is_pdf=is_pdf,
-                    total_pages=total_pages,
-                    pdf_doc=pdf_doc,
-                    is_multi_doc=is_multi_doc,
+                target_folder, target_filename, target_path = _render_destination(doc_sec, ext)
+                pages_to_extract = _parse_pages_input(doc_sec.get("pages"), total_pages)
+                should_slice = (
+                    is_pdf
+                    and fitz is not None
+                    and pdf_doc is not None
+                    and (is_multi_doc or len(pages_to_extract) < total_pages)
                 )
-                processed_results.append(res)
+                if should_slice:
+                    _slice_pdf_section(pdf_doc, pages_to_extract, total_pages, target_path)
+                else:
+                    _relocate_single_document(src_path, target_path)
+                processed_results.append({"folder": target_folder, "file": target_filename})
         finally:
             if pdf_doc:
                 pdf_doc.close()

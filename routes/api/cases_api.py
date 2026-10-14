@@ -477,4 +477,6 @@ def api_cases_preview(folder_name: str, filename: str):
     full_path, err = _resolve_and_guard(subpath, DashboardState.config.target_base_dir)
     if err:
         return err
-    return _generate_pdf_thumbnail(full_path)  # type: ignore[arg-type]
+    if not full_path:
+        return jsonify({"error": "File not found"}), 404
+    return _generate_pdf_thumbnail(full_path)

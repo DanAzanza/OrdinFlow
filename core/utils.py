@@ -41,7 +41,7 @@ class MemoryLogHandler(logging.Handler):
                     from core.state import event_broadcaster
 
                     event_broadcaster.broadcast({"type": "log", "data": entry})
-                except Exception:  # noqa: S110
+                except (ConnectionError, RuntimeError, OSError):
                     pass
         except Exception:
             self.handleError(record)
@@ -285,6 +285,29 @@ def is_file_locked(filepath: str) -> bool:
     return False
 
 
+def _is_file_ready(filepath: str, is_pdf: bool) -> bool:
+    """Checks whether a file is unlocked, non-empty, and structurally valid."""
+    if is_file_locked(filepath):
+        return False
+    try:
+        if os.path.getsize(filepath) <= 0:
+            return False
+    except OSError:
+        return False
+
+    if not is_pdf:
+        return True
+
+    try:
+        import fitz
+
+        with fitz.open(filepath) as doc:
+            return len(doc) > 0 and not doc.is_closed
+    except Exception as e:
+        logger.debug("PDF not structurally complete yet: %s", e)
+        return False
+
+
 def wait_until_unlocked(filepath: str, retries: int = 6, delay: float = 0.5) -> bool:
     """Patiently waits until a file is no longer locked, non-empty, and structurally ready."""
     if not os.path.exists(filepath):
@@ -294,23 +317,8 @@ def wait_until_unlocked(filepath: str, retries: int = 6, delay: float = 0.5) -> 
     is_pdf = filepath.lower().endswith(".pdf")
 
     for attempt in range(retries):
-        if not is_file_locked(filepath):
-            try:
-                size = os.path.getsize(filepath)
-                if size > 0:
-                    if is_pdf:
-                        try:
-                            import fitz
-
-                            with fitz.open(filepath) as doc:
-                                if len(doc) > 0 and not doc.is_closed:
-                                    return True
-                        except Exception as e:
-                            logger.debug("PDF not structurally complete yet: %s", e)
-                    else:
-                        return True
-            except OSError as e:
-                logger.debug("Could not inspect file '%s': %s", filepath, e)
+        if _is_file_ready(filepath, is_pdf):
+            return True
 
         if attempt < retries - 1:
             logger.info(
@@ -320,12 +328,7 @@ def wait_until_unlocked(filepath: str, retries: int = 6, delay: float = 0.5) -> 
             time.sleep(delay)
 
     # Final fallback check if retries exhausted
-    if not is_file_locked(filepath) and os.path.exists(filepath):
-        try:
-            return os.path.getsize(filepath) > 0
-        except OSError:
-            return False
-    return False
+    return _is_file_ready(filepath, is_pdf)
 
 
 def safe_move(src: str, dst: str, retries: int = 3, delay: float = 2.0) -> bool:
