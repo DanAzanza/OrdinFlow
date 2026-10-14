@@ -46,22 +46,90 @@ class LLMBackend(ABC):
         """Unloads model weights from memory."""
         logger.debug("[LLMBackend] Default unload no-op.")
 
+    def _ensure_loaded(self) -> bool:
+        """Prepares or validates that the backend is ready for inference."""
+        return True
 
-# Global module caching for the Llama instance
+
+# Global module caching for the Llama instance and vision projector
 _GLOBAL_LLM_INSTANCE: object = None
+_GLOBAL_CHAT_HANDLER: object = None
 _GLOBAL_LLM_KEY: tuple[Any, ...] | None = None
 _LLM_LOCK = threading.RLock()
+if not isinstance(_LLM_LOCK, type(threading.RLock())):
+    raise RuntimeError("_LLM_LOCK must be an RLock")
+
+
+def _clear_chat_handler(target: Any) -> None:
+    """Safely frees native multimodal context, exits context stacks, and unbinds references."""
+    if target is None:
+        return
+    ch = getattr(target, "chat_handler", target)
+    if ch is None:
+        return
+
+    # 1. Close ExitStack (primary native cleanup mechanism in llama-cpp-python Qwen25VL / MTMDChatHandler)
+    exit_stack = getattr(ch, "_exit_stack", None)
+    if exit_stack is not None and callable(getattr(exit_stack, "close", None)):
+        try:
+            exit_stack.close()
+        except Exception as e:
+            logger.debug("[LLMBackend] Error closing chat_handler exit_stack: %s", e)
+
+    # 2. Fallback direct C context deallocation if exit_stack was not triggered
+    mtmd_ctx = getattr(ch, "mtmd_ctx", None)
+    mtmd_cpp = getattr(ch, "_mtmd_cpp", None)
+    if mtmd_ctx is not None and mtmd_cpp is not None and hasattr(mtmd_cpp, "mtmd_free"):
+        try:
+            mtmd_cpp.mtmd_free(mtmd_ctx)
+        except Exception as e:
+            logger.debug("[LLMBackend] Error in direct mtmd_free: %s", e)
+        try:
+            ch.mtmd_ctx = None
+        except Exception as e:
+            logger.debug("[LLMBackend] Error clearing mtmd_ctx pointer: %s", e)
+
+    # 3. Explicit close() if implemented by legacy or custom wrappers
+    if hasattr(ch, "close") and callable(ch.close):
+        try:
+            ch.close()
+        except Exception as e:
+            logger.debug("[LLMBackend] Error calling chat_handler.close(): %s", e)
+
+    # 4. Clear clip_model if present
+    clip_model = getattr(ch, "clip_model", None)
+    if clip_model is not None:
+        if hasattr(clip_model, "close") and callable(clip_model.close):
+            try:
+                clip_model.close()
+            except Exception as e:
+                logger.debug("[LLMBackend] Error calling clip_model.close(): %s", e)
+        try:
+            ch.clip_model = None
+        except Exception as e:
+            logger.debug("[LLMBackend] Error clearing clip_model pointer: %s", e)
+
+    # 5. Sever reference on parent target
+    if hasattr(target, "chat_handler"):
+        try:
+            target.chat_handler = None
+        except Exception as e:
+            logger.debug("[LLMBackend] Error severing chat_handler reference: %s", e)
 
 
 class _LlamaCppBackend(LLMBackend):
     """Direct llama.cpp-python backend with singleton caching and grammar constraints."""
 
-    def __init__(self, config: object) -> None:
-        self.config = config
+    def __init__(self, config: Any) -> None:
+        self.config: Any = config
+        self._llm: Any = None
+        self._chat_handler: Any = None
+        self._loaded: bool = False
+        self._load_failed: bool = False
 
     def _ensure_loaded(self) -> bool:
         """Lazy init with singleton caching: Model is loaded once and reused."""
-        global _GLOBAL_LLM_INSTANCE, _GLOBAL_LLM_KEY
+        global _GLOBAL_LLM_INSTANCE, _GLOBAL_CHAT_HANDLER, _GLOBAL_LLM_KEY
 
         model_path, mmproj_raw = _resolve_model_paths(self.config)
         config = self.config
@@ -95,6 +163,7 @@ class _LlamaCppBackend(LLMBackend):
             if _GLOBAL_LLM_INSTANCE is not None:
                 if _GLOBAL_LLM_KEY == cache_key:
                     self._llm = _GLOBAL_LLM_INSTANCE
+                    self._chat_handler = _GLOBAL_CHAT_HANDLER
                     self._loaded = True
                     logger.debug("[+] Using LLM model instance already cached in VRAM.")
                     return True
@@ -140,13 +209,18 @@ class _LlamaCppBackend(LLMBackend):
                     raise RuntimeError("Could not load LLM even in CPU mode (n_gpu_layers=0). Check model integrity.")
 
                 self._llm = loaded_llm
+                active_handler = getattr(loaded_llm, "chat_handler", chat_handler)
+                self._chat_handler = active_handler
                 _GLOBAL_LLM_INSTANCE = self._llm
+                _GLOBAL_CHAT_HANDLER = active_handler
                 _GLOBAL_LLM_KEY = cache_key
                 self._loaded = True
+                self._load_failed = False
                 logger.info("[+] Local VL model loaded successfully and cached in memory.")
                 return True
             except Exception as _e:
                 logger.error("[!] Error loading model: %s", _e)
+                _clear_chat_handler(chat_handler)
                 self._load_failed = True
                 raise RuntimeError(
                     "Could not load LLM. Please run 'python scripts/download_models.py --yes' and verify GPU drivers."
@@ -154,8 +228,17 @@ class _LlamaCppBackend(LLMBackend):
 
     def _unload_cached_instance(self) -> None:
         """Closes and deallocates global cached LLM instance."""
-        global _GLOBAL_LLM_INSTANCE, _GLOBAL_LLM_KEY
+        global _GLOBAL_LLM_INSTANCE, _GLOBAL_CHAT_HANDLER, _GLOBAL_LLM_KEY
         import gc
+
+        # Deallocation order: 1. chat_handler first, 2. LLM instance
+        _clear_chat_handler(_GLOBAL_LLM_INSTANCE)
+        if _GLOBAL_CHAT_HANDLER is not None:
+            _clear_chat_handler(_GLOBAL_CHAT_HANDLER)
+            _GLOBAL_CHAT_HANDLER = None
+        if getattr(self, "_chat_handler", None) is not None:
+            _clear_chat_handler(self._chat_handler)
+            self._chat_handler = None
 
         try:
             if hasattr(_GLOBAL_LLM_INSTANCE, "close"):
@@ -164,6 +247,8 @@ class _LlamaCppBackend(LLMBackend):
             logger.debug("[LLMBackend] Error closing LLM instance: %s", e)
         _GLOBAL_LLM_INSTANCE = None
         _GLOBAL_LLM_KEY = None
+        self._loaded = False
+        self._load_failed = False
         gc.collect()
 
     def _init_chat_handler(self, mmproj_raw: str) -> Any | None:
@@ -324,6 +409,7 @@ class _LlamaCppBackend(LLMBackend):
                 except Exception as close_err:
                     logger.debug("[LLMBackend] Probe close error: %s", close_err)
                 loaded_llm = None
+                _clear_chat_handler(chat_handler)
                 if mmproj_raw and os.path.isfile(mmproj_raw) and _is_valid_gguf(mmproj_raw, min_mb=50):
                     chat_handler = Qwen25VLChatHandler(clip_model_path=mmproj_raw, verbose=False)
                 gc.collect()
@@ -333,68 +419,98 @@ class _LlamaCppBackend(LLMBackend):
 
     def preload(self) -> bool:
         """Preloads local VL model and executes a lightweight forward pass to compile graphs."""
-        if not self._ensure_loaded():
-            return False
+        with _LLM_LOCK:
+            if not self._ensure_loaded():
+                return False
 
-        # Base64 56x56 solid white JPEG (multiple of 28 for Qwen2-VL patch grid) to warm up vision projector & KV cache
-        dummy_b64_jpg = (
-            "/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAIBAQEBAQIBAQECAgICAgQDAgICAgUEBAMEBgUGBgYFBgYGBwkIBgcJBwYGCAsICQ"
-            "oKCgoKBggLDAsKDAkKCgr/2wBDAQICAgICAgUDAwUKBwYHCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoK"
-            "CgoKCgoKCgoKCgr/wAARCAA4ADgDASIAAhEBAxEB/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAw"
-            "IEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6Q0RFRkdI"
-            "SUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1N"
-            "XW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/8QAHwEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoL/8QAtREAAgECBAQDBAcF"
-            "BAQAAQJ3AAECAxEEBSExBhJBUQdhcRMiMoEIFEKRobHBCSMzUvAVYnLRChYkNOEl8RcYGRomJygpKjU2Nzg5OkNERUZHSElKU1"
-            "RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6goOEhYaHiImKkpOUlZaXmJmaoqOkpaanqKmqsrO0tba3uLm6wsPExcbHyMnK0tPU1dbX"
-            "2Nna4uPk5ebn6Onq8vP09fb3+Pn6/9oADAMBAAIRAxEAPwD9/KKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAK"
-            "KKKACiiigAooooAKKKKACiiigAooooAKKKKAP/2Q=="
-        )
-        try:
-            payload = {
-                "messages": [
-                    {
-                        "role": "user",
-                        "content": "Warmup",
-                        "images": [dummy_b64_jpg],
-                    }
-                ],
-                "max_tokens": 1,
-                "temperature": 0.0,
-            }
-            # Executes under _LLM_LOCK inside call_vision_api
-            self.call_vision_api(payload)
-            with _LLM_LOCK:
+            # Base64 56x56 solid white JPEG (multiple of 28 for Qwen2-VL patch grid) to warm up vision projector & KV cache
+            dummy_b64_jpg = (
+                "/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAIBAQEBAQIBAQECAgICAgQDAgICAgUEBAMEBgUGBgYFBgYGBwkIBgcJBwYGCAsICQ"
+                "oKCgoKBggLDAsKDAkKCgr/2wBDAQICAgICAgUDAwUKBwYHCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoK"
+                "CgoKCgoKCgoKCgr/wAARCAA4ADgDASIAAhEBAxEB/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAw"
+                "IEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6Q0RFRkdI"
+                "SUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1N"
+                "XW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/8QAHwEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoL/8QAtREAAgECBAQDBAcF"
+                "BAQAAQJ3AAECAxEEBSExBhJBUQdhcRMiMoEIFEKRobHBCSMzUvAVYnLRChYkNOEl8RcYGRomJygpKjU2Nzg5OkNERUZHSElKU1"
+                "RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6goOEhYaHiImKkpOUlZaXmJmaoqOkpaanqKmqsrO0tba3uLm6wsPExcbHyMnK0tPU1dbX"
+                "2Nna4uPk5ebn6Onq8vP09fb3+Pn6/9oADAMBAAIRAxEAPwD9/KKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAK"
+                "KKKACiiigAooooAKKKKACiiigAooooAKKKP/2Q=="
+            )
+            try:
+                payload = {
+                    "messages": [
+                        {
+                            "role": "user",
+                            "content": "Warmup",
+                            "images": [dummy_b64_jpg],
+                        }
+                    ],
+                    "max_tokens": 1,
+                    "temperature": 0.0,
+                }
+                # Executes under _LLM_LOCK (RLock allows re-entry on same thread)
+                self.call_vision_api(payload)
                 reset_fn = getattr(self._llm, "reset", None)
                 if callable(reset_fn):
                     try:
                         reset_fn()
                     except (AttributeError, RuntimeError, OSError):
                         pass
-            logger.info("[+] Local VL model inference engine warmed up.")
-            return True
-        except Exception as e:
-            logger.debug("Backend warmup pass skipped or failed: %s", e)
-            return True
+                logger.info("[+] Local VL model inference engine warmed up.")
+                return True
+            except Exception as e:
+                err_str = str(e).lower()
+                if any(x in err_str for x in ["access violation", "segmentation fault", "cuda", "out of memory"]):
+                    logger.warning(
+                        "[!] Critical backend error during warmup (%s). Forcing CPU mode (n_gpu_layers=0)...",
+                        e,
+                    )
+                    if hasattr(self.config, "n_gpu_layers"):
+                        self.config.n_gpu_layers = 0
+                    self.unload()
+                    self._load_failed = False
+                else:
+                    logger.debug("Backend warmup pass skipped or failed: %s", e)
+                return True
 
     def unload(self) -> None:
         """Explicitly unloads local VL model and releases memory/VRAM."""
-        global _GLOBAL_LLM_INSTANCE, _GLOBAL_LLM_KEY
+        global _GLOBAL_LLM_INSTANCE, _GLOBAL_CHAT_HANDLER, _GLOBAL_LLM_KEY
         import gc
 
-        with _LLM_LOCK:
+        acquired = _LLM_LOCK.acquire(timeout=10.0)
+        try:
+            llm_inst = getattr(self, "_llm", None)
+            # Deallocation order: 1. chat_handler first, 2. LLM instance
+            _clear_chat_handler(llm_inst)
+            _clear_chat_handler(_GLOBAL_LLM_INSTANCE)
+
+            if getattr(self, "_chat_handler", None) is not None:
+                _clear_chat_handler(self._chat_handler)
+                self._chat_handler = None
+            if _GLOBAL_CHAT_HANDLER is not None:
+                _clear_chat_handler(_GLOBAL_CHAT_HANDLER)
+                _GLOBAL_CHAT_HANDLER = None
+
             try:
-                close_fn = getattr(self._llm, "close", None)
+                close_fn = getattr(llm_inst, "close", None)
                 if callable(close_fn):
                     close_fn()
-                del self._llm
+                if hasattr(self, "_llm"):
+                    del self._llm
             except Exception as e:
                 logger.debug("Error deallocating local LLM: %s", e)
+
             self._llm = None
             _GLOBAL_LLM_INSTANCE = None
             _GLOBAL_LLM_KEY = None
             self._loaded = False
-            gc.collect()
+            self._load_failed = False
             logger.info("[+] Local VL model unloaded from memory.")
+        finally:
+            if acquired:
+                _LLM_LOCK.release()
+        gc.collect()
 
     def _convert_messages(self, raw_messages: list[dict[str, object]]) -> list[dict[str, object]]:
         """Converts legacy/custom message formats to standard OpenAI Multimodal format for llama-cpp-python."""
@@ -524,6 +640,7 @@ class _LlamaCppBackend(LLMBackend):
                 if any(x in err_str for x in ["access violation", "segmentation fault", "cuda", "out of memory"]):
                     logger.error("[!] Critical LLM backend error detected: %s. Unloading model for clean recovery...", e)
                     self.unload()
+                    self._load_failed = False
                 raise
 
 

@@ -244,7 +244,7 @@ class LLMExtractor:
         """Calls the configured LLM backend (direct or OpenAI-compatible)."""
         # Ensure model is loaded
         try:
-            self._backend._ensure_loaded()  # type: ignore[attr-defined]
+            self._backend._ensure_loaded()
         except RuntimeError as _e:
             logger.error(str(_e))
             raise
