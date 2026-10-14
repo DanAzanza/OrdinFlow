@@ -99,7 +99,7 @@ def compute_log_stats(lines: list[str], valid_doc_types: list[str] | None = None
             if secs > max_processing_time:
                 max_processing_time = secs
 
-        if "consists only of empty pages and will be deleted" in line:
+        if "consists only of empty pages" in line:
             empty_files += 1
 
         # Document routing & splitting counters

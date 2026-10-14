@@ -339,44 +339,6 @@ function renderLegend() {
 	container.innerHTML = html;
 }
 
-/* ═══════════════════════════════════════════════════════════
-               JOB POLLING & CONFIG EDITOR TAB
-               ═══════════════════════════════════════════════════════════ */
-let _hadActiveJobs = false;
-async function pollJobs() {
-	try {
-		const data = await api("/api/jobs").catch(() => null);
-		if (!data) return;
-		const jobs = data.jobs || [];
-		const activeJobs = jobs.filter(
-			(j) => j.status === "RUNNING" || j.status === "PENDING",
-		);
-		const ticker = document.getElementById("jobTicker");
-		if (ticker) {
-			if (activeJobs.length > 0) {
-				_hadActiveJobs = true;
-				ticker.style.display = "flex";
-				const running =
-					activeJobs.find((j) => j.status === "RUNNING") || activeJobs[0];
-				const tickerText = document.getElementById("jobTickerText");
-				if (tickerText) tickerText.textContent = `🔄 Processing job: ${running.name} ...`;
-				const tickerCount = document.getElementById("jobTickerCount");
-				if (tickerCount) tickerCount.textContent = activeJobs.length === 1 ? "1 active" : `${activeJobs.length} active`;
-			} else {
-				ticker.style.display = "none";
-				if (_hadActiveJobs) {
-					_hadActiveJobs = false;
-					fetchCases();
-					fetchInbox();
-				}
-			}
-		}
-	} catch (e) {
-		console.debug("[pollJobs] Network issue or polling aborted:", e);
-	}
-}
-
-
 let _isSyncing = false;
 async function syncAppState() {
 	if (_isSyncing) return;
@@ -387,7 +349,6 @@ async function syncAppState() {
 			fetchCases(),
 			fetchInbox(),
 			ensureSkillsLoaded(),
-			pollJobs(),
 		]);
 	} catch (e) {
 		console.error("Error during syncAppState:", e);
@@ -418,18 +379,15 @@ Promise.allSettled([
 	fetchStatus(),
 	fetchCases(),
 	fetchInbox(),
-	pollJobs(),
 ]);
 
 // Background Tab Lifecycle & Polling Controller
 let statusPollTimer = null;
-let jobsPollTimer = null;
 let syncPollTimer = null;
 
 function startUiPolling() {
 	initServerEvents();
 	if (!statusPollTimer) statusPollTimer = setInterval(fetchStatus, 6000);
-	if (!jobsPollTimer) jobsPollTimer = setInterval(pollJobs, 5000);
 	if (!syncPollTimer) syncPollTimer = setInterval(syncAppState, 10000);
 }
 
@@ -437,10 +395,6 @@ function stopUiPolling() {
 	if (statusPollTimer) {
 		clearInterval(statusPollTimer);
 		statusPollTimer = null;
-	}
-	if (jobsPollTimer) {
-		clearInterval(jobsPollTimer);
-		jobsPollTimer = null;
 	}
 	if (syncPollTimer) {
 		clearInterval(syncPollTimer);

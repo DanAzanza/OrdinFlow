@@ -186,19 +186,19 @@ def test_api_token_and_host_validation():
     assert resp.status_code == 403
 
     # Sensitive GET endpoints require token
-    resp_get_unauth = client.get("/api/jobs", headers={"Host": "localhost"})
+    resp_get_unauth = client.get("/api/log", headers={"Host": "localhost"})
     assert resp_get_unauth.status_code == 403
 
     # Sensitive GET endpoints succeed with valid token via header
     resp_get_auth = client.get(
-        "/api/jobs",
+        "/api/log",
         headers={"Host": "localhost", "X-OrdinFlow-Token": "valid_secret_token_12345"},
     )
     assert resp_get_auth.status_code == 200
 
     # Sensitive GET endpoints succeed with valid token via query param
     resp_get_query = client.get(
-        "/api/jobs?token=valid_secret_token_12345",
+        "/api/log?token=valid_secret_token_12345",
         headers={"Host": "localhost"},
     )
     assert resp_get_query.status_code == 200

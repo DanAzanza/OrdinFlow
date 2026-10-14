@@ -423,6 +423,35 @@ def test_api_log_stats_computation():
     assert float(stats["totalProcessingTime"]) == 17.8
 
 
+def test_compute_log_stats_empty_files():
+    """Verifies that compute_log_stats counts empty page trash/deletion log messages in emptyFiles."""
+    from core.logging_service import compute_log_stats
+
+    # Current processor message format
+    current_log = [
+        "2026-08-19 10:00:30,100 [INFO] [-] 'empty_scan.pdf' consists only of empty pages and will be moved to trash."
+    ]
+    stats_current = compute_log_stats(current_log)
+    assert stats_current["emptyFiles"] == 1
+    assert stats_current["totalFiles"] == 1
+
+    # Legacy processor message format
+    legacy_log = [
+        "2026-08-19 10:00:31,100 [INFO] [-] 'legacy_scan.pdf' consists only of empty pages and will be deleted."
+    ]
+    stats_legacy = compute_log_stats(legacy_log)
+    assert stats_legacy["emptyFiles"] == 1
+    assert stats_legacy["totalFiles"] == 1
+
+    # Negative assertion: unrelated log message does not increment emptyFiles
+    unrelated_log = [
+        "2026-08-19 10:00:32,100 [INFO] [+] Processing of 'regular.pdf' completed successfully after 2.00 seconds."
+    ]
+    stats_unrelated = compute_log_stats(unrelated_log)
+    assert stats_unrelated["emptyFiles"] == 0
+    assert stats_unrelated["totalFiles"] == 1
+
+
 def test_api_log_endpoints(client, tmp_path, monkeypatch):
     import os
 
@@ -576,12 +605,7 @@ def test_api_system_status_and_lifecycle(client):
     assert "paused" in data
     assert "skill_queue" in data
 
-    # 2. GET /api/jobs
-    res_jobs = client.get("/api/jobs")
-    assert res_jobs.status_code == 200
-    assert "jobs" in res_jobs.get_json()
-
-    # 3. POST /api/router/pause and resume
+    # 2. POST /api/router/pause and resume
     res_pause = client.post("/api/router/pause")
     assert res_pause.status_code == 200
     assert res_pause.get_json()["status"] == "paused"
@@ -590,7 +614,7 @@ def test_api_system_status_and_lifecycle(client):
     assert res_resume.status_code == 200
     assert res_resume.get_json()["status"] in ("active", "resumed")
 
-    # 4. GET /api/system/fs_list
+    # 3. GET /api/system/fs_list
     res_fs = client.get("/api/system/fs_list")
     assert res_fs.status_code == 200
     fs_data = res_fs.get_json()

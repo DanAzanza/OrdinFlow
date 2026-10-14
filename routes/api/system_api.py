@@ -11,7 +11,6 @@ from typing import Any
 
 from flask import Blueprint, Response, jsonify, request
 
-from core.jobs import job_queue
 from core.logging_service import compute_log_stats, get_empty_log_stats
 from core.platform_utils import get_system_drives, pick_path_dialog
 from core.utils import memory_log_handler, sanitize_safe_path
@@ -89,11 +88,6 @@ def api_status():
         stats["skill_queue"] = {"is_running": False, "items": [], "active_item": None}
 
     return jsonify(stats)
-
-
-@system_api_bp.route("/api/jobs", methods=["GET"])
-def api_jobs_list():
-    return jsonify({"jobs": job_queue.list_jobs()})
 
 
 @system_api_bp.route("/api/events", methods=["GET"])
