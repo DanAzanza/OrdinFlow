@@ -5,7 +5,7 @@
 [![Python](https://img.shields.io/badge/Python-3.10%2B%20%2864--bit%29-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
 [![Type Checking: Pyright](https://img.shields.io/badge/Type%20Checking-Pyright%20Standard-2b5b84?style=flat-square)](https://github.com/microsoft/pyright)
 [![Linter: Ruff](https://img.shields.io/badge/Linter-Ruff-black?style=flat-square&logo=ruff)](https://github.com/astral-sh/ruff)
-[![Tests: Pytest](https://img.shields.io/badge/Tests-331%20Passed-brightgreen?style=flat-square&logo=pytest)](https://pytest.org/)
+[![Tests: Pytest](https://img.shields.io/badge/Tests-332%20Passed-brightgreen?style=flat-square&logo=pytest)](https://pytest.org/)
 [![Privacy: 100% Air--Gapped](https://img.shields.io/badge/Privacy-100%25%20Air--Gapped%20%2F%20GDPR-blue?style=flat-square)](docs/legal/PRIVACY_POLICY.md)
 [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-orange?style=flat-square)](LICENSE)
 
@@ -59,7 +59,7 @@ OrdinFlow solves the **three fatal flaws** of existing document management solut
 | **Anti-Hallucination Gate** | 🟢 **Consensus Engine ($K \ge 0.67$)**<br>Weighted Levenshtein clustering | ⚪ **N/A**<br>(Deterministic OCR only) | 🔴 **Raw LLM Output**<br>Prone to silent hallucinations | ⚪ **N/A**<br>(Rigid template matching) |
 | **Legacy Desktop RPA Bridge** | 🟢 **Built-in Agentic RPA**<br>Set-of-Mark (SoM) visual grounding | 🔴 **None**<br>Requires webhooks or external tools | 🔴 **None**<br>Returns raw JSON only | 🟡 **Complex Add-Ons**<br>Proprietary enterprise connectors |
 | **Operating Costs** | 🟢 **100% Free & Open Source**<br>Runs on consumer GPUs/CPUs | 🟢 **Free & Open Source** | 🔴 **Per-Page Pricing**<br>Recurring monthly cloud bills | 🔴 **5-Figure Licensing**<br>Heavy seat & maintenance fees |
-| **Storage & Portability** | 🟢 **Transparent `.meta` Sidecars**<br>Zero database lock-in | 🟡 **Relational Database**<br>PostgreSQL / SQLite dependency | 🔴 **Cloud SaaS Silo**<br>Vendor lock-in | 🔴 **Proprietary DB Silo**<br>Closed schema |
+| **Storage & Portability** | 🟢 **Open Filesystem & Dynamic Hierarchy**<br>Zero DB lock-in; targeted `.meta` sidecars for review & RPA audit | 🟡 **Relational Database**<br>PostgreSQL / SQLite dependency | 🔴 **Cloud SaaS Silo**<br>Vendor lock-in | 🔴 **Proprietary DB Silo**<br>Closed schema |
 | **Deployment Complexity** | 🟢 **1-Click Batch / Zero-Setup**<br>Auto-detects GPU; no Docker/Redis | 🟡 **Multi-Container Stack**<br>Docker, Redis, Celery, DB | 🟢 **Web Console**<br>(at the cost of privacy) | 🔴 **Heavy Windows Server**<br>Multi-tier IT deployment |
 
 ---
@@ -67,7 +67,7 @@ OrdinFlow solves the **three fatal flaws** of existing document management solut
 ## 🌟 Visual Feature Tour
 
 ### 1. Intelligent Cases Explorer & Dynamic Categorization
-OrdinFlow routes incoming documents dynamically into structured directory hierarchies based on extracted metadata (e.g., `Recipes__{Category}` or `{Date}__{LastName}_{FirstName}`). Every document is accompanied by an open `.meta` JSON sidecar file that preserves full lineage, field-level confidence, and execution history.
+OrdinFlow routes incoming documents dynamically into clean, structured directory hierarchies based on extracted metadata (e.g., `Recipes__{Category}` or `{Date}__{LastName}_{FirstName}`). Cleanly routed documents are stored natively without unnecessary sidecars. Open `.meta` JSON sidecars are maintained specifically when needed: during Inbox quarantine/review (preserving extraction confidence and review status) and when tracking downstream RPA export skill execution (`executed_skills`).
 
 <div align="center">
 
@@ -76,8 +76,8 @@ OrdinFlow routes incoming documents dynamically into structured directory hierar
 
 </div>
 
-- **Dynamic Folder Hierarchies:** Templated directory generation using arbitrary metadata fields.
-- **Sidecar Metadata Sync:** Zero vendor lock-in; metadata is saved directly alongside files as human-readable JSON.
+- **Dynamic Folder Hierarchies:** Templated directory generation using arbitrary metadata fields without database lock-in.
+- **Targeted Sidecar Lifecycle:** Transparent `.meta` JSON files are created strictly for quarantined review documents and downstream RPA export tracking, keeping clean case archives uncluttered.
 - **Granular Approval Lifecycle:** Mark cases as approved or revoke access with a single click before export skills trigger.
 
 ---
@@ -166,11 +166,11 @@ flowchart TD
 
     subgraph ROUTING_RPA ["4. Atomic Routing & RPA Execution"]
         WIN --> ROUTE[Atomic File Router\nDynamic Folder Templating]
-        ROUTE --> SIDE[.meta JSON Sidecar Sync]
-        ROUTE --> ARCHIVE[Target Cases Directory]
+        ROUTE --> ARCHIVE[Target Cases Directory\nClean Native Hierarchy]
         WIN --> SKILL{Trigger Export Skill?}
         SKILL -- Yes --> SOM[Set-of-Mark Grounder & Input Shield]
         SOM --> RDP[Legacy Desktop / RDP Automation]
+        RDP --> AUDIT[.meta RPA Execution Audit\nExecuted Skills & Timestamps]
     end
 ```
 
@@ -251,7 +251,7 @@ Experience the complete document classification, multimodal extraction, and dyna
      ```
 
 3. **Observe Automated Processing:**  
-   Watch OrdinFlow classify the document types, extract recipe metadata (baking times, temperatures, ingredients, chef names), verify via consensus, and automatically file them into `Cases/Recipes__Layer Cakes & Celebrations/` paired with `.meta` JSON sidecars!
+   Watch OrdinFlow classify the document types, extract recipe metadata (baking times, temperatures, ingredients, chef names), verify via consensus, and automatically file them into `Cases/Recipes__Layer Cakes & Celebrations/`! (Transparent `.meta` sidecars are generated strictly if a document requires manual review or upon executing downstream RPA export skills).
 
 ---
 
@@ -286,7 +286,7 @@ OrdinFlow/
 │   ├── setup_environment.py      # Hardware auto-detection & wheel installer
 │   ├── download_models.py        # Atomic model downloader with GGUF header validation
 │   └── verify_ci.py              # Full CI verification runner (Ruff, Pyright, Pytest)
-├── tests/                        # Comprehensive automated test suite (331+ tests)
+├── tests/                        # Comprehensive automated test suite (332+ tests)
 ├── Install_OrdinFlow.bat         # 1-Click Windows installer & hardware orchestrator
 ├── Start_OrdinFlow.bat           # 1-Click windowless background launcher
 └── main.py                       # CLI & service entrypoint
@@ -302,7 +302,7 @@ OrdinFlow/
 | **VLM Inference** | `llama-cpp-python` / GGUF | In-process native C++ inference; eliminates external heavy model servers and minimizes VRAM footprint. |
 | **Vision Models** | Qwen 2.5 / 3-VL (4B / 7B) | State-of-the-art visual document reasoning and multilingual comprehension. |
 | **OCR Engine** | RapidOCR (`onnxruntime`) | Lightweight deep-learning OCR in ONNX format; zero system `.exe` dependencies (cross-platform, zero setup). |
-| **PVS Integration** | QMS / bvitg GDT 2.1 / 3.0 | Headless Satzart 6302 file transfer for German EHR systems with atomic file swaps and CP437/ISO-8859-15 encoding. |
+| **PVS Integration** | QMS / bvitg GDT 2.1 / 3.0 | Headless Satzart 6310 file transfer for German EHR systems with atomic file swaps and CP437/ISO-8859-1 encoding. |
 | **PDF & Graphics** | PyMuPDF (`fitz`), OpenCV, PIL | Fast C-backed PDF rendering, contour detection, and spatial block extraction. |
 | **Web Dashboard** | Flask, HTML5, Vanilla JS, CSS3 | Clean, dependency-light presentation layer without fragile npm/node build chains. |
 | **Static Typing** | Microsoft Pyright (Standard) | Enforces type consistency across all core orchestrators and routes. |
@@ -335,9 +335,9 @@ Or run the individual components directly:
 ruff check .
 
 # 2. Static Type Analysis
-npx pyright core/ routes/
+pyright
 
-# 3. Automated Test Suite (331+ tests)
+# 3. Automated Test Suite (332+ tests)
 python -m pytest -q
 ```
 
