@@ -277,7 +277,7 @@ def test_skill_executor_aborts_and_records_screenshot_on_locator_failure(tmp_pat
     }
     mgr.get_skill.return_value = skill_def
 
-    executor = SkillExecutor(mgr)
+    executor = SkillExecutor(skill_manager=mgr)
 
     dummy_screen = Image.new("RGB", (200, 200), color="blue")
     with patch("core.skills.grounder.SoMGrounder.capture_screen", return_value=dummy_screen):

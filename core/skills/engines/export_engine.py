@@ -56,22 +56,16 @@ class ExportEngine(BaseSkill):
 
     def __init__(
         self,
-        definition_or_manager: dict[str, Any] | Any = None,
+        definition: dict[str, Any] | None = None,
         skill_manager: Any = None,
         vision_extractor: Any = None,
-    ):
-        if isinstance(definition_or_manager, dict):
-            definition = definition_or_manager
-            mgr = skill_manager
-            vext = vision_extractor
-        else:
-            mgr = definition_or_manager
+    ) -> None:
+        if definition is None:
             definition = {"id": "export_engine", "name": "Export Engine", "type": "export"}
-            vext = skill_manager
 
         super().__init__(definition)
-        self.skill_manager = mgr
-        self.vision_extractor = vext
+        self.skill_manager = skill_manager
+        self.vision_extractor = vision_extractor
         raw_tasks = definition.get("tasks")
         raw_steps = definition.get("steps")
         raw_actions = definition.get("actions")

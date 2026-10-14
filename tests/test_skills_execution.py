@@ -586,3 +586,28 @@ def test_export_engine_execute_skill_delegates_without_mutating_self():
     assert parent_engine.target_window == "ParentWindow"
 
 
+def test_export_engine_init_signature():
+    """Verifies that ExportEngine supports default definition and explicit typed initialization."""
+    # 1. Default constructor without arguments
+    engine_default = ExportEngine()
+    assert engine_default.id == "export_engine"
+    assert engine_default.name == "Export Engine"
+    assert engine_default.skill_manager is None
+    assert engine_default.vision_extractor is None
+    assert engine_default.steps == []
+
+    # 2. Keyword-only manager/extractor without definition
+    engine_kwargs = ExportEngine(skill_manager="mock_mgr", vision_extractor="mock_vext")
+    assert engine_kwargs.id == "export_engine"
+    assert engine_kwargs.skill_manager == "mock_mgr"
+    assert engine_kwargs.vision_extractor == "mock_vext"
+
+    # 3. Explicit definition with keyword arguments
+    custom_def = {"id": "custom_exp", "name": "Custom Export", "type": "export"}
+    engine_custom = ExportEngine(custom_def, skill_manager="mock_mgr")
+    assert engine_custom.id == "custom_exp"
+    assert engine_custom.name == "Custom Export"
+    assert engine_custom.skill_manager == "mock_mgr"
+
+
+
