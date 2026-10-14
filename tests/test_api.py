@@ -853,3 +853,62 @@ def test_api_file_meta_cases_nested(client, tmp_path):
         assert data["extracted"]["Patient"] == "Mueller"
     finally:
         DashboardState.config.target_base_dir = orig_target_base
+
+
+def test_api_cases_nested_and_delimiter_discovery_and_approval(client, tmp_path):
+    """GET /api/cases and POST /api/cases/approve support both standard delimiter and nested case folders."""
+    orig_target_base = DashboardState.config.target_base_dir
+    orig_delimiter = DashboardState.config.folder_delimiter
+    DashboardState.config.target_base_dir = str(tmp_path)
+    DashboardState.config.folder_delimiter = "__"
+
+    try:
+        # 1. Standard top-level folder with delimiter
+        std_folder = tmp_path / "2026-03-13__Software__Muster, Max"
+        std_folder.mkdir(parents=True, exist_ok=True)
+        (std_folder / "Vertrag.pdf").write_text("standard content", encoding="utf-8")
+
+        # 2. Hierarchical / nested case folder
+        nested_folder = tmp_path / "2026" / "Muster__Max"
+        nested_folder.mkdir(parents=True, exist_ok=True)
+        (nested_folder / "Report.pdf").write_text("nested content", encoding="utf-8")
+
+        # 3. Intermediate folder without delimiter or case files
+        empty_intermediate = tmp_path / "2027"
+        empty_intermediate.mkdir(parents=True, exist_ok=True)
+
+        # GET /api/cases discovery verification
+        res_cases = client.get("/api/cases")
+        assert res_cases.status_code == 200
+        cases_data = res_cases.get_json()
+        discovered_folders = [item["folder"] for item in cases_data]
+
+        assert "2026-03-13__Software__Muster, Max" in discovered_folders
+        assert "2026/Muster__Max" in discovered_folders
+        assert "2026" not in discovered_folders
+        assert "2027" not in discovered_folders
+
+        # Verify summary payload structure for nested folder
+        nested_summary = next(item for item in cases_data if item["folder"] == "2026/Muster__Max")
+        assert nested_summary["file_count"] == 1
+        assert nested_summary["is_approved"] is False
+
+        # POST /api/cases/approve on nested folder
+        res_app = client.post("/api/cases/approve", json={"folder": "2026/Muster__Max", "approved": True})
+        assert res_app.status_code == 200
+        assert res_app.get_json()["is_approved"] is True
+        assert (nested_folder / ".approved").exists()
+
+        # POST /api/cases/approve revocation
+        res_rev = client.post("/api/cases/approve", json={"folder": "2026/Muster__Max", "approved": False})
+        assert res_rev.status_code == 200
+        assert res_rev.get_json()["is_approved"] is False
+        assert not (nested_folder / ".approved").exists()
+
+        # Security: rejection of path traversal in approve
+        res_sec = client.post("/api/cases/approve", json={"folder": "../escape", "approved": True})
+        assert res_sec.status_code in (400, 403, 404)
+    finally:
+        DashboardState.config.target_base_dir = orig_target_base
+        DashboardState.config.folder_delimiter = orig_delimiter
+

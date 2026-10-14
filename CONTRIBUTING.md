@@ -47,7 +47,7 @@ Before submitting a pull request, ensure all three local verification gates pass
 
 2. **Static Type Analysis:**
    ```bash
-   npx -y pyright@latest core/ routes/
+   pyright
    ```
 
 3. **Automated Unit Tests:**
