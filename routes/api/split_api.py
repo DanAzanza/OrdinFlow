@@ -97,12 +97,17 @@ def _slice_pdf_section(pdf_doc: Any, pages: list[int], total_pages: int, target_
         new_doc.save(target_path, garbage=4, deflate=True, clean=True)
 
 
-def _relocate_single_document(src_path: str, target_path: str) -> None:
-    """Relocates source document to target destination using resilient safe_move."""
+def _relocate_single_document(src_path: str, target_path: str, keep_source: bool = False) -> None:
+    """Relocates source document to target destination using resilient safe_move or copy."""
     if os.path.abspath(src_path) != os.path.abspath(target_path):
-        from core.utils import safe_move
+        if keep_source:
+            import shutil
 
-        safe_move(src_path, target_path)
+            shutil.copy2(src_path, target_path)
+        else:
+            from core.utils import safe_move
+
+            safe_move(src_path, target_path)
 
 
 def _slice_or_move_document(
@@ -113,6 +118,7 @@ def _slice_or_move_document(
     total_pages: int,
     pdf_doc: Any,
     is_multi_doc: bool,
+    keep_source: bool = False,
 ) -> dict[str, str]:
     """Renders target destination and slices PDF pages or moves full file via safe_move."""
     target_folder, target_filename, target_path = _render_destination(doc_sec, ext)
@@ -123,7 +129,7 @@ def _slice_or_move_document(
     if should_slice:
         _slice_pdf_section(pdf_doc, pages_to_extract, total_pages, target_path)
     else:
-        _relocate_single_document(src_path, target_path)
+        _relocate_single_document(src_path, target_path, keep_source=keep_source)
     return {"folder": target_folder, "file": target_filename}
 
 
@@ -200,28 +206,29 @@ def api_split_inspector_submit():
     processed_results: list[dict[str, str]] = []
     is_multi_doc = len(documents_input) > 1
 
+    keep_inbox = bool(getattr(DashboardState.config, "keep_inbox_files", False))
+    keep_source = context == "inbox" and keep_inbox
+
     try:
         try:
             for doc_sec in documents_input:
-                target_folder, target_filename, target_path = _render_destination(doc_sec, ext)
-                pages_to_extract = _parse_pages_input(doc_sec.get("pages"), total_pages)
-                should_slice = (
-                    is_pdf
-                    and fitz is not None
-                    and pdf_doc is not None
-                    and (is_multi_doc or len(pages_to_extract) < total_pages)
+                res = _slice_or_move_document(
+                    doc_sec=doc_sec,
+                    src_path=src_path,
+                    ext=ext,
+                    is_pdf=is_pdf,
+                    total_pages=total_pages,
+                    pdf_doc=pdf_doc,
+                    is_multi_doc=is_multi_doc,
+                    keep_source=keep_source,
                 )
-                if should_slice:
-                    _slice_pdf_section(pdf_doc, pages_to_extract, total_pages, target_path)
-                else:
-                    _relocate_single_document(src_path, target_path)
-                processed_results.append({"folder": target_folder, "file": target_filename})
+                processed_results.append(res)
         finally:
             if pdf_doc:
                 pdf_doc.close()
 
         _remove_meta_sidecar(src_path)
-        if os.path.isfile(src_path):
+        if os.path.isfile(src_path) and not keep_source:
             try:
                 os.remove(src_path)
             except OSError as e:

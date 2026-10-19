@@ -247,8 +247,9 @@ def _cleanup_stale_instance(port: int) -> None:
             if int_pid == os.getpid():
                 continue
 
-            # Verify process image name before issuing taskkill
+            # Verify process image name and command line before issuing taskkill
             image_name = ""
+            cmdline = ""
             try:
                 t_res = subprocess.run(
                     ["tasklist", "/FI", f"PID eq {int_pid}", "/FO", "CSV", "/NH"],
@@ -262,12 +263,33 @@ def _cleanup_stale_instance(port: int) -> None:
             except Exception as e:
                 logger.debug("Failed to query process image name for PID %s: %s", int_pid, e)
 
+            try:
+                c_res = subprocess.run(
+                    [
+                        "powershell",
+                        "-NoProfile",
+                        "-NonInteractive",
+                        "-Command",
+                        f"(Get-CimInstance Win32_Process -Filter 'ProcessId = {int_pid}').CommandLine",
+                    ],
+                    shell=False,
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                    timeout=5,
+                )
+                if c_res.returncode == 0:
+                    cmdline = c_res.stdout.strip().lower()
+            except Exception as e:
+                logger.debug("Failed to query process command line for PID %s: %s", int_pid, e)
+
             allowed_images = ("python.exe", "pythonw.exe")
-            if image_name and not (any(img in image_name for img in allowed_images) or "ordinflow" in image_name):
+            is_ordinflow_proc = any(kw in cmdline for kw in ("ordinflow", "main.py", "dashboard.py")) or "ordinflow" in image_name
+            if not is_ordinflow_proc or not any(img in image_name for img in allowed_images):
                 logger.warning(
-                    "[!] Port %s is occupied by third-party process '%s' (PID %s). Skipping taskkill. Please configure a different dashboard_port.",
+                    "[!] Port %s is occupied by third-party process '%s' (PID %s). Skipping taskkill to protect unrelated services. Please configure a different dashboard_port.",
                     port,
-                    image_name,
+                    image_name or "unknown",
                     pid,
                 )
                 continue

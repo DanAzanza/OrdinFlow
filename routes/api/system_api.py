@@ -319,7 +319,15 @@ def api_system_fs_list():
     base_dir = DashboardState.config.base_dir if DashboardState.config else os.getcwd()
     base_resolved = Path(base_dir).resolve()
 
-    BLOCKED_SYSTEM_DIRS = {"windows", "$recycle.bin", "system volume information", "recovery"}
+    BLOCKED_SYSTEM_DIRS = {
+        "windows",
+        "$recycle.bin",
+        "system volume information",
+        "recovery",
+        "appdata",
+        "application data",
+        "local settings",
+    }
     target_dir_path = base_resolved
     if raw_path:
         is_safe, clean_path = sanitize_safe_path(raw_path)

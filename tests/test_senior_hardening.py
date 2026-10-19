@@ -513,3 +513,66 @@ def test_multi_page_document_voting_isolation(test_sandbox):
     assert "Diagnose" not in pr2
 
 
+def test_condition_evaluator_handles_multiline_strings():
+    """Verifies that multiline strings with newlines do not trigger SyntaxError in SafeASTEvaluator."""
+    from core.skills.condition_evaluator import evaluate_condition
+
+    context = {
+        "report_text": "Header Line\nSecond Paragraph with details\nFooter 2026",
+        "single_line": "Simple Value",
+    }
+
+    # 1. Quoted placeholder with multiline string
+    cond1 = '"{report_text}".startswith("Header")'
+    assert evaluate_condition(cond1, context) is True
+
+    # 2. Unquoted placeholder with multiline string
+    cond2 = "{report_text}.endswith('2026')"
+    assert evaluate_condition(cond2, context) is True
+
+    # 3. Disagreement comparison
+    cond3 = "{report_text} == 'Something Else'"
+    assert evaluate_condition(cond3, context) is False
+
+
+def test_cleanup_stale_instance_skips_third_party_process():
+    """Verifies that _cleanup_stale_instance never terminates third-party python services without OrdinFlow signature."""
+    from unittest.mock import MagicMock, patch
+    from main import _cleanup_stale_instance
+
+    mock_netstat = MagicMock()
+    mock_netstat.returncode = 0
+    mock_netstat.stdout = "  TCP    127.0.0.1:8080         0.0.0.0:0              LISTENING       99999\n"
+
+    mock_tasklist = MagicMock()
+    mock_tasklist.returncode = 0
+    mock_tasklist.stdout = '"python.exe","99999","Console","1","45,000 K"\n'
+
+    # Third party python service (e.g. jupyter, unrelated flask app)
+    mock_powershell = MagicMock()
+    mock_powershell.returncode = 0
+    mock_powershell.stdout = "C:\\Python312\\python.exe -m jupyter notebook --port 8080\n"
+
+    with (
+        patch("subprocess.run") as mock_run,
+        patch("sys.platform", "win32"),
+    ):
+        def side_effect(cmd, *args, **kwargs):
+            if cmd[0] == "netstat":
+                return mock_netstat
+            if cmd[0] == "tasklist":
+                return mock_tasklist
+            if cmd[0] == "powershell":
+                return mock_powershell
+            return MagicMock(returncode=0)
+
+        mock_run.side_effect = side_effect
+        _cleanup_stale_instance(8080)
+
+        # Confirm taskkill was NEVER invoked
+        executed_commands = [call.args[0] for call in mock_run.call_args_list if call.args]
+        taskkill_calls = [c for c in executed_commands if c[0] == "taskkill"]
+        assert len(taskkill_calls) == 0
+
+
+

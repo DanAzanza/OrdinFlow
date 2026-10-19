@@ -310,8 +310,7 @@ def _substitute_placeholders_for_ast(text: str, context: Mapping[str, Any]) -> s
         if key in context:
             val = context[key]
             if isinstance(val, str):
-                escaped = val.replace("\\", "\\\\").replace("'", "\\'")
-                return f"'{escaped}'"
+                return repr(val)
             if isinstance(val, bool):
                 return "True" if val else "False"
             if val is None:
@@ -327,8 +326,7 @@ def _substitute_placeholders_for_ast(text: str, context: Mapping[str, Any]) -> s
         if key in context:
             val = context[key]
             if isinstance(val, str):
-                escaped = val.replace("\\", "\\\\").replace("'", "\\'")
-                return f"'{escaped}'"
+                return repr(val)
             if isinstance(val, bool):
                 return "True" if val else "False"
             if val is None:

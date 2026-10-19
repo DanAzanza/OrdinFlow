@@ -23,6 +23,7 @@ class SkillSynthesizer:
         raw_steps: list[dict[str, Any]],
         user_instruction: str = "",
         existing_doc_types: list[str] | None = None,
+        llm_extractor: Any = None,
     ) -> dict[str, Any]:
         """Synthesizes raw recorded steps into a clean Task & Action skill structure."""
         if not raw_steps:
@@ -35,15 +36,17 @@ class SkillSynthesizer:
         known_categories, known_variables = cls._get_domain_context(existing_doc_types)
 
         # 2. Try LLM synthesis
-        llm_extractor = DashboardState.processor.llm_extractor if DashboardState.processor else None
-        if llm_extractor is not None:
+        active_llm = llm_extractor
+        if active_llm is None and DashboardState.processor:
+            active_llm = DashboardState.processor.llm_extractor
+        if active_llm is not None:
             try:
                 synthesis = cls._synthesize_with_llm(
                     raw_steps=raw_steps,
                     user_instruction=user_instruction,
                     known_categories=known_categories,
                     known_variables=known_variables,
-                    llm_extractor=llm_extractor,
+                    llm_extractor=active_llm,
                 )
                 if synthesis and isinstance(synthesis.get("tasks"), list) and synthesis["tasks"]:
                     return synthesis

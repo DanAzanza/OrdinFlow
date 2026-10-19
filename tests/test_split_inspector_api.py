@@ -222,3 +222,56 @@ def test_mark_for_review_preserves_page_results(tmp_path):
     assert pr[1]["Document"] == "Zuzahlungsaufstellung"
     assert pr[1]["pages"] == [2]
 
+
+def test_api_split_inspector_submit_preserves_inbox_when_keep_inbox_files_true(client, tmp_path):
+    """Verifies that split inspector honors keep_inbox_files=True and does not delete source PDF."""
+    inbox = tmp_path / "Inbox"
+    cases = tmp_path / "Cases"
+    inbox.mkdir(parents=True, exist_ok=True)
+    cases.mkdir(parents=True, exist_ok=True)
+
+    orig_watch = DashboardState.config.watch_dir
+    orig_target = DashboardState.config.target_base_dir
+    orig_keep = getattr(DashboardState.config, "keep_inbox_files", False)
+
+    DashboardState.config.watch_dir = str(inbox)
+    DashboardState.config.target_base_dir = str(cases)
+    DashboardState.config.keep_inbox_files = True
+    DashboardState.config.folder_structure = ["{Datum}", "{Produkt}", "{Nachname}"]
+    DashboardState.config.document_types = {
+        "DocA": {"routing": {"filename_template": "DocA__{Nachname}__{Datum}"}}
+    }
+
+    try:
+        pdf_path = inbox / "preserve_inbox_scan.pdf"
+        doc = fitz.open()
+        p1 = doc.new_page()
+        p1.insert_text((50, 50), "Preserve me in inbox")
+        doc.save(str(pdf_path))
+        doc.close()
+
+        payload = {
+            "context": "inbox",
+            "filename": "preserve_inbox_scan.pdf",
+            "documents": [
+                {
+                    "Document": "DocA",
+                    "Nachname": "Mueller",
+                    "Datum": "2026-09-01",
+                    "Produkt": "Rezept",
+                    "pages": "1",
+                }
+            ],
+        }
+
+        res = client.post("/api/split_inspector/submit", json=payload)
+        assert res.status_code == 200, res.get_json()
+
+        # The source PDF MUST be preserved in inbox because keep_inbox_files=True
+        assert pdf_path.is_file()
+    finally:
+        DashboardState.config.watch_dir = orig_watch
+        DashboardState.config.target_base_dir = orig_target
+        DashboardState.config.keep_inbox_files = orig_keep
+
+
