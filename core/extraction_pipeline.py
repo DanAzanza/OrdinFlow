@@ -242,7 +242,8 @@ class ExtractionPipeline:
             )
             res = ext if isinstance(ext, dict) else {}
             tier_page_results.append(res)
-            logger.info("[*] Page %s (%s) %s result: %s", p_num, p_type, label, res)
+            logger.info("[*] Page %s (%s) %s completed (%d fields)", p_num, p_type, label, len(res))
+            logger.debug("[*] Page %s (%s) %s result: %s", p_num, p_type, label, res)
 
         return tier_page_results
 
@@ -289,7 +290,14 @@ class ExtractionPipeline:
             )
             res = ext if isinstance(ext, dict) else {}
             tier_page_results.append(res)
-            logger.info(f"[*] Page {p_num} ({p_type}) {label} result: {res}")
+            logger.info(
+                "[*] Page %s (%s) %s completed (%d fields)",
+                p_num,
+                p_type,
+                label,
+                len(res),
+            )
+            logger.debug(f"[*] Page {p_num} ({p_type}) {label} result: {res}")
 
         return tier_page_results
 

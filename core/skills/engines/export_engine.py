@@ -421,7 +421,8 @@ class ExportEngine(BaseSkill):
                         extracted_text = str(locator.get("text", ""))
 
                 context[var_name] = extracted_text.strip()
-                logger.info("  [Action %s] EXTRACT_UI_TEXT: Stored %r -> {%s}", step_id, extracted_text[:100], var_name)
+                logger.info("  [Action %s] EXTRACT_UI_TEXT: Stored %d chars -> {%s}", step_id, len(extracted_text), var_name)
+                logger.debug("  [Action %s] EXTRACT_UI_TEXT: Stored %r -> {%s}", step_id, extracted_text[:100], var_name)
 
             # 13. VALIDATE_UI_STATE (Validate UI / Context Assertions)
             elif action_type == "VALIDATE_UI_STATE":
@@ -452,7 +453,8 @@ class ExportEngine(BaseSkill):
                 raw_val = str(step.get("value") or step.get("val") or "")
                 if var_name:
                     context[var_name] = self._substitute_placeholders(raw_val, context)
-                    logger.info("  [Action %s] SET_VARIABLE: {%s} = %r", step_id, var_name, context[var_name])
+                    logger.info("  [Action %s] SET_VARIABLE: {%s} set", step_id, var_name)
+                    logger.debug("  [Action %s] SET_VARIABLE: {%s} = %r", step_id, var_name, context[var_name])
 
             # 15. EXPORT_GDT (Direct PVS Gerätedatenträger Export)
             elif action_type == "EXPORT_GDT":

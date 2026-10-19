@@ -383,3 +383,133 @@ def test_processor_unhandled_exception_quarantines_and_tracks_stats(tmp_path, te
     assert stats["failed"] == 1
     assert stats["success"] == 0
 
+
+def test_extraction_pipeline_does_not_log_pii_at_info_level(caplog, test_sandbox):
+    """Verifies that patient names and sensitive fields are never emitted to logs at INFO level."""
+    import logging
+    from unittest.mock import MagicMock
+    from core.extraction_pipeline import ExtractionPipeline
+    from core.image_processing import ImagePreprocessor
+
+    _, config, _ = test_sandbox
+    config.document_types = {
+        "Arztbrief": {
+            "classification_desc": "Medical report",
+            "extraction_fields": {"Patient": "Full name", "Geburtsdatum": "Date of birth"},
+        }
+    }
+    preprocessor = ImagePreprocessor(config)
+    mock_llm = MagicMock()
+    mock_llm.extract_data_from_images_with_type.return_value = {
+        "Patient": "SecretPatientName123",
+        "Geburtsdatum": "01.01.1960",
+    }
+    mock_llm.extract_data_from_text_with_type.return_value = {
+        "Patient": "SecretPatientName123",
+        "Geburtsdatum": "01.01.1960",
+    }
+    pipeline = ExtractionPipeline(config, preprocessor, mock_llm)
+
+    page = {
+        "page_num": 1,
+        "matched_name": "Arztbrief",
+        "matched_info": config.document_types["Arztbrief"],
+        "spatial_text": "[pos: y=0.1, x=0.1] SecretPatientName123 01.01.1960",
+        "b64_img": "mock_b64",
+    }
+
+    caplog.set_level(logging.INFO)
+    caplog.clear()
+
+    pipeline.run_extraction_tier([page], "Arztbrief", dimension=1120, label="Vision-LLM Tier 1")
+    pipeline.run_text_extraction_tier([page], "Arztbrief")
+
+    # Assert PII strings are strictly absent from INFO-level log output
+    assert "SecretPatientName123" not in caplog.text
+    assert "01.01.1960" not in caplog.text
+    # But structural completion should be logged
+    assert "completed (2 fields)" in caplog.text
+
+
+def test_save_failure_screenshot_pruning(tmp_path):
+    """Verifies that prune_failure_screenshots enforces retention limit and deletes oldest files."""
+    from core.skills.window_manager import prune_failure_screenshots
+
+    fail_dir = tmp_path / "rpa_failures"
+    fail_dir.mkdir(parents=True, exist_ok=True)
+
+    # Create 25 mock screenshot files with distinct timestamps
+    for i in range(25):
+        f = fail_dir / f"failure_{1000 + i}_step.png"
+        f.write_bytes(b"\x89PNG\r\n\x1a\n")
+        # Explicitly set mtime
+        os.utime(str(f), (1000 + i, 1000 + i))
+
+    assert len(list(fail_dir.glob("*.png"))) == 25
+
+    pruned = prune_failure_screenshots(str(fail_dir), max_count=20)
+    assert pruned == 5
+    remaining = sorted(list(fail_dir.glob("*.png")))
+    assert len(remaining) == 20
+    # Oldest 5 files (1000 to 1004) should be deleted
+    for i in range(5):
+        assert not (fail_dir / f"failure_{1000 + i}_step.png").exists()
+    # Newest file should still exist
+    assert (fail_dir / "failure_1024_step.png").exists()
+
+
+def test_multi_page_document_voting_isolation(test_sandbox):
+    """Verifies that pages from different document types do not cross-contaminate voting results."""
+    from unittest.mock import patch
+    from core.processor import DocumentProcessor
+
+    _, config, _ = test_sandbox
+    processor = DocumentProcessor(config)
+
+    mock_images = ["img1", "img2"]
+
+    def mock_classify(raw_img, idx, *args, **kwargs):
+        types = ["Arztbrief", "Rezept"]
+        return {
+            "idx": idx,
+            "page_num": idx + 1,
+            "raw_img": raw_img,
+            "prep_img": raw_img,
+            "b64_img": f"b64_{idx}",
+            "ocr_text": f"ocr_{idx}",
+            "doc_type": types[idx],
+            "matched_name": types[idx],
+            "matched_info": {},
+        }
+
+    def mock_process_group(doc_type, group_pages):
+        if doc_type == "Arztbrief":
+            return {"Patient": "Hans Mueller", "Diagnose": "Grippe"}
+        return {"Patient": "Anna Schmidt", "Medikament": "Ibuprofen"}
+
+    with (
+        patch.object(processor.image_preprocessor, "create_raw_source_images", return_value=mock_images),
+        patch.object(processor, "_classify_single_page", side_effect=mock_classify),
+        patch.object(processor, "_process_page_group", side_effect=mock_process_group),
+    ):
+        final_doc = processor.extract_hybrid_voting("batch.pdf")
+
+    assert final_doc is not None
+    assert final_doc["Document"] == "Arztbrief+Rezept"
+    assert len(final_doc["page_results"]) == 2
+
+    # Group 1 (Arztbrief) must only contain Arztbrief fields
+    pr1 = final_doc["page_results"][0]
+    assert pr1["Document"] == "Arztbrief"
+    assert pr1["Patient"] == "Hans Mueller"
+    assert pr1["Diagnose"] == "Grippe"
+    assert "Medikament" not in pr1
+
+    # Group 2 (Rezept) must only contain Rezept fields without Arztbrief contamination
+    pr2 = final_doc["page_results"][1]
+    assert pr2["Document"] == "Rezept"
+    assert pr2["Patient"] == "Anna Schmidt"
+    assert pr2["Medikament"] == "Ibuprofen"
+    assert "Diagnose" not in pr2
+
+

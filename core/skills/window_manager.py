@@ -251,6 +251,40 @@ def verify_and_ensure_focus(target_pattern: str | None, auto_activate: bool = Tr
     return False, f"Target window '{target_pattern}' is not active (currently active: '{active_title}')"
 
 
+MAX_FAILURE_SCREENSHOTS = 20
+
+
+def prune_failure_screenshots(fail_dir: str, max_count: int = MAX_FAILURE_SCREENSHOTS) -> int:
+    """Retains at most `max_count` most recent screenshot files in `fail_dir`, deleting older ones."""
+    if not os.path.isdir(fail_dir) or max_count < 0:
+        return 0
+    try:
+        entries: list[tuple[float, str]] = []
+        for f in os.listdir(fail_dir):
+            if f.lower().endswith(".png"):
+                full_path = os.path.join(fail_dir, f)
+                try:
+                    mtime = os.path.getmtime(full_path)
+                    entries.append((mtime, full_path))
+                except OSError:
+                    continue
+        if len(entries) <= max_count:
+            return 0
+        entries.sort(key=lambda x: x[0])
+        to_delete = entries[: len(entries) - max_count]
+        deleted_count = 0
+        for _, path in to_delete:
+            try:
+                os.unlink(path)
+                deleted_count += 1
+            except OSError:
+                pass
+        return deleted_count
+    except Exception as e:
+        logger.debug("[WindowManager] Error pruning failure screenshots: %s", e)
+        return 0
+
+
 def save_failure_screenshot(step_id: str, desc: str = "", window_title: str | None = None) -> str | None:
     """Captures and saves a diagnostic screenshot when a skill step fails."""
     try:
@@ -266,6 +300,7 @@ def save_failure_screenshot(step_id: str, desc: str = "", window_title: str | No
             target_path = os.path.join(fail_dir, filename)
             screen.save(target_path)
             logger.info("[WindowManager] Saved failure screenshot to: %s", target_path)
+            prune_failure_screenshots(fail_dir, max_count=MAX_FAILURE_SCREENSHOTS)
             return target_path
     except Exception as e:
         logger.debug("[WindowManager] Could not save failure screenshot: %s", e)

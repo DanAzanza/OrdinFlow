@@ -311,9 +311,14 @@ class LLMExtractor:
             logger.warning(f"[-] JSONDecodeError parsing Vision response: {e}. Attempting auto-repair...")
             repaired = _repair_and_parse_json(raw)
             if repaired:
-                logger.info(f"[+] Auto-repaired JSON response successfully: {repaired}")
+                logger.info(
+                    "[+] Auto-repaired JSON response successfully (%d keys)",
+                    len(repaired) if isinstance(repaired, dict) else 1,
+                )
+                logger.debug("[+] Auto-repaired JSON response: %s", repaired)
                 return repaired
-            logger.error(f"[!] Unable to salvage JSON response. Raw: {raw!r}")
+            logger.error("[!] Unable to salvage JSON response (length: %d chars).", len(raw) if raw else 0)
+            logger.debug("[!] Raw unsalvaged JSON: %r", raw)
             return None
 
     def classify_image(self, b64_image: str, doc_types_override: dict[str, Any] | None = None) -> dict[str, Any]:

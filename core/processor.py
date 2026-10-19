@@ -156,7 +156,10 @@ class DocumentProcessor:
         return self.extraction_pipeline.classify_single_page(raw_img, idx, pdf_path=pdf_path)
 
     def _process_page_group(self, doc_type: str, group_pages: list) -> dict | None:
-        return self.extraction_pipeline.process_page_group(doc_type, group_pages)
+        res = self._process_document_pages(group_pages)
+        if res:
+            res["Document"] = doc_type
+        return res
 
     def _process_document_pages(self, document_pages: list) -> dict | None:
         return self.extraction_pipeline.process_document_pages(document_pages)
@@ -237,13 +240,7 @@ class DocumentProcessor:
         if not non_empty_pages:
             return None
 
-        # 1. Unified Tiered Extraction across ALL pages in one pool
-        doc_res = self._process_document_pages(non_empty_pages)
-        if not doc_res:
-            logger.warning(f"[-] No valid extraction results for '{os.path.basename(filepath)}'.")
-            return None
-
-        # 2. Group pages by document type for routing and optional PDF splitting
+        # 1. Group pages by document type for routing and optional PDF splitting
         groups = []
         current_group = []
         current_type = None
@@ -265,18 +262,34 @@ class DocumentProcessor:
         if current_group:
             groups.append((current_type, current_group))
 
+        if not groups:
+            return None
+
+        # 2. Extract per page group to isolate voting pools between sub-documents
         page_results = []
         for doc_type, group_pages in groups:
             g_nums = [p["page_num"] for p in group_pages]
-            g_res = dict(doc_res)
+            g_res = self._process_page_group(doc_type, group_pages)
+            if not g_res:
+                g_res = {}
             g_res["Document"] = doc_type
             g_res["pages"] = g_nums
             g_info = group_pages[0].get("matched_info", {})
             if g_info.get("validation", {}).get("signature_required", False):
-                g_res["Signed"] = doc_res.get("Signed", False)
+                g_res["Signed"] = g_res.get("Signed", False)
             page_results.append(g_res)
 
-        final_doc = dict(doc_res)
+        # Check that at least one group produced valid extraction data
+        has_extracted_data = any(
+            any(k not in ("Document", "pages", "Signed", "_confidence", "_evidence_weight", "vision_description") for k in r.keys())
+            for r in page_results
+        )
+        if not has_extracted_data and not any(r.get("Document") for r in page_results):
+            logger.warning(f"[-] No valid extraction results for '{os.path.basename(filepath)}'.")
+            return None
+
+        primary_res = page_results[0]
+        final_doc = dict(primary_res)
         doc_types = [g[0] for g in groups if not is_missing_value(g[0])]
         final_doc["Document"] = "+".join(doc_types) if doc_types else MISSING_PLACEHOLDER
         final_doc["page_results"] = page_results
