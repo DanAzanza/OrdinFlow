@@ -395,8 +395,9 @@ class DocumentProcessor:
                     optional_fields = optional_fields | self.last_optional_fields
                     extraction_fields = extraction_fields | self.last_extraction_fields
 
-                    # If explicitly configured to require review on inheritance, route to review
-                    if matched_info.get("review_on_inheritance", False):
+                    # By default in medical/sensitive contexts, dependent documents inheriting fields require
+                    # human confirmation in review, unless explicitly configured with review_on_inheritance: false
+                    if matched_info.get("review_on_inheritance", True) and inherited_fields:
                         logger.warning(
                             f"[!] Dependent document '{filename}' requires confirmation on inheritance. Routing to review."
                         )

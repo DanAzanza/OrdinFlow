@@ -272,15 +272,29 @@ def evaluate_field_consensus(
 
     top_cluster = max(clusters, key=lambda c: c["total_weight"])
     total_weight = sum(c["total_weight"] for c in clusters)
-    confidence_k = top_cluster["total_weight"] / total_weight if total_weight > 0 else 0.0
 
     raw_winner = top_cluster["representative"]
     if is_boolean_field:
         winner_value = to_bool_value(raw_winner)
         counts_info = {to_bool_value(c["representative"]): round(c["total_weight"], 2) for c in clusters}
+        intra_consistency = 1.0
     else:
         winner_value = raw_winner
         counts_info = {c["representative"]: round(c["total_weight"], 2) for c in clusters}
+        # Intra-cluster consistency discount: If winning cluster members diverge in spelling or completeness,
+        # discount confidence proportional to member similarity to the canonical representative.
+        norm_winner = normalize_for_clustering(str(winner_value))
+        cluster_w = top_cluster["total_weight"]
+        if cluster_w > 0:
+            intra_consistency = sum(
+                w * fuzz_similarity(normalize_for_clustering(str(val)), norm_winner)
+                for val, w in top_cluster["members"]
+            ) / cluster_w
+        else:
+            intra_consistency = 1.0
+
+    cluster_raw_k = top_cluster["total_weight"] / total_weight if total_weight > 0 else 0.0
+    confidence_k = cluster_raw_k * intra_consistency
 
     return winner_value, confidence_k, counts_info
 

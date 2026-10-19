@@ -109,6 +109,26 @@ def transliterate_to_codepage(text: str, codepage: str = "cp437") -> str:
 
     Prevents '?' corruption and UnicodeEncodeError while preserving German Umlauts in CP437.
     """
+    # Normalize Windows-1252 specific characters (0x80-0x9F) to ISO-8859-1 / ASCII equivalents
+    win1252_replacements = {
+        "€": "EUR",
+        "„": '"',
+        "“": '"',
+        "”": '"',
+        "‚": "'",
+        "‘": "'",
+        "’": "'",
+        "–": "-",
+        "—": "-",
+        "…": "...",
+        "‰": "%",
+        "™": "TM",
+        "•": "*",
+    }
+    for old_ch, new_ch in win1252_replacements.items():
+        if old_ch in text:
+            text = text.replace(old_ch, new_ch)
+
     canonical_cp = codepage.lower().replace("_", "-")
     try:
         text.encode(canonical_cp)
@@ -242,18 +262,22 @@ def build_gdt_6310_payload(
     # Tag 3105 is strictly Versichertennummer (10-12 alphanumeric characters)
     insurance_no = str(data.get("Versichertennummer") or data.get("InsuranceNumber") or "").strip()
 
-    # Examination / Befund tags
-    exam_date = (
-        normalize_gdt_date(data.get("Befunddatum") or data.get("Datum") or data.get("Date") or "")
-        or time.strftime("%d%m%Y")
-    )
-    exam_time = (
-        normalize_gdt_time(data.get("Befundzeit") or data.get("Uhrzeit") or data.get("Time") or "")
-        or time.strftime("%H%M%S")
-    )
+    # Examination / Befund tags (Tag 6200 is Mandatory in 6310, Tag 6201 is Optional)
+    raw_exam_date = data.get("Befunddatum") or data.get("Datum") or data.get("Date") or ""
+    exam_date = normalize_gdt_date(raw_exam_date)
+    if not exam_date:
+        exam_date = time.strftime("%d%m%Y")
+        logger.warning(
+            "[GDT] Tag 6200 (Untersuchungsdatum) missing or invalid (%r). Falling back to current date: %s",
+            raw_exam_date,
+            exam_date,
+        )
+
+    # Tag 6201 (Untersuchungsuhrzeit) is Optional in GDT 2.1: OMIT if missing, never synthesize fake seconds
+    raw_exam_time = data.get("Befundzeit") or data.get("Uhrzeit") or data.get("Time") or ""
+    exam_time = normalize_gdt_time(raw_exam_time)
 
     line_6200 = format_gdt_line("6200", exam_date, canonical_cp)
-    line_6201 = format_gdt_line("6201", exam_time, canonical_cp)
 
     body_lines: list[bytes] = [
         line_8000,
@@ -274,7 +298,8 @@ def build_gdt_6310_payload(
         body_lines.append(format_gdt_line("3105", insurance_no, canonical_cp))
 
     body_lines.append(line_6200)
-    body_lines.append(line_6201)
+    if exam_time:
+        body_lines.append(format_gdt_line("6201", exam_time, canonical_cp))
 
     # Befund text lines (wrapped to 70 chars per GDT standard)
     raw_text = str(
@@ -312,10 +337,6 @@ def build_gdt_6310_payload(
     # Assemble full payload: Tag 8000 is line 0, Tag 8100 is line 1
     final_lines: list[bytes] = [body_lines[0], line_8100] + body_lines[1:]
     return b"".join(final_lines)
-
-
-# Backwards compatibility alias for downstream integrations
-build_gdt_6302_payload = build_gdt_6310_payload
 
 
 def export_case_to_gdt(

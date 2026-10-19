@@ -279,3 +279,42 @@ def test_gdt_pdf_path_tags_emitted():
     assert "6228" in tags
     line_6228 = next(line for line in lines if len(line) >= 7 and line[3:7] == b"6228")
     assert b"Report_2026.pdf" in line_6228
+
+
+def test_gdt_optional_exam_time_tag_6201_omitted_when_absent():
+    """Tag 6201 (Untersuchungsuhrzeit) is optional in GDT 2.1 Satzart 6310 and must be omitted if absent."""
+    data_no_time = {
+        "PatientID": "P456",
+        "Nachname": "Mustermann",
+        "Datum": "15.03.2026",
+    }
+    payload_no_time = build_gdt_6310_payload(data_no_time)
+    lines_no_time = payload_no_time.split(b"\r\n")
+    tags_no_time = [line[3:7].decode("ascii") for line in lines_no_time if len(line) >= 7]
+    assert "6200" in tags_no_time  # Mandatory exam date present
+    assert "6201" not in tags_no_time  # Optional exam time omitted
+
+    # When explicitly provided, Tag 6201 must be present
+    data_with_time = dict(data_no_time, Befundzeit="14:30:00")
+    payload_with_time = build_gdt_6310_payload(data_with_time)
+    lines_with_time = payload_with_time.split(b"\r\n")
+    tags_with_time = [line[3:7].decode("ascii") for line in lines_with_time if len(line) >= 7]
+    assert "6201" in tags_with_time
+    line_6201 = next(line for line in lines_with_time if len(line) >= 7 and line[3:7] == b"6201")
+    assert b"143000" in line_6201
+
+
+def test_gdt_cp1252_special_chars_normalized():
+    """Characters in the Windows-1252 0x80-0x9F range (Euro, quotes, dashes) must normalize cleanly."""
+    raw = 'Honorarkosten: 150 € für „Spezialbehandlung“ – inkl. MwSt.'
+    trans = transliterate_to_codepage(raw, "iso-8859-1")
+    assert "€" not in trans
+    assert "EUR" in trans
+    assert "„" not in trans
+    assert '"Spezialbehandlung"' in trans
+    assert "–" not in trans
+    assert "-" in trans
+    # Verify strict encodability in ISO-8859-1
+    encoded = trans.encode("iso-8859-1")
+    assert all(b < 0x80 or b > 0x9F for b in encoded)
+

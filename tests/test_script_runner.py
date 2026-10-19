@@ -2,48 +2,112 @@
 
 from __future__ import annotations
 
+import logging
 import sys
+import pytest
 
+from core.skills.exceptions import SkillActionError
 from core.skills.script_runner import execute_script_step
 
 
-def test_script_runner_parameterizes_via_environment():
+def test_script_runner_parameterizes_via_environment(caplog):
     """Context variables must be passed via environment variables, preventing shell injection."""
-    step = {
-        "id": "step_ps",
-        "action_type": "POWERSHELL",
-        "command": "Write-Output {PatientName}",
-        "shell": "powershell" if sys.platform == "win32" else "bash",
-    }
+    caplog.set_level(logging.INFO)
     malicious_context = {
         "PatientName": 'Max"; Write-Output "INJECTED"; #',
     }
 
-    # On non-Windows platforms, powershell may not be present, test environment formulation
-    if sys.platform != "win32":
-        # Test command rewriting logic
-        import re
-        cmd = re.sub(r"\{([A-Za-z0-9_]+)\}", lambda m: f"$env:ORDINFLOW_{m.group(1).upper()}", step["command"])
-        assert cmd == "Write-Output $env:ORDINFLOW_PATIENTNAME"
-        return
+    if sys.platform == "win32":
+        step = {
+            "id": "step_ps",
+            "action_type": "POWERSHELL",
+            "command": 'Write-Output "Name={PatientName}"',
+            "shell": "powershell",
+        }
+        # execute_script_step must rewrite {PatientName} to $env:ORDINFLOW_PATIENTNAME
+        # and execute safely without running the injected command.
+        success = execute_script_step(
+            step=step,
+            context=malicious_context,
+            substitute_fn=lambda cmd, ctx: cmd,
+        )
+        assert success is True
+        # Output must contain the payload as literal text
+        assert 'Name=Max"; Write-Output "INJECTED"; #' in caplog.text
+        # The injected payload must NOT have executed as an independent command (which would print just 'INJECTED')
+        log_lines = [line.strip() for line in caplog.text.splitlines()]
+        assert "INJECTED" not in log_lines
+    else:
+        # Non-Windows fallback test
+        step = {
+            "id": "step_sh",
+            "action_type": "SCRIPT",
+            "command": 'echo "Name={PatientName}"',
+            "shell": "bash",
+        }
+        success = execute_script_step(
+            step=step,
+            context=malicious_context,
+            substitute_fn=lambda cmd, ctx: cmd,
+        )
+        assert success is True
 
-    # On Windows, run actual subprocess with safe environment variable
-    # We capture stdout via a simple echo
-    step["command"] = "$env:ORDINFLOW_PATIENTNAME"
-    success = execute_script_step(
-        step=step,
-        context=malicious_context,
-        substitute_fn=lambda cmd, ctx: cmd,
-    )
-    assert success is True
+
+def test_script_runner_rewrites_legacy_placeholders_in_execution(caplog):
+    """Legacy {var} placeholders must be rewritten into environment references and evaluated by the shell."""
+    caplog.set_level(logging.INFO)
+    context = {"folder": "Archiv2026", "filename": "Befund_Report.pdf"}
+
+    if sys.platform == "win32":
+        step = {
+            "id": "step_rw",
+            "command": 'Write-Output "{folder}__{filename}"',
+            "shell": "powershell",
+        }
+        success = execute_script_step(
+            step=step,
+            context=context,
+            substitute_fn=lambda cmd, ctx: cmd,
+        )
+        assert success is True
+        assert "Archiv2026__Befund_Report.pdf" in caplog.text
+    else:
+        step = {
+            "id": "step_rw_sh",
+            "command": 'echo "{folder}__{filename}"',
+            "shell": "bash",
+        }
+        success = execute_script_step(
+            step=step,
+            context=context,
+            substitute_fn=lambda cmd, ctx: cmd,
+        )
+        assert success is True
 
 
-def test_script_runner_rewrites_legacy_placeholders():
-    """Legacy {var} placeholders should automatically be rewritten to $env:ORDINFLOW_VAR for PowerShell."""
-    import re
-    raw_cmd = 'Get-ChildItem -Path "{folder}" -Filter "{filename}"'
-    ps_cmd = re.sub(r"\{([A-Za-z0-9_]+)\}", lambda m: f"$env:ORDINFLOW_{m.group(1).upper()}", raw_cmd)
-    assert ps_cmd == 'Get-ChildItem -Path "$env:ORDINFLOW_FOLDER" -Filter "$env:ORDINFLOW_FILENAME"'
+def test_script_runner_cmd_and_bat_shell_prohibited():
+    """Execution with shell='cmd' or 'bat' must fail fast with SkillActionError to eliminate cmd injection vectors."""
+    step_cmd = {
+        "id": "s_cmd",
+        "command": "echo {name}",
+        "shell": "cmd",
+        "on_failure": "stop",
+    }
+    with pytest.raises(SkillActionError, match="prohibited due to cmd.exe variable expansion vulnerabilities"):
+        execute_script_step(step_cmd, {"name": "Test"}, lambda s, c: s)
+
+    step_bat = {
+        "id": "s_bat",
+        "command": "echo {name}",
+        "shell": "bat",
+        "on_failure": "stop",
+    }
+    with pytest.raises(SkillActionError, match="prohibited due to cmd.exe variable expansion vulnerabilities"):
+        execute_script_step(step_bat, {"name": "Test"}, lambda s, c: s)
+
+    # With on_failure='continue', it must return False without raising
+    step_continue = dict(step_cmd, on_failure="continue")
+    assert execute_script_step(step_continue, {"name": "Test"}, lambda s, c: s) is False
 
 
 def test_script_runner_empty_command_succeeds():
@@ -54,9 +118,6 @@ def test_script_runner_empty_command_succeeds():
 
 def test_script_runner_missing_document_fullpath_fails():
     """Steps referencing document_fullpath must fail fast if path is missing or invalid."""
-    import pytest
-    from core.skills.exceptions import SkillActionError
-
     step = {"id": "s_doc", "command": "echo {document_fullpath}", "on_failure": "stop"}
     with pytest.raises(SkillActionError, match="document_fullpath"):
         execute_script_step(step, {}, lambda s, c: s)

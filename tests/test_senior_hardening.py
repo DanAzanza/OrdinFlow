@@ -20,7 +20,7 @@ from flask import Flask
 from core.file_service import FileService
 from core.skills.grounder import SoMGrounder
 from core.state import DashboardState
-from core.voting import cluster_votes
+from core.voting import cluster_votes, evaluate_field_consensus
 from routes.api import api_bp
 
 
@@ -126,6 +126,38 @@ def test_distinct_first_names_prevent_false_consensus_clustering():
     reps = {c["representative"] for c in clusters}
     assert "Hans Müller" in reps
     assert "Anna Müller" in reps
+
+
+def test_voting_intra_cluster_consistency_discount():
+    """Verifies that confidence K is discounted when cluster members diverge (preventing false 1.0 consensus)."""
+    # 1. Divergent cluster members: One source had only surname, one had full name
+    winner_div, k_div, counts_div = evaluate_field_consensus(
+        "PatientName",
+        [[{"PatientName": "Anna Müller"}], [{"PatientName": "Müller"}]],
+        ["tier1", "text"],
+    )
+    assert winner_div == "Anna Müller"
+    # Even though subsumed into one winning cluster, confidence K must be discounted (< 1.0)
+    assert 0.80 <= k_div < 0.95
+    assert k_div != 1.0
+
+    # 2. Similar typo/variant: 'Jan Meier' vs 'Jana Maier'
+    winner_typo, k_typo, counts_typo = evaluate_field_consensus(
+        "PatientName",
+        [[{"PatientName": "Jana Maier"}], [{"PatientName": "Jan Meier"}]],
+        ["tier1", "text"],
+    )
+    assert k_typo < 1.0
+
+    # 3. Exact matching members: Unanimous agreement must remain 1.0
+    winner_exact, k_exact, counts_exact = evaluate_field_consensus(
+        "PatientName",
+        [[{"PatientName": "Anna Müller"}], [{"PatientName": "anna müller"}]],
+        ["tier1", "text"],
+    )
+    assert winner_exact == "Anna Müller"
+    assert k_exact == 1.0
+
 
 
 def test_action_executor_masks_secret_and_disables_clipboard():

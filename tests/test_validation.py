@@ -1,4 +1,6 @@
 import os
+from pathlib import Path
+import time
 from unittest.mock import patch
 
 import pytest
@@ -269,6 +271,9 @@ def test_notiz_routes_to_rejected_vertrag_person(processor, tmp_path):
     # 2. Now a note arrives WITHOUT a person name
     notiz_file = tmp_path / "watch" / "notiz_ohne_name.pdf"
     notiz_file.write_bytes(MINIMAL_1PAGE_PDF_BYTES)
+    if "Notiz" in processor.config.document_types:
+        processor.config.document_types["Notiz"]["review_on_inheritance"] = False
+    processor.llm_extractor._doc_types_cache = None
 
     mock_notiz = {
         "Document": "Notiz",
@@ -499,4 +504,77 @@ def test_validate_extracted_data_insufficient_evidence_weight(processor):
     assert not is_valid
     assert "Insufficient evidence for required field 'Datum'" in reason
     assert "1.00 < 1.25" in reason
+
+
+def test_dependent_document_routes_to_review_on_inheritance_by_default(processor, tmp_path):
+    """By default in medical/sensitive settings, dependent documents inheriting fields must route to review."""
+    doc_path = tmp_path / "test_anhang.pdf"
+    doc_path.write_bytes(MINIMAL_1PAGE_PDF_BYTES)
+
+    processor.last_context = {"Nachname": "Schmidt", "Vorname": "Thomas"}
+    processor.last_context_dir = str(tmp_path)
+    processor.last_context_time = time.time()
+    processor.last_context_filename = "parent.pdf"
+    processor.last_optional_fields = set()
+    processor.last_extraction_fields = set()
+
+    # Mock extract_hybrid_voting to return a dependent document missing Vorname/Nachname
+    processor.extract_hybrid_voting = lambda fp, **kwargs: {"Document": "Anhang"}
+    processor.llm_extractor.find_doc_type_config = lambda raw, **kwargs: (
+        "Anhang",
+        {
+            "dependent": True,
+            # review_on_inheritance is omitted -> defaults to True
+            "routing": {"archive": True, "filename_template": "Anhang_{Nachname}"},
+        },
+    )
+
+    marked_reason = None
+    marked_extracted = None
+
+    def fake_mark(fp, reason, extracted=None):
+        nonlocal marked_reason, marked_extracted
+        marked_reason = reason
+        marked_extracted = extracted
+
+    processor._mark_for_review = fake_mark
+
+    res = processor.process_and_route_file(str(doc_path), force=True)
+    assert res is False
+    assert marked_reason is not None
+    assert "confirmation required" in marked_reason
+    assert marked_extracted is not None
+    assert marked_extracted.get("Nachname") == "Schmidt"
+    assert "_inherited_fields" in marked_extracted
+
+
+def test_dependent_document_allows_silent_inheritance_when_opted_out(processor, tmp_path):
+    """When review_on_inheritance is explicitly False, inheritance proceeds without routing to review."""
+    doc_path = tmp_path / "test_optout.pdf"
+    doc_path.write_bytes(MINIMAL_1PAGE_PDF_BYTES)
+
+    processor.last_context = {"Nachname": "Schmidt", "Vorname": "Thomas", "Datum": "2026-05-12"}
+    processor.last_context_dir = str(tmp_path)
+    processor.last_context_time = time.time()
+    processor.last_context_filename = "parent.pdf"
+    processor.last_optional_fields = set()
+    processor.last_extraction_fields = {"Nachname", "Vorname", "Datum"}
+
+    processor.extract_hybrid_voting = lambda fp, **kwargs: {"Document": "Anhang"}
+    processor.llm_extractor.find_doc_type_config = lambda raw, **kwargs: (
+        "Anhang",
+        {
+            "dependent": True,
+            "review_on_inheritance": False,  # Opt-out
+            "routing": {"archive": True, "filename_template": "Anhang_{Nachname}"},
+        },
+    )
+
+    # Mock routing steps
+    processor.file_service.determine_target_directory = lambda *args, **kwargs: str(tmp_path / "Archive")
+    processor.file_service.move_file = lambda fp, td, fn: str(Path(td) / fn)
+
+    res = processor.process_and_route_file(str(doc_path), force=True)
+    assert res is True
+
 

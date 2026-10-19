@@ -5,7 +5,7 @@
 [![Python](https://img.shields.io/badge/Python-3.10%2B%20%2864--bit%29-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
 [![Type Checking: Pyright](https://img.shields.io/badge/Type%20Checking-Pyright%20Standard-2b5b84?style=flat-square)](https://github.com/microsoft/pyright)
 [![Linter: Ruff](https://img.shields.io/badge/Linter-Ruff-black?style=flat-square&logo=ruff)](https://github.com/astral-sh/ruff)
-[![Tests: Pytest](https://img.shields.io/badge/Tests-332%20Passed-brightgreen?style=flat-square&logo=pytest)](https://pytest.org/)
+[![Tests: Pytest](https://img.shields.io/badge/Tests-348%20Passed-brightgreen?style=flat-square&logo=pytest)](https://pytest.org/)
 [![Privacy: 100% Air--Gapped](https://img.shields.io/badge/Privacy-100%25%20Air--Gapped%20%2F%20GDPR-blue?style=flat-square)](docs/legal/PRIVACY_POLICY.md)
 [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-orange?style=flat-square)](LICENSE)
 
@@ -302,7 +302,7 @@ OrdinFlow/
 | **VLM Inference** | `llama-cpp-python` / GGUF | In-process native C++ inference; eliminates external heavy model servers and minimizes VRAM footprint. |
 | **Vision Models** | Qwen 2.5 / 3-VL (4B / 7B) | State-of-the-art visual document reasoning and multilingual comprehension. |
 | **OCR Engine** | RapidOCR (`onnxruntime`) | Lightweight deep-learning OCR in ONNX format; zero system `.exe` dependencies (cross-platform, zero setup). |
-| **PVS Integration** | QMS / bvitg GDT 2.1 / 3.0 | Headless Satzart 6310 file transfer for German EHR systems with atomic file swaps and CP437/ISO-8859-1 encoding. |
+| **PVS Integration** | QMS / bvitg GDT 2.1 | Implements headless Satzart 6310 file transfer for German EHR systems with atomic file swaps and CP437/ISO-8859-1 encoding. |
 | **PDF & Graphics** | PyMuPDF (`fitz`), OpenCV, PIL | Fast C-backed PDF rendering, contour detection, and spatial block extraction. |
 | **Web Dashboard** | Flask, HTML5, Vanilla JS, CSS3 | Clean, dependency-light presentation layer without fragile npm/node build chains. |
 | **Static Typing** | Microsoft Pyright (Standard) | Enforces type consistency across all core orchestrators and routes. |
@@ -312,7 +312,7 @@ OrdinFlow/
 
 ## 🎯 Target Domains & Real-World Use Cases
 
-- 🏥 **Healthcare & Medical Practices:** Autonomous intake of specialist letters, lab reports, and radiological findings with direct **GDT 2.1 / 3.0** electronic transfer into German PVS systems (*CGM Medistar, TurboMed, CGM ALBIS, medatixx/x.iserv, Tomedo, DURIA*), designed for compliance with GDPR, HIPAA, and German medical confidentiality (`§ 203 StGB`) through strictly local, air-gapped execution.
+- 🏥 **Healthcare & Medical Practices:** Autonomous intake of specialist letters, lab reports, and radiological findings with direct **GDT 2.1** electronic transfer (Satzart 6310) into German PVS systems (*CGM Medistar, TurboMed, CGM ALBIS, medatixx/x.iserv, Tomedo, DURIA*), designed for compliance with GDPR, HIPAA, and German medical confidentiality (`§ 203 StGB`) through strictly local, air-gapped execution.
 - ⚖️ **Legal & Notary Offices:** Processing fee statements, court orders, deeds, and contracts while preserving attorney-client privilege.
 - 📐 **Engineering & Architecture:** Ingestion of technical drawings, schematics, inspection logs, and on-site photo documentation.
 - 🏢 **Finance & Commercial Offices:** Invoice reconciliation, receipt sorting, and automated entry into legacy on-premise accounting software.
@@ -337,7 +337,7 @@ ruff check .
 # 2. Static Type Analysis
 pyright
 
-# 3. Automated Test Suite (332+ tests)
+# 3. Automated Test Suite (348+ tests)
 python -m pytest -q
 ```
 

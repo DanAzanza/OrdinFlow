@@ -43,8 +43,12 @@ def execute_script_step(
         logger.warning("[ScriptRunner] Empty command string provided.")
         return True
 
-    resolved_doc = None
-    if "{document_fullpath}" in raw_cmd or "$env:ORDINFLOW_DOCUMENT_FULLPATH" in raw_cmd or "%ORDINFLOW_DOCUMENT_FULLPATH%" in raw_cmd:
+    resolved_doc: Path | None = None
+    if (
+        "{document_fullpath}" in raw_cmd
+        or "$env:ORDINFLOW_DOCUMENT_FULLPATH" in raw_cmd
+        or "${env:ORDINFLOW_DOCUMENT_FULLPATH}" in raw_cmd
+    ):
         raw_fp = str(context.get("document_fullpath", "") or "").strip()
         is_safe, clean_fp = sanitize_safe_path(raw_fp)
         if is_safe and clean_fp:
@@ -69,20 +73,30 @@ def execute_script_step(
             val_str = str(resolved_doc if k == "document_fullpath" and resolved_doc else v)
             proc_env[f"ORDINFLOW_{clean_k}"] = val_str.replace("\x00", "")[:8192]
 
+    if shell_type in ("cmd", "bat"):
+        err_msg = (
+            "Execution with shell='cmd' or 'bat' is prohibited due to cmd.exe variable expansion vulnerabilities. "
+            "Use 'powershell' (or direct binary execution) instead."
+        )
+        logger.error("  [!] SCRIPT aborted: %s", err_msg)
+        if step.get("on_failure", "stop") == "stop":
+            raise SkillActionError(step_id, err_msg, action_type)
+        return False
+
     # 2. Safe command formulation: NEVER interpolate unescaped document text directly into command lines.
     # Instead, rewrite legacy {KEY} placeholders to native shell environment variable references.
     if shell_type in ("powershell", "ps1", "pwsh"):
         def _to_ps_env(m: re.Match[str]) -> str:
             clean_k = re.sub(r"[^A-Za-z0-9_]", "_", m.group(1)).upper()
-            return f"$env:ORDINFLOW_{clean_k}"
+            return f"${{env:ORDINFLOW_{clean_k}}}"
 
         cmd_to_run = re.sub(r"\{([A-Za-z0-9_]+)\}", _to_ps_env, raw_cmd)
-    elif shell_type in ("cmd", "bat"):
-        def _to_cmd_env(m: re.Match[str]) -> str:
+    elif shell_type in ("bash", "sh"):
+        def _to_sh_env(m: re.Match[str]) -> str:
             clean_k = re.sub(r"[^A-Za-z0-9_]", "_", m.group(1)).upper()
-            return f"%ORDINFLOW_{clean_k}%"
+            return f"$ORDINFLOW_{clean_k}"
 
-        cmd_to_run = re.sub(r"\{([A-Za-z0-9_]+)\}", _to_cmd_env, raw_cmd)
+        cmd_to_run = re.sub(r"\{([A-Za-z0-9_]+)\}", _to_sh_env, raw_cmd)
     else:
         # CLI direct binary execution: only rewrite validated document_fullpath
         cmd_to_run = raw_cmd.replace("{document_fullpath}", str(resolved_doc or ""))

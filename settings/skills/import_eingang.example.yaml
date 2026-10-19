@@ -64,6 +64,7 @@ document_types:
     classification_desc: A document or form providing information and consent regarding data privacy regulations (GDPR).
     emoji: 🔒
     dependent: true
+    review_on_inheritance: true # Default true: routes inherited documents to review for human confirmation
     routing:
       archive: true
       filename_template: PrivacyPolicy
