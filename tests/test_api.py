@@ -580,22 +580,14 @@ def test_api_log_endpoints(client, tmp_path, monkeypatch):
     assert os.path.getsize(str(log_file)) == 0
 
 
-def test_api_system_browse(client, monkeypatch):
-    from unittest.mock import patch
-
-    with patch("routes.api.system_api._pick_path_dialog", return_value="C:\\Dummy\\Folder"):
-        res = client.post("/api/system/browse", json={"picker_type": "folder", "title": "Select Folder"})
-        assert res.status_code == 200
-        data = res.get_json()
-        assert data["status"] == "ok"
-        assert data["path"] == "C:\\Dummy\\Folder"
-
-    with patch("routes.api.system_api._pick_path_dialog", return_value=None):
-        res_cancel = client.post("/api/system/browse", json={"picker_type": "folder"})
-        assert res_cancel.status_code == 200
-        data_cancel = res_cancel.get_json()
-        assert data_cancel["status"] == "cancelled"
-        assert data_cancel["path"] is None
+def test_api_system_browse(client):
+    """POST /api/system/browse returns disabled status pointing clients to fs_list."""
+    res = client.post("/api/system/browse", json={"picker_type": "folder", "title": "Select Folder"})
+    assert res.status_code == 200
+    data = res.get_json()
+    assert data["status"] == "disabled"
+    assert data["path"] is None
+    assert "/api/system/fs_list" in data["message"]
 
 
 def test_api_skills_test_run(client, monkeypatch):

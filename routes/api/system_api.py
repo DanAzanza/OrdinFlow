@@ -12,7 +12,7 @@ from typing import Any
 from flask import Blueprint, Response, jsonify, request
 
 from core.logging_service import compute_log_stats, get_empty_log_stats
-from core.platform_utils import get_system_drives, pick_path_dialog
+from core.platform_utils import get_system_drives
 from core.utils import memory_log_handler, sanitize_safe_path
 from routes.schemas import (
     ConfigUpdateSchema,
@@ -26,7 +26,6 @@ logger = logging.getLogger(__name__)
 _get_empty_log_stats = get_empty_log_stats
 _compute_log_stats = compute_log_stats
 _get_system_drives = get_system_drives
-_pick_path_dialog = pick_path_dialog
 
 # Allowed configuration keys for GET and PUT /api/config
 _CONFIG_SAFE_KEYS = [
@@ -429,13 +428,13 @@ def api_system_fs_list():
 
 @system_api_bp.route("/api/system/browse", methods=["POST"])
 def api_system_browse():
-    """Opens a native system dialog to select a folder or file and returns the selected path."""
-    data = request.get_json() or {}
-    picker_type = str(data.get("picker_type", "folder")).lower()
-    initial_dir = str(data.get("initial_dir", "")).strip()
-    title = str(data.get("title", "")).strip()
+    """Endpoint for native system picker dialogs.
 
-    chosen = _pick_path_dialog(picker_type=picker_type, initial_dir=initial_dir, title=title)
-    if chosen:
-        return jsonify({"status": "ok", "path": chosen})
-    return jsonify({"status": "cancelled", "path": None})
+    Disabled in favor of non-blocking in-app filesystem browser (/api/system/fs_list)
+    to prevent worker thread hangs on headless/remote environments.
+    """
+    return jsonify({
+        "status": "disabled",
+        "path": None,
+        "message": "Native server dialogs are disabled; use /api/system/fs_list.",
+    })

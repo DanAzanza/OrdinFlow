@@ -4,8 +4,20 @@ The canonical state container now lives in `core.state` to ensure clean
 unidirectional architecture boundaries (`routes` -> `core`).
 """
 
-from __future__ import annotations
+from core.state import (
+    DMSService,
+    DashboardState,
+    create_dms_service,
+    dms_service,
+    get_current_dms,
+    set_current_dms,
+)
 
-from core.state import DMSService, DashboardState, dms_service
-
-__all__ = ["DMSService", "DashboardState", "dms_service"]
+__all__ = [
+    "DMSService",
+    "DashboardState",
+    "create_dms_service",
+    "dms_service",
+    "get_current_dms",
+    "set_current_dms",
+]

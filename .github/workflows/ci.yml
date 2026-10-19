@@ -24,8 +24,7 @@ jobs:
       - name: Install Python Dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install ruff pyright pytest pytest-cov
-          pip install -r requirements.txt
+          pip install -e .[dev]
 
       - name: Run Ruff linter
         run: ruff check .

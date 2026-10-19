@@ -4,6 +4,7 @@
 window.AppEvents = {
 	_listeners: {},
 	on(event, callback) {
+		if (typeof callback !== "function") return () => {};
 		if (!this._listeners[event]) this._listeners[event] = [];
 		this._listeners[event].push(callback);
 		return () => this.off(event, callback);
@@ -45,7 +46,10 @@ function initServerEvents() {
 			}
 		};
 		_serverEventSource.onerror = () => {
-			// Auto-reconnect managed by browser EventSource
+			if (_serverEventSource && _serverEventSource.readyState === EventSource.CLOSED) {
+				_serverEventSource.close();
+				_serverEventSource = null;
+			}
 		};
 	} catch (e) {
 		console.debug("[SSE] EventSource init skipped:", e);

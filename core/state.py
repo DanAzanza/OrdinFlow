@@ -65,62 +65,105 @@ class DMSService:
         self.session_token: str | None = None
 
 
-# Global service context
+def create_dms_service(config: Any = None, processor: Any = None) -> DMSService:
+    """Factory creating an isolated DMSService instance."""
+    service = DMSService()
+    if config is not None:
+        service.config = config
+    if processor is not None:
+        service.processor = processor
+    return service
+
+
+# Global service context default
 dms_service = DMSService()
 
 _STATE_LOCK = threading.Lock()
+
+
+def get_current_dms() -> DMSService:
+    """Retrieve the active DMSService instance.
+
+    Checks active Flask application context first if available and configured
+    via current_app.extensions['dms']; falls back to the process-level default.
+    """
+    try:
+        from flask import current_app, has_app_context
+
+        if has_app_context():
+            ext_dms = current_app.extensions.get("dms")
+            if ext_dms is not None and isinstance(ext_dms, DMSService):
+                return ext_dms
+    except ImportError:
+        pass
+    return dms_service
+
+
+def set_current_dms(service: DMSService) -> None:
+    """Set the process-level default DMSService instance."""
+    global dms_service
+    with _STATE_LOCK:
+        dms_service = service
 
 
 # Static interception for direct attribute access on DashboardState
 class _DashboardStateMeta(type):
     @property
     def config(cls) -> Any:
-        if dms_service.config is None:
+        dms = get_current_dms()
+        if dms.config is None:
             with _STATE_LOCK:
-                if dms_service.config is None:
+                if dms.config is None:
                     from core.config import AppConfig
 
-                    dms_service.config = AppConfig()
-        return dms_service.config
+                    dms.config = AppConfig()
+        return dms.config
 
     @config.setter
     def config(cls, value: Any) -> None:
+        dms = get_current_dms()
         with _STATE_LOCK:
-            dms_service.config = value
+            dms.config = value
 
     @property
     def processor(cls) -> Any:
+        dms = get_current_dms()
         with _STATE_LOCK:
-            return dms_service.processor
+            return dms.processor
 
     @processor.setter
     def processor(cls, value: Any) -> None:
+        dms = get_current_dms()
         with _STATE_LOCK:
-            dms_service.processor = value
+            dms.processor = value
 
     @property
     def last_heartbeat(cls) -> float:
+        dms = get_current_dms()
         with _STATE_LOCK:
-            return dms_service._last_heartbeat
+            return dms._last_heartbeat
 
     @last_heartbeat.setter
     def last_heartbeat(cls, value: float) -> None:
+        dms = get_current_dms()
         with _STATE_LOCK:
-            dms_service._last_heartbeat = value
+            dms._last_heartbeat = value
 
     @property
     def shutdown_event(cls) -> threading.Event:
-        return dms_service._shutdown_event
+        return get_current_dms()._shutdown_event
 
     @property
     def session_token(cls) -> str | None:
+        dms = get_current_dms()
         with _STATE_LOCK:
-            return dms_service.session_token
+            return dms.session_token
 
     @session_token.setter
     def session_token(cls, value: str | None) -> None:
+        dms = get_current_dms()
         with _STATE_LOCK:
-            dms_service.session_token = value
+            dms.session_token = value
 
 
 class DashboardState(metaclass=_DashboardStateMeta):

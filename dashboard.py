@@ -15,27 +15,37 @@ from werkzeug.serving import make_server
 
 from core.config import AppConfig
 from core.processor import DocumentProcessor
+from core.state import DMSService, get_current_dms
 from routes.api import api_bp
 from routes.state import DashboardState
 from routes.ui import ui_bp
 
-app = Flask(__name__, template_folder="templates", static_folder="static")
-app.register_blueprint(api_bp)
-app.register_blueprint(ui_bp)
 
-if not DashboardState.session_token:
-    DashboardState.session_token = secrets.token_urlsafe(32)
+def create_app(dms: DMSService | None = None) -> Flask:
+    """Application factory for OrdinFlow web dashboard."""
+    flask_app = Flask(__name__, template_folder="templates", static_folder="static")
+    flask_app.extensions["dms"] = dms or get_current_dms()
+    flask_app.register_blueprint(api_bp)
+    flask_app.register_blueprint(ui_bp)
 
+    active_dms = flask_app.extensions["dms"]
+    if not active_dms.session_token:
+        active_dms.session_token = secrets.token_urlsafe(32)
 
-@app.before_request
-def check_host_header():
-    if app.config.get("TESTING"):
+    @flask_app.before_request
+    def check_host_header():
+        if flask_app.config.get("TESTING"):
+            return None
+        raw_host = request.host.split(":")[0].strip().lower()
+        allowed_hosts = {"127.0.0.1", "localhost", "::1", "[::1]"}
+        if raw_host not in allowed_hosts:
+            return jsonify({"error": "Forbidden: Invalid Host header"}), 403
         return None
-    raw_host = request.host.split(":")[0].strip().lower()
-    allowed_hosts = {"127.0.0.1", "localhost", "::1", "[::1]"}
-    if raw_host not in allowed_hosts:
-        return jsonify({"error": "Forbidden: Invalid Host header"}), 403
-    return None
+
+    return flask_app
+
+
+app = create_app()
 
 
 logger = logging.getLogger(__name__)
