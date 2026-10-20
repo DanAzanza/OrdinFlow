@@ -86,6 +86,11 @@
 * `export_case_to_gdt` and export actions enforce `is_within_allowed_roots(path)` to prevent rogue file writes across the filesystem.
 * Test fixtures or export configurations must reside within configured target roots or temporary directories (`tempfile.TemporaryDirectory()`). Arbitrary paths fail closed with permission errors.
 
+### 📄 Empty-Page Multi-Document Split & Pre-Flight Coverage Trap
+* **Strikter Pre-Flight Page Coverage Check**: `FileService.split_multi_page_pdf` erzwingt vor dem Zerschneiden eines PDFs, dass *alle* physischen Seiten des Eingabedokuments in `page_results` abgedeckt sind (`uncovered_pages = total_doc_pages - covered_pages`), um Datenverlust zu verhindern.
+* **LEER-Seiten-Accounting**: Auch wenn `save_empty_pages=False` konfiguriert ist, müssen leere Seiten in `page_results` als `{"Document": "LEER", "pages": [...]}` aufgeführt bleiben. `split_multi_page_pdf` verwirft sie beim Erzeugen der Teil-PDFs automatisch. Fehlen sie jedoch in `page_results`, schlägt der Pre-Flight-Check fehl und das Dokument landet fälschlicherweise in der manuellen Prüfung.
+* **Entkopplung von Split-Entscheidung und Filterung**: Der Multi-Document-Split darf erst ab mindestens zwei **nicht-leeren** Dokumentgruppen auslösen (`len([pr for pr in page_results if pr.get("Document") not in ("LEER", "BLANK")]) > 1`). Bei einem Einzeldokument mit zwischengehefteter Leerseite (z. B. Seite 1 `Vertrag`, Seite 2 `LEER`, Seite 3 `Vertrag`) verhindert dies das versehentliche Zerschneiden in zwei separate Verträge und leitet das PDF stattdessen an `save_filtered_pdf` weiter, um die Leerseite sauber zu entfernen.
+
 ---
 
 ## 5. Multi-User & Runtime Security Contracts
