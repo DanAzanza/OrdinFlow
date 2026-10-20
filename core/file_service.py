@@ -7,6 +7,7 @@ import datetime
 import json
 import logging
 import os
+import re
 import time
 from typing import Any
 import uuid
@@ -34,8 +35,29 @@ from core.utils import (
 def _clean_folder_match_name(name: str) -> str:
     if not name:
         return ""
-    name = name.replace(".", " ")
-    return name.lower().replace("-", " ").strip()
+    name = re.sub(r"[\s_\-\+\.,;]+", " ", name)
+    return name.lower().strip()
+
+
+def _count_missing_placeholders(path_or_name: str) -> int:
+    """Counts MISSING and ---- placeholder occurrences in a folder name or path."""
+    b = os.path.basename(path_or_name)
+    return b.upper().count("MISSING") + b.count("----")
+
+
+def matches_folder_keywords(item_name: str, valid_keywords: list[str]) -> bool:
+    """Checks whether an item_name contains all valid_keywords using word boundaries."""
+    if not item_name or not valid_keywords:
+        return False
+    item_clean = _clean_folder_match_name(item_name)
+    cleaned_kw = [_clean_folder_match_name(kw) for kw in valid_keywords if _clean_folder_match_name(kw)]
+    if not cleaned_kw:
+        return False
+    for kw_clean in cleaned_kw:
+        pattern = rf"(?<!\w){re.escape(kw_clean)}(?!\w)"
+        if not re.search(pattern, item_clean):
+            return False
+    return True
 
 
 def is_file_processed_and_fresh(filepath: str) -> bool:
@@ -84,28 +106,38 @@ class FileService:
         self.config = config
         self.can_split_pdf = fitz is not None
 
-    def find_existing_folder_by_keywords(self, base_dir: str, keywords: list[str]) -> str | None:
-        """Searches base directory for a matching folder based on a list of keywords."""
+    def find_all_matching_folders_by_keywords(
+        self, base_dir: str, keywords: list[str]
+    ) -> list[str]:
+        """Searches base directory for all folders matching all valid keywords with word boundary awareness."""
         if not os.path.exists(base_dir) or not keywords:
-            return None
-        valid_kw = [_clean_folder_match_name(k) for k in keywords if k and not is_missing_value(k)]
+            return []
+        valid_kw = [clean_path_component(str(k)).strip() for k in keywords if k and not is_missing_value(k)]
         valid_kw = [k for k in valid_kw if k]
         if not valid_kw:
-            return None
+            return []
 
         try:
             entries = os.listdir(base_dir)
         except OSError as e:
             logger.debug("[FileService] Error reading base_dir '%s': %s", base_dir, e)
-            return None
+            return []
 
+        matches: list[str] = []
         for item in entries:
             item_path = os.path.join(base_dir, item)
-            if os.path.isdir(item_path):
-                item_clean = _clean_folder_match_name(item)
-                if all(kw in item_clean for kw in valid_kw):
-                    return item_path
-        return None
+            if os.path.isdir(item_path) and matches_folder_keywords(item, valid_kw):
+                matches.append(item_path)
+        return matches
+
+    def find_existing_folder_by_keywords(self, base_dir: str, keywords: list[str]) -> str | None:
+        """Searches base directory for a matching folder based on a list of keywords."""
+        matches = self.find_all_matching_folders_by_keywords(base_dir, keywords)
+        if not matches:
+            return None
+
+        matches.sort(key=_count_missing_placeholders)
+        return matches[0]
 
     def determine_target_directory(
         self,
@@ -117,18 +149,36 @@ class FileService:
         routing_cfg = routing_cfg or {}
         optional_fields = optional_fields or set()
 
-        match_folder_by = routing_cfg.get("match_folder_by") or getattr(self.config, "match_folder_by", None) or []
-        existing_folder = None
+        raw_match = routing_cfg.get("match_folder_by") or getattr(self.config, "match_folder_by", None) or []
+        if isinstance(raw_match, str):
+            match_folder_by = [s.strip().strip("{}") for s in raw_match.split(",") if s.strip().strip("{}")]
+        elif isinstance(raw_match, (list, tuple)):
+            match_folder_by = [str(s).strip().strip("{}") for s in raw_match if str(s).strip().strip("{}")]
+        else:
+            match_folder_by = []
+
+        existing_folder: str | None = None
+        other_matching_folders: list[str] = []
         if match_folder_by:
-            match_keywords = [
-                clean_path_component(str(extracted.get(k, ""))).strip()
-                for k in match_folder_by
-                if not is_missing_value(extracted.get(k))
-            ]
-            if match_keywords:
-                existing_folder = self.find_existing_folder_by_keywords(
-                    self.config.target_base_dir, match_keywords
-                )
+            opt_lower = {str(f).lower() for f in optional_fields}
+            required_match_keys = [k for k in match_folder_by if k.lower() not in opt_lower]
+            all_required_present = all(
+                not is_missing_value(extracted.get(k)) for k in required_match_keys
+            )
+            if all_required_present:
+                match_keywords = [
+                    clean_path_component(str(extracted.get(k, ""))).strip()
+                    for k in match_folder_by
+                    if not is_missing_value(extracted.get(k))
+                ]
+                if match_keywords:
+                    all_matches = self.find_all_matching_folders_by_keywords(
+                        self.config.target_base_dir, match_keywords
+                    )
+                    if all_matches:
+                        all_matches.sort(key=_count_missing_placeholders)
+                        existing_folder = all_matches[0]
+                        other_matching_folders = all_matches[1:]
 
         target_folder_name = render_folder_name(
             extracted,
@@ -139,29 +189,85 @@ class FileService:
         )
 
         target_dir = os.path.join(self.config.target_base_dir, target_folder_name)
+        active_target: str = target_dir
 
         if existing_folder:
             existing_folder_name = os.path.basename(existing_folder)
-            existing_missing_count = existing_folder_name.upper().count("MISSING") + existing_folder_name.count("----")
-            target_missing_count = target_folder_name.upper().count("MISSING") + target_folder_name.count("----")
+            existing_missing_count = _count_missing_placeholders(existing_folder)
+            target_missing_count = _count_missing_placeholders(target_folder_name)
 
             if target_missing_count < existing_missing_count and os.path.abspath(existing_folder) != os.path.abspath(
                 target_dir
             ):
-                try:
-                    logger.info(
-                        f"[+] Renaming existing case folder: '{existing_folder_name}' -> '{target_folder_name}'"
-                    )
-                    os.rename(existing_folder, target_dir)
-                    return target_dir
-                except OSError as e:
-                    logger.warning(f"[!] Renaming of case folder failed: {e}")
-            logger.info(f"[*] Using existing case folder: '{existing_folder_name}'")
-            return existing_folder
+                renamed = False
+                if not os.path.exists(target_dir):
+                    # Try direct atomic directory rename with retries for transient locks
+                    for attempt in range(3):
+                        try:
+                            logger.info(
+                                f"[+] Renaming existing case folder: '{existing_folder_name}' -> '{target_folder_name}'"
+                            )
+                            os.rename(existing_folder, target_dir)
+                            renamed = True
+                            active_target = target_dir
+                            break
+                        except OSError as e:
+                            if attempt < 2:
+                                time.sleep(0.5)
+                            else:
+                                logger.warning(
+                                    f"[!] Direct rename of case folder failed: {e}. Falling back to file migration."
+                                )
 
-        logger.info(f"[+] Creating new case folder: '{target_folder_name}'")
-        os.makedirs(target_dir, exist_ok=True)
-        return target_dir
+                if not renamed:
+                    # Target directory already exists or direct rename failed -> migrate files safely
+                    try:
+                        os.makedirs(target_dir, exist_ok=True)
+                        for item in os.listdir(existing_folder):
+                            s_path = os.path.join(existing_folder, item)
+                            d_path = deduplicate_path(os.path.join(target_dir, item))
+                            safe_move(s_path, d_path)
+                        try:
+                            os.rmdir(existing_folder)
+                        except OSError as rm_err:
+                            logger.debug("Could not remove empty case folder %s: %s", existing_folder, rm_err)
+                        logger.info(
+                            f"[+] Migrated contents of case folder: '{existing_folder_name}' -> '{target_folder_name}'"
+                        )
+                        active_target = target_dir
+                    except Exception as e:
+                        logger.warning(f"[!] Migration of case folder failed: {e}")
+                        active_target = existing_folder
+            else:
+                logger.info(f"[*] Using existing case folder: '{existing_folder_name}'")
+                active_target = existing_folder
+        else:
+            logger.info(f"[+] Creating new case folder: '{target_folder_name}'")
+            os.makedirs(target_dir, exist_ok=True)
+            active_target = target_dir
+
+        # Consolidate any remaining orphaned incomplete folders for the same match keywords
+        for orphan in other_matching_folders:
+            if os.path.exists(orphan) and os.path.abspath(orphan) != os.path.abspath(active_target):
+                orphan_missing = _count_missing_placeholders(orphan)
+                if orphan_missing > 0:
+                    orphan_name = os.path.basename(orphan)
+                    try:
+                        logger.info(
+                            f"[+] Consolidating orphaned incomplete folder '{orphan_name}' -> '{os.path.basename(active_target)}'"
+                        )
+                        for item in os.listdir(orphan):
+                            s_p = os.path.join(orphan, item)
+                            d_p = deduplicate_path(os.path.join(active_target, item))
+                            safe_move(s_p, d_p)
+                        try:
+                            os.rmdir(orphan)
+                        except OSError as rm_err:
+                            logger.debug("Could not remove emptied orphan folder %s: %s", orphan, rm_err)
+                    except Exception as e:
+                        logger.warning(f"[!] Consolidation of orphan folder {orphan} failed: {e}")
+
+        return active_target
 
     def move_file(self, filepath: str, target_dir: str, target_filename: str) -> str:
         """Safely moves a file into the target directory."""

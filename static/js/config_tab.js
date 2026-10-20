@@ -12,6 +12,7 @@ const CONFIG_LABELS = {
     // 🗂️ Archiving & Directory Structure
     folder_structure: "Subfolder Hierarchy (comma separated)",
     folder_delimiter: "Folder Delimiter",
+    match_folder_by: "Match Existing Folders By (comma separated, e.g. Nachname, Vorname)",
 
     // 🤖 AI Detection & Acceleration
     llm_backend: "LLM Backend (llama_cpp / server)",
@@ -32,7 +33,7 @@ const CONFIG_GROUPS = [
     },
     {
         title: "🗂️ Archiving & Directory Structure",
-        keys: ["folder_structure", "folder_delimiter"]
+        keys: ["folder_structure", "folder_delimiter", "match_folder_by"]
     },
     {
         title: "🤖 AI Detection & Acceleration",
@@ -148,8 +149,8 @@ function buildConfigDeltaPayload(lastSaved) {
         let val;
         if (el.type === "checkbox") {
             val = el.checked;
-        } else if (key === "folder_structure") {
-            val = el.value ? el.value.split(",").map(s => s.trim()).filter(Boolean) : [];
+        } else if (key === "folder_structure" || key === "match_folder_by") {
+            val = el.value ? el.value.split(",").map(s => s.trim().replace(/^\{+|\}+$/g, "")).filter(Boolean) : [];
         } else if (CONFIG_INT_KEYS.has(key)) {
             const raw = el.value.trim();
             if (raw === "" || (isNaN(Number(raw)) && raw !== "-")) {
@@ -237,7 +238,7 @@ async function executeConfigAutoSave() {
             updateConfigStatus("saved");
 
             // Broadcast config refresh only if directory/routing structural settings changed
-            if ("folder_structure" in payload || "folder_delimiter" in payload) {
+            if ("folder_structure" in payload || "folder_delimiter" in payload || "match_folder_by" in payload) {
                 AppEvents.emit("config:refresh");
             }
         } else {

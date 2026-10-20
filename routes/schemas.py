@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
 
 class FlexibleDocumentPayload(BaseModel):
@@ -60,8 +60,30 @@ class ConfigUpdateSchema(BaseModel):
     keep_inbox_files: bool | None = None
     dashboard_port: int | None = None
     folder_delimiter: str | None = None
-    folder_structure: list[Any] | None = None
-    match_folder_by: str | None = None
+    folder_structure: list[Any] | str | None = None
+    match_folder_by: list[str] | str | None = None
+
+    @field_validator("match_folder_by", mode="before")
+    @classmethod
+    def normalize_match_folder_by(cls, v: Any) -> list[str] | None:
+        if v is None:
+            return None
+        if isinstance(v, str):
+            return [s.strip().strip("{}") for s in v.split(",") if s.strip().strip("{}")]
+        if isinstance(v, (list, tuple)):
+            return [str(s).strip().strip("{}") for s in v if str(s).strip().strip("{}")]
+        return []
+
+    @field_validator("folder_structure", mode="before")
+    @classmethod
+    def normalize_folder_structure(cls, v: Any) -> list[Any] | None:
+        if v is None:
+            return None
+        if isinstance(v, str):
+            return [s.strip() for s in v.split(",") if s.strip()]
+        if isinstance(v, (list, tuple)):
+            return list(v)
+        return []
     document_types: dict[str, Any] | None = None
     llm_backend: str | None = None
     server_url: str | None = None

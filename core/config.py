@@ -79,9 +79,27 @@ class AppConfig:
     def __post_init__(self):
         if not isinstance(self.document_types, dict):
             self.document_types = {}
-        if not isinstance(self.folder_structure, list):
+        if isinstance(self.folder_structure, str):
+            self.folder_structure = [
+                s.strip()
+                for s in self.folder_structure.split(",")
+                if s.strip()
+            ]
+        elif not isinstance(self.folder_structure, list):
             self.folder_structure = []
-        if not isinstance(self.match_folder_by, list):
+        if isinstance(self.match_folder_by, str):
+            self.match_folder_by = [
+                s.strip().strip("{}")
+                for s in self.match_folder_by.split(",")
+                if s.strip().strip("{}")
+            ]
+        elif isinstance(self.match_folder_by, (list, tuple)):
+            self.match_folder_by = [
+                str(s).strip().strip("{}")
+                for s in self.match_folder_by
+                if str(s).strip().strip("{}")
+            ]
+        else:
             self.match_folder_by = []
 
     def _resolve_path(self, filepath: str) -> str:
@@ -107,6 +125,7 @@ class AppConfig:
                 for k, v in data.items():
                     if k != "document_types" and hasattr(self, k):
                         setattr(self, k, v)
+                self.__post_init__()
             else:
                 os.makedirs(os.path.dirname(full_path), exist_ok=True)
                 self.save_to_yaml(full_path)
