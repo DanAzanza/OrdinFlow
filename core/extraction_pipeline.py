@@ -394,10 +394,17 @@ class ExtractionPipeline:
             logger.info(
                 f"[+] All {len(all_keys_after_t1)} field(s) validated with >= 2 measurements (evidence weight >= {MIN_EVIDENCE_WEIGHT}). Finalizing document."
             )
+            page_sigs: dict[int, bool] = {}
+            for idx, p in enumerate(document_pages):
+                p_num = p.get("page_num", idx + 1)
+                sig_val = False
+                if idx < len(t1_vision_results) and isinstance(t1_vision_results[idx], dict):
+                    sig_val = _to_bool_value(t1_vision_results[idx].get("Signed", False))
+                page_sigs[p_num] = sig_val
+            group_final["_page_signatures"] = page_sigs
+
             if "Signed" not in group_final and needs_signature:
-                group_final["Signed"] = any(
-                    _to_bool_value(res.get("Signed", False)) for res in t1_vision_results if isinstance(res, dict)
-                )
+                group_final["Signed"] = any(page_sigs.values())
             desc = next((p.get("vision_description") for p in document_pages if p.get("vision_description")), "")
             if desc and "vision_description" not in group_final:
                 group_final["vision_description"] = desc
@@ -473,13 +480,18 @@ class ExtractionPipeline:
             group_final.update(t3_final)
             confidences.update(t3_conf)
 
+        page_sigs: dict[int, bool] = {}
+        for idx, p in enumerate(document_pages):
+            p_num = p.get("page_num", idx + 1)
+            sig_vals = []
+            for r_list in (t1_vision_results, t2_page_results, locals().get("t3_page_results", [])):
+                if idx < len(r_list) and isinstance(r_list[idx], dict) and "Signed" in r_list[idx]:
+                    sig_vals.append(_to_bool_value(r_list[idx].get("Signed", False)))
+            page_sigs[p_num] = any(sig_vals)
+        group_final["_page_signatures"] = page_sigs
+
         if "Signed" not in group_final and needs_signature:
-            group_final["Signed"] = any(
-                _to_bool_value(res.get("Signed", False))
-                for res_list in (t1_vision_results, t2_page_results)
-                for res in res_list
-                if isinstance(res, dict)
-            )
+            group_final["Signed"] = any(page_sigs.values())
 
         desc = next((p.get("vision_description") for p in document_pages if p.get("vision_description")), "")
         if desc and "vision_description" not in group_final:

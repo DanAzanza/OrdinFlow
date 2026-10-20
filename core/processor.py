@@ -227,6 +227,8 @@ class DocumentProcessor:
         classified_pages = [
             self._classify_single_page(raw_img, idx, pdf_path=filepath) for idx, raw_img in enumerate(raw_images)
         ]
+        for p in classified_pages:
+            p["initial_matched_name"] = p.get("matched_name", "")
 
         is_all_empty = all(p["matched_name"].upper() == "LEER" for p in classified_pages)
         if is_all_empty and not save_empty_pages:
@@ -245,11 +247,12 @@ class DocumentProcessor:
         current_group = []
         current_type = None
         for p in non_empty_pages:
-            t = p["matched_name"]
+            t = p["initial_matched_name"]
             if save_empty_pages and t.upper() == "LEER" and current_type is not None:
                 t = current_type
                 p = dict(p)
                 p["matched_name"] = current_type
+                p["initial_matched_name"] = current_type
             if current_type is None:
                 current_type = t
                 current_group.append(p)
@@ -265,33 +268,57 @@ class DocumentProcessor:
         if not groups:
             return None
 
-        # 2. Extract per page group to isolate voting pools between sub-documents
-        page_results = []
-        for doc_type, group_pages in groups:
-            g_nums = [p["page_num"] for p in group_pages]
-            g_res = self._process_page_group(doc_type, group_pages)
-            if not g_res:
-                g_res = {}
-            g_res["Document"] = doc_type
-            g_res["pages"] = g_nums
-            g_info = group_pages[0].get("matched_info", {})
-            if g_info.get("validation", {}).get("signature_required", False):
-                g_res["Signed"] = g_res.get("Signed", False)
-            page_results.append(g_res)
+        # Combine unioned field schemas across all detected doc_type groups in the PDF
+        detected_types: list[str] = []
+        for g_type, _ in groups:
+            if not is_missing_value(g_type) and g_type.upper() not in ("LEER", "UNKNOWN") and g_type not in detected_types:
+                detected_types.append(g_type)
 
-        # Check that at least one group produced valid extraction data
-        has_extracted_data = any(
-            any(k not in ("Document", "pages", "Signed", "_confidence", "_evidence_weight", "vision_description") for k in r.keys())
-            for r in page_results
-        )
-        if not has_extracted_data and not any(r.get("Document") for r in page_results):
+        if len(detected_types) > 1:
+            compound_doc_type = "+".join(detected_types)
+            _, unioned_info = self.llm_extractor.find_doc_type_config(compound_doc_type)
+            # Propagate unioned schema to valid non-empty pages so all extraction tiers query the unioned schema
+            for p in non_empty_pages:
+                if p.get("initial_matched_name", "").upper() not in ("LEER", "UNKNOWN"):
+                    p["matched_name"] = compound_doc_type
+                    p["matched_info"] = unioned_info
+
+        # 2. Unified Tiered Extraction across ALL pages in one shared PDF pool
+        doc_res = self._process_document_pages(non_empty_pages)
+        if not doc_res:
             logger.warning(f"[-] No valid extraction results for '{os.path.basename(filepath)}'.")
             return None
 
-        primary_res = page_results[0]
-        final_doc = dict(primary_res)
-        doc_types = [g[0] for g in groups if not is_missing_value(g[0])]
-        final_doc["Document"] = "+".join(doc_types) if doc_types else MISSING_PLACEHOLDER
+        # 3. Build page_results for each split group with the shared PDF-wide metadata
+        page_results = []
+        for doc_type, group_pages in groups:
+            g_nums = [p["page_num"] for p in group_pages]
+            g_res = dict(doc_res)
+            g_res["Document"] = doc_type
+            g_res["pages"] = g_nums
+            _, g_info = self.llm_extractor.find_doc_type_config(doc_type)
+            if g_info.get("validation", {}).get("signature_required", False):
+                page_sigs = doc_res.get("_page_signatures", {})
+                if page_sigs:
+                    g_res["Signed"] = any(page_sigs.get(pn, False) for pn in g_nums)
+                else:
+                    g_res["Signed"] = doc_res.get("Signed", False)
+            else:
+                g_res["Signed"] = False
+            page_results.append(g_res)
+
+        # Include empty pages in page_results if present, ensuring complete page coverage for splitting
+        if not save_empty_pages:
+            empty_page_nums = [p["page_num"] for p in classified_pages if p.get("initial_matched_name", "").upper() == "LEER"]
+            if empty_page_nums:
+                page_results.append({
+                    "Document": "LEER",
+                    "pages": empty_page_nums,
+                })
+
+        final_doc = dict(doc_res)
+        doc_types = [g[0] for g in groups if not is_missing_value(g[0]) and g[0].upper() not in ("LEER", "UNKNOWN")]
+        final_doc["Document"] = "+".join(doc_types) if doc_types else (groups[0][0] if groups else MISSING_PLACEHOLDER)
         final_doc["page_results"] = page_results
 
         logger.debug(f"[+] Consolidated final result: {format_result(final_doc)}")
@@ -465,7 +492,10 @@ class DocumentProcessor:
 
                 keep_source = bool(getattr(self.config, "keep_inbox_files", False))
                 page_results = extracted.get("page_results", [])
-                if split_multi_documents and len(page_results) > 1:
+                non_empty_doc_results = [
+                    pr for pr in page_results if pr.get("Document", "").upper() not in ("LEER", "BLANK")
+                ]
+                if split_multi_documents and len(non_empty_doc_results) > 1:
                     success = self.file_service.split_multi_page_pdf(
                         filepath=filepath,
                         page_results=page_results,

@@ -383,3 +383,40 @@ def execute_wait_for_element(
             return False
 
     return found
+
+
+def execute_extract_ui_text(
+    step: Mapping[str, Any],
+    context: Mapping[str, Any],
+    default_target_window: str | None,
+    step_id: str,
+    substitute_fn: Callable[[str, Mapping[str, Any]], str],
+) -> tuple[str, str, str]:
+    """Extracts UI text via native UIA or real RapidOCR screen reading."""
+    from core.skills.grounder import SoMGrounder
+    from core.skills.uia_locator import UIALocator
+
+    locator = step.get("locator", {})
+    win = substitute_fn(step.get("window_title", default_target_window or ""), context)
+    var_name = str(step.get("extract_to_var") or step.get("variable") or step.get("var") or "extracted_ui_text").strip().strip("{}")
+    provider = str(step.get("provider", "auto")).lower()
+    extracted_text = ""
+    if provider in ("uia", "auto") and UIALocator.is_available() and locator:
+        extracted_text = UIALocator.get_element_text(locator, win)
+    if not extracted_text and provider in ("vision", "auto", "ocr"):
+        try:
+            from core.image_processing import run_rapid_ocr
+            import numpy as np
+
+            screen = SoMGrounder.capture_screen(win)
+            if screen is not None:
+                region = locator.get("region") or locator.get("bbox")
+                if isinstance(region, (list, tuple)) and len(region) == 4:
+                    rx, ry, rw, rh = [int(v) for v in region]
+                    screen = screen.crop((rx, ry, rx + rw, ry + rh))
+                ocr_res = run_rapid_ocr(np.array(screen))
+                if ocr_res:
+                    extracted_text = " ".join(line[1] for line in ocr_res if line[1].strip()).strip()
+        except Exception as e:
+            logger.debug("  [Action %s] EXTRACT_UI_TEXT RapidOCR fallback failed: %s", step_id, e)
+    return var_name, extracted_text, win

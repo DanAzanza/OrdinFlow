@@ -458,12 +458,28 @@ def test_save_failure_screenshot_pruning(tmp_path):
     assert (fail_dir / "failure_1024_step.png").exists()
 
 
-def test_multi_page_document_voting_isolation(test_sandbox):
-    """Verifies that pages from different document types do not cross-contaminate voting results."""
+def test_multi_page_document_shared_pdf_voting_pool(test_sandbox):
+    """Verifies that pages from different document types pool fields into a shared PDF-wide voting pool.
+
+    Both split sub-documents share the unified high-confidence patient/customer metadata
+    while retaining their respective Document types ('Arztbrief' and 'Rezept').
+    """
     from unittest.mock import patch
     from core.processor import DocumentProcessor
 
     _, config, _ = test_sandbox
+    config.document_types = {
+        "Arztbrief": {
+            "classification_desc": "Doctor letter",
+            "extraction_fields": {"Nachname": "Last name", "Vorname": "First name", "Diagnose": "Diagnosis"},
+            "validation": {"signature_required": True},
+        },
+        "Rezept": {
+            "classification_desc": "Prescription",
+            "extraction_fields": {"Nachname": "Last name", "Vorname": "First name", "Medikament": "Medicine"},
+            "validation": {"signature_required": False},
+        },
+    }
     processor = DocumentProcessor(config)
 
     mock_images = ["img1", "img2"]
@@ -479,18 +495,27 @@ def test_multi_page_document_voting_isolation(test_sandbox):
             "ocr_text": f"ocr_{idx}",
             "doc_type": types[idx],
             "matched_name": types[idx],
-            "matched_info": {},
+            "matched_info": config.document_types[types[idx]],
         }
 
-    def mock_process_group(doc_type, group_pages):
-        if doc_type == "Arztbrief":
-            return {"Patient": "Hans Mueller", "Diagnose": "Grippe"}
-        return {"Patient": "Anna Schmidt", "Medikament": "Ibuprofen"}
+    # Simulate unified extraction result across the entire PDF
+    def mock_process_document(document_pages):
+        assert len(document_pages) == 2
+        return {
+            "Nachname": "Mueller",
+            "Vorname": "Hans",
+            "Geburtsdatum": "1980-01-01",
+            "Diagnose": "Hypertonie",
+            "Medikament": "Ramipril",
+            "Signed": True,
+            "_page_signatures": {1: True, 2: False},
+            "_confidence": {"Nachname": 1.0, "Vorname": 1.0, "Diagnose": 1.0, "Medikament": 1.0},
+        }
 
     with (
         patch.object(processor.image_preprocessor, "create_raw_source_images", return_value=mock_images),
         patch.object(processor, "_classify_single_page", side_effect=mock_classify),
-        patch.object(processor, "_process_page_group", side_effect=mock_process_group),
+        patch.object(processor, "_process_document_pages", side_effect=mock_process_document),
     ):
         final_doc = processor.extract_hybrid_voting("batch.pdf")
 
@@ -498,19 +523,131 @@ def test_multi_page_document_voting_isolation(test_sandbox):
     assert final_doc["Document"] == "Arztbrief+Rezept"
     assert len(final_doc["page_results"]) == 2
 
-    # Group 1 (Arztbrief) must only contain Arztbrief fields
+    # Split sub-document 1 (Arztbrief) retains 'Arztbrief' type and inherits complete pooled customer metadata
     pr1 = final_doc["page_results"][0]
     assert pr1["Document"] == "Arztbrief"
-    assert pr1["Patient"] == "Hans Mueller"
-    assert pr1["Diagnose"] == "Grippe"
-    assert "Medikament" not in pr1
+    assert pr1["pages"] == [1]
+    assert pr1["Nachname"] == "Mueller"
+    assert pr1["Vorname"] == "Hans"
+    assert pr1["Geburtsdatum"] == "1980-01-01"
+    assert pr1["Diagnose"] == "Hypertonie"
+    assert pr1["Medikament"] == "Ramipril"
+    assert pr1["Signed"] is True  # Arztbrief required signature and Page 1 was signed
 
-    # Group 2 (Rezept) must only contain Rezept fields without Arztbrief contamination
+    # Split sub-document 2 (Rezept) retains 'Rezept' type and inherits complete pooled customer metadata
     pr2 = final_doc["page_results"][1]
     assert pr2["Document"] == "Rezept"
-    assert pr2["Patient"] == "Anna Schmidt"
-    assert pr2["Medikament"] == "Ibuprofen"
-    assert "Diagnose" not in pr2
+    assert pr2["pages"] == [2]
+    assert pr2["Nachname"] == "Mueller"
+    assert pr2["Vorname"] == "Hans"
+    assert pr2["Geburtsdatum"] == "1980-01-01"
+    assert pr2["Diagnose"] == "Hypertonie"
+    assert pr2["Medikament"] == "Ramipril"
+    assert pr2["Signed"] is False  # Rezept signature not required / Page 2 unsigned
+
+
+def test_som_grounder_locate_target_null_offset_handling():
+    """Verifies SoMGrounder.locate_target succeeds via RapidOCR when offset is explicitly None."""
+    from unittest.mock import patch
+    from PIL import Image
+    from core.skills.grounder import SoMGrounder
+
+    mock_screen = Image.new("RGB", (300, 200), color=(255, 255, 255))
+    locator = {"type": "ocr_text", "value": "Save", "offset": None}
+
+    mock_ocr_result = [
+        ([[10.0, 20.0], [50.0, 20.0], [50.0, 40.0], [10.0, 40.0]], "Save", 0.99)
+    ]
+
+    with (
+        patch("core.skills.grounder.SoMGrounder.capture_screen", return_value=mock_screen),
+        patch("core.image_processing.run_rapid_ocr", return_value=mock_ocr_result),
+    ):
+        coords = SoMGrounder.locate_target(locator)
+
+    assert coords is not None
+    # cx = (10+50+50+10)/4 = 30, cy = (20+20+40+40)/4 = 30
+    assert coords == (30, 30)
+
+
+def test_export_engine_extract_ui_text_rapid_ocr_fallback():
+    """Verifies EXTRACT_UI_TEXT uses real RapidOCR screen reading and avoids bogus search text echo."""
+    from unittest.mock import patch
+    from PIL import Image
+    from core.skills.engines.export_engine import ExportEngine
+
+    skill_def = {
+        "name": "OCR Fallback Test",
+        "tasks": [
+            {
+                "id": "t1",
+                "actions": [
+                    {
+                        "id": "ext1",
+                        "action_type": "EXTRACT_UI_TEXT",
+                        "locator": {"text": "SearchQuery"},
+                        "extract_to_var": "extracted_val",
+                        "provider": "ocr",
+                    }
+                ],
+            }
+        ],
+    }
+    engine = ExportEngine(skill_def)
+    context = {}
+
+    mock_screen = Image.new("RGB", (200, 100), color=(255, 255, 255))
+    mock_ocr_result = [
+        ([[5.0, 5.0], [50.0, 5.0], [50.0, 25.0], [5.0, 25.0]], "ActualScreenText", 0.98)
+    ]
+
+    with (
+        patch("core.skills.grounder.SoMGrounder.capture_screen", return_value=mock_screen),
+        patch("core.image_processing.run_rapid_ocr", return_value=mock_ocr_result),
+    ):
+        success = engine.execute_actions(context=context)
+
+    assert success is True
+    # Must be the actual OCR read text, NOT the locator query 'SearchQuery'
+    assert context.get("extracted_val") == "ActualScreenText"
+
+
+def test_export_engine_extract_ui_text_required_fails_when_empty():
+    """Verifies EXTRACT_UI_TEXT fails cleanly when required is True and no text was read."""
+    from unittest.mock import patch
+    from core.skills.engines.export_engine import ExportEngine
+
+    skill_def = {
+        "name": "Required Extraction Test",
+        "tasks": [
+            {
+                "id": "t1",
+                "actions": [
+                    {
+                        "id": "ext_req",
+                        "action_type": "EXTRACT_UI_TEXT",
+                        "locator": {"text": "NonExistent"},
+                        "extract_to_var": "output_val",
+                        "required": True,
+                        "provider": "auto",
+                    }
+                ],
+            }
+        ],
+    }
+    engine = ExportEngine(skill_def)
+    context = {}
+
+    with (
+        patch("core.skills.uia_locator.UIALocator.is_available", return_value=False),
+        patch("core.skills.grounder.SoMGrounder.capture_screen", return_value=None),
+    ):
+        success = engine.execute_actions(context=context)
+
+    # Must fail because required=True and nothing could be read
+    assert success is False
+    assert context.get("output_val") is None
+
 
 
 def test_condition_evaluator_handles_multiline_strings():

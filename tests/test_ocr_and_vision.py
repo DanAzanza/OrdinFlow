@@ -244,9 +244,8 @@ def test_extract_hybrid_voting_two_phase_grouping(processor):
     ):
         final_doc = processor.extract_hybrid_voting("dummy.pdf")
 
-    assert len(doc_calls) == 2
-    assert doc_calls[0] == [1]
-    assert doc_calls[1] == [2, 3]
+    assert len(doc_calls) == 1
+    assert doc_calls[0] == [1, 2, 3]
     assert final_doc["Document"] == "Vertrag+Datenschutzerklärung"
     assert len(final_doc["page_results"]) == 2
 

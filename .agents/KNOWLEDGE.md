@@ -4,14 +4,24 @@
 
 ---
 
-## 1. Quality Gate & Commit Scopes
+## 1. Extraction & Vision Pipeline
+
+### 📄 Single-Customer-Per-PDF Field Pooling Invariant
+* In OrdinFlow, a single input PDF ALWAYS belongs to a single customer/patient/case, even when it contains multiple document types (e.g. Page 1 is `Arztbrief` and Page 2 is `Rezept` or `Laborbefund`).
+* All extracted metadata fields across all pages of that PDF MUST be pooled and voted on together into a single shared PDF-wide consensus pool (via `ExtractionPipeline` / `_evaluate_round`), while only the `Document` type (`doc_type`) remains specific to each split document group when routing and saving sub-PDFs.
+* Field schemas are unioned across all detected document types in the PDF so every relevant field is extracted and pooled across all non-empty pages, ensuring all split sub-documents inherit complete customer metadata (such as `Nachname`, `Vorname`, `Geburtsdatum`) and route into the exact same case folder.
+* Do not isolate field voting per document type within the same PDF: cross-page pooling significantly improves statistical consensus and prevents split sub-documents from routing into separate or incomplete folders. Sub-document signature checks (`Signed`) remain isolated per split group.
+
+---
+
+## 2. Quality Gate & Commit Scopes
 * **CI Verification**: `python scripts/verify_ci.py` (Ruff, Pyright across `core/` and `routes/`, full pytest suite).
 * **Commit Scopes**: `[Core]`, `[Vision]`, `[RPA]`, `[Skills]`, `[API]`, `[UI]`, `[CI]`.
 * **Subagent Roles**: `plan_critic` (Architecture sparring), `pre_commit_auditor` (Pre-commit diff audit).
 
 ---
 
-## 2. Hardware, Model & OS Constraints
+## 3. Hardware, Model & OS Constraints
 
 ### 🎯 Qwen Vision Model 28px Patch Alignment
 * Vision transformers (Qwen2.5-VL / Qwen3-VL) use a $14\times14$ patch grid with $2\times2$ spatial pooling $\rightarrow$ unit size **$28\times28$ px**.
@@ -47,7 +57,7 @@
 
 ---
 
-## 3. Repository & Domain Traps
+## 4. Repository & Domain Traps
 
 ### 📄 Sidecar `.meta` Lifecycle Trap
 * `.meta` sidecars are NOT created for clean ingestions. They exist strictly for:
@@ -78,7 +88,7 @@
 
 ---
 
-## 4. Multi-User & Runtime Security Contracts
+## 5. Multi-User & Runtime Security Contracts
 
 ### 🔒 Windows Terminal Server / Citrix Threat Model (`127.0.0.1:8080`)
 * OrdinFlow target deployments include medical practices and legal offices on shared Windows Terminal Server / Citrix RDS hosts.
@@ -109,7 +119,7 @@
 
 ---
 
-## 5. Medical PVS & RPA Integration Quirks
+## 6. Medical PVS & RPA Integration Quirks
 
 ### 🏥 German PVS GDT 2.1 Parser Quirks & Watcher Races
 * **Strict 3-Digit Byte Length Prefix (`LLL`)**: Standard GDT 2.1 lines follow `LLLFFFFDDDD...\r\n`. `LLL` is a 3-digit ASCII length (`len(data_bytes) + 9`), bounded at 999 bytes max. In CP437/ISO-8859-1 byte count equals char count, but byte measurements must always occur *after* encoding to prevent buffer overflows in legacy PVS.

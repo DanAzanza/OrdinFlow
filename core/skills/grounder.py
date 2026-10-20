@@ -66,6 +66,23 @@ if sys.platform == "win32":
         logger.debug("[SoMGrounder] Win32 ctypes prototype init skipped: %s", e)
 
 
+def _resolve_offset(locator: Mapping[str, Any]) -> tuple[int, int]:
+    """Safely extracts (offset_x, offset_y) from locator dict, handling None or malformed values."""
+    offset_raw = locator.get("offset")
+    offset_x, offset_y = 0, 0
+    if isinstance(offset_raw, (list, tuple)) and len(offset_raw) >= 2:
+        ox, oy = offset_raw[0], offset_raw[1]
+        try:
+            offset_x = int(ox)
+        except (TypeError, ValueError):
+            offset_x = 0
+        try:
+            offset_y = int(oy)
+        except (TypeError, ValueError):
+            offset_y = 0
+    return offset_x, offset_y
+
+
 class SoMGrounder:
     """Generates Set-of-Mark overlays for screen captures to enable precise VLM clicking."""
 
@@ -108,8 +125,8 @@ class SoMGrounder:
                                 ys = [float(p[1]) for p in box]
                                 cx = int(sum(xs) / len(xs))
                                 cy = int(sum(ys) / len(ys))
-                                offset = cast(list[int], locator.get("offset", [0, 0]))
-                                return origin_x + cx + offset[0], origin_y + cy + offset[1]
+                                off_x, off_y = _resolve_offset(locator)
+                                return origin_x + cx + off_x, origin_y + cy + off_y
 
                         # Pass 2: Contains match (only for non-exact locator types)
                         if loc_type != "ocr_exact":
@@ -123,8 +140,8 @@ class SoMGrounder:
                                     ys = [float(p[1]) for p in box]
                                     cx = int(sum(xs) / len(xs))
                                     cy = int(sum(ys) / len(ys))
-                                    offset = cast(list[int], locator.get("offset", [0, 0]))
-                                    return origin_x + cx + offset[0], origin_y + cy + offset[1]
+                                    off_x, off_y = _resolve_offset(locator)
+                                    return origin_x + cx + off_x, origin_y + cy + off_y
             except Exception as e:
                 logger.warning("[SoMGrounder] RapidOCR Locator error: %s", e)
 
@@ -154,19 +171,12 @@ class SoMGrounder:
                         elem_id = int(match.group(1))
                         if elem_id in candidates:
                             target = candidates[elem_id]
-                            offset_raw = locator.get("offset")
-                            offset_x, offset_y = 0, 0
-                            if isinstance(offset_raw, (list, tuple)) and len(offset_raw) >= 2:
-                                ox, oy = offset_raw[0], offset_raw[1]
-                                if isinstance(ox, (int, float)):
-                                    offset_x = int(ox)
-                                if isinstance(oy, (int, float)):
-                                    offset_y = int(oy)
+                            target_off_x, target_off_y = _resolve_offset(locator)
                             raw_cx = target.get("center_x")
                             raw_cy = target.get("center_y")
                             local_cx = int(raw_cx) if isinstance(raw_cx, (int, float)) else 0
                             local_cy = int(raw_cy) if isinstance(raw_cy, (int, float)) else 0
-                            return origin_x + off_x + local_cx + offset_x, origin_y + off_y + local_cy + offset_y
+                            return origin_x + off_x + local_cx + target_off_x, origin_y + off_y + local_cy + target_off_y
 
         logger.warning("[SoMGrounder] Locator could not be resolved: %s", locator)
         return None

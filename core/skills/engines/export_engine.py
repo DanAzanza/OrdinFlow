@@ -33,6 +33,7 @@ from core.skills.action_executor import (
     execute_type_file_path,
     execute_type_text,
     execute_wait_for_element,
+    execute_extract_ui_text,
 )
 from core.skills.text_helpers import (
     send_hotkey as _send_hotkey,
@@ -406,20 +407,18 @@ class ExportEngine(BaseSkill):
             # 12. EXTRACT_UI_TEXT (Extract Text from UI Element / Label into Context Variable)
             elif action_type == "EXTRACT_UI_TEXT":
                 locator = step.get("locator", {})
-                win = self._substitute_placeholders(step.get("window_title", self.target_window or ""), context)
-                var_name = str(step.get("extract_to_var") or step.get("variable") or step.get("var") or "extracted_ui_text").strip().strip("{}")
-                provider = str(step.get("provider", "auto")).lower()
-                extracted_text = ""
-
-                # Try native UIA first if available and not explicitly forced to vision
-                if provider in ("uia", "auto") and UIALocator.is_available() and locator:
-                    extracted_text = UIALocator.get_element_text(locator, win)
-
-                # Fallback to OCR text if UIA returned empty or provider is vision
-                if not extracted_text and provider in ("vision", "auto", "ocr"):
-                    if locator.get("text"):
-                        extracted_text = str(locator.get("text", ""))
-
+                var_name, extracted_text, win = execute_extract_ui_text(step, context, self.target_window, step_id, self._substitute_placeholders)
+                if not extracted_text and step.get("required", False):
+                    err_msg = f"Failed to extract UI text in step {step_id} using locator {locator}"
+                    logger.error("  [!] %s", err_msg)
+                    if not handle_action_error(
+                        step=step,
+                        step_id=step_id,
+                        error_msg=err_msg,
+                        context=context,
+                        save_screenshot_fn=lambda sid, msg, target_win=win: self._save_failure_screenshot(sid, msg, target_win),
+                    ):
+                        return False
                 context[var_name] = extracted_text.strip()
                 logger.info("  [Action %s] EXTRACT_UI_TEXT: Stored %d chars -> {%s}", step_id, len(extracted_text), var_name)
                 logger.debug("  [Action %s] EXTRACT_UI_TEXT: Stored %r -> {%s}", step_id, extracted_text[:100], var_name)

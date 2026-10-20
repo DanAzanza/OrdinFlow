@@ -373,6 +373,45 @@ class LLMExtractor:
         for actual_key, info in doc_types.items():
             if actual_key.lower() == lower_key:
                 return actual_key, info
+
+        # 3. Compound doc_type fallback (e.g. "Arztbrief+Rezept"): union extraction fields and validation
+        if "+" in doc_type:
+            parts = [p.strip() for p in doc_type.split("+") if p.strip()]
+            combined_fields: dict[str, Any] = {}
+            combined_validation: dict[str, Any] = {}
+            combined_rules: list[str] = []
+            combined_routing: dict[str, Any] = {}
+            matched_names = []
+            for part in parts:
+                p_name, p_info = self.find_doc_type_config(part, doc_types_override=doc_types_override)
+                if p_info:
+                    matched_names.append(p_name)
+                    if not combined_routing and p_info.get("routing"):
+                        combined_routing = dict(p_info.get("routing", {}))
+                    for k, v in p_info.get("extraction_fields", {}).items():
+                        if k not in combined_fields:
+                            combined_fields[k] = v
+                    v_cfg = p_info.get("validation", {})
+                    if v_cfg.get("signature_required"):
+                        combined_validation["signature_required"] = True
+                    opt = combined_validation.setdefault("optional_fields", [])
+                    for o in v_cfg.get("optional_fields", []):
+                        if o not in opt:
+                            opt.append(o)
+                    s_rules = p_info.get("specific_rules")
+                    if s_rules and str(s_rules) not in combined_rules:
+                        combined_rules.append(str(s_rules))
+            if combined_fields:
+                combined_info: dict[str, Any] = {
+                    "extraction_fields": combined_fields,
+                    "validation": combined_validation,
+                }
+                if combined_routing:
+                    combined_info["routing"] = combined_routing
+                if combined_rules:
+                    combined_info["specific_rules"] = "\n".join(combined_rules)
+                return "+".join(matched_names) if matched_names else doc_type, combined_info
+
         return doc_type, {}
 
     def _get_specific_rules_for_doctype(self, doc_type: str) -> tuple[str, str]:
