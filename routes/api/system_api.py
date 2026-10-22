@@ -26,6 +26,15 @@ logger = logging.getLogger(__name__)
 _get_empty_log_stats = get_empty_log_stats
 _compute_log_stats = compute_log_stats
 _get_system_drives = get_system_drives
+_drives_cache: dict[str, Any] = {"drives": [], "ts": 0.0}
+
+
+def _get_cached_system_drives() -> list[str]:
+    now = time.time()
+    if now - _drives_cache["ts"] > 5.0 or not _drives_cache["drives"]:
+        _drives_cache["drives"] = _get_system_drives()
+        _drives_cache["ts"] = now
+    return list(_drives_cache["drives"])
 
 # Allowed configuration keys for GET and PUT /api/config
 _CONFIG_SAFE_KEYS = [
@@ -323,9 +332,6 @@ def api_system_fs_list():
         "$recycle.bin",
         "system volume information",
         "recovery",
-        "appdata",
-        "application data",
-        "local settings",
     }
     target_dir_path = base_resolved
     if raw_path:
@@ -376,42 +382,83 @@ def api_system_fs_list():
 
     # List entries
     entries: list[dict[str, Any]] = []
+    truncated = False
     try:
-        target_path_obj = Path(target_dir)
-        scanned = sorted(target_path_obj.iterdir(), key=lambda e: (not e.is_dir(), e.name.lower()))
-        for e in scanned:
-            if e.name.startswith("."):
-                continue
+        if picker_type == "folder":
+            folders: list[dict[str, Any]] = []
+            with os.scandir(target_dir) as it:
+                for e in it:
+                    name = e.name
+                    if name.startswith(".") or name.lower() in BLOCKED_SYSTEM_DIRS:
+                        continue
+                    try:
+                        if not e.is_dir(follow_symlinks=False):
+                            continue
+                        st = e.stat(follow_symlinks=False)
+                        mtime_str = time.strftime("%Y-%m-%d %H:%M", time.localtime(st.st_mtime))
+                    except OSError:
+                        continue
 
-            try:
-                is_directory = e.is_dir()
-                stat = e.stat()
-                size_bytes = stat.st_size
-                mtime_str = time.strftime("%Y-%m-%d %H:%M", time.localtime(stat.st_mtime))
-            except OSError:
-                continue
+                    folders.append({
+                        "name": name,
+                        "path": e.path,
+                        "is_dir": True,
+                        "type": "folder",
+                        "size_str": "",
+                        "modified_str": mtime_str,
+                    })
 
-            if is_directory:
-                entries.append({
-                    "name": e.name,
-                    "path": str(e.resolve()),
-                    "is_dir": True,
-                    "type": "folder",
-                    "size_str": "",
-                    "modified_str": mtime_str,
-                })
-            elif picker_type == "file":
-                if ext_filter and not e.name.lower().endswith(ext_filter):
-                    continue
-                sz_str = f"{size_bytes / 1024:.1f} KB" if size_bytes < 1048576 else f"{size_bytes / 1048576:.1f} MB"
-                entries.append({
-                    "name": e.name,
-                    "path": str(e.resolve()),
-                    "is_dir": False,
-                    "type": "file",
-                    "size_str": sz_str,
-                    "modified_str": mtime_str,
-                })
+            folders.sort(key=lambda x: x["name"].lower())
+            if len(folders) > 1000:
+                truncated = True
+                entries = folders[:1000]
+            else:
+                entries = folders
+        else:
+            folders: list[dict[str, Any]] = []
+            files: list[dict[str, Any]] = []
+            with os.scandir(target_dir) as it:
+                for e in it:
+                    name = e.name
+                    if name.startswith(".") or name.lower() in BLOCKED_SYSTEM_DIRS:
+                        continue
+                    try:
+                        is_dir = e.is_dir(follow_symlinks=False)
+                        st = e.stat(follow_symlinks=False)
+                        mtime_str = time.strftime("%Y-%m-%d %H:%M", time.localtime(st.st_mtime))
+                        if is_dir:
+                            folders.append({
+                                "name": name,
+                                "path": e.path,
+                                "is_dir": True,
+                                "type": "folder",
+                                "size_str": "",
+                                "modified_str": mtime_str,
+                            })
+                        else:
+                            if ext_filter and not name.lower().endswith(ext_filter):
+                                continue
+                            size_bytes = st.st_size
+                            sz_str = f"{size_bytes / 1024:.1f} KB" if size_bytes < 1048576 else f"{size_bytes / 1048576:.1f} MB"
+                            files.append({
+                                "name": name,
+                                "path": e.path,
+                                "is_dir": False,
+                                "type": "file",
+                                "size_str": sz_str,
+                                "modified_str": mtime_str,
+                            })
+                    except OSError:
+                        continue
+
+            folders.sort(key=lambda x: x["name"].lower())
+            files.sort(key=lambda x: x["name"].lower())
+            combined = folders + files
+            if len(combined) > 1000:
+                truncated = True
+                entries = combined[:1000]
+            else:
+                entries = combined
     except OSError as err:
         logger.warning("[!] Could not list directory %s: %s", target_dir, err)
 
@@ -420,9 +467,10 @@ def api_system_fs_list():
         "current_path": target_dir,
         "parent_path": parent_path,
         "breadcrumbs": breadcrumbs,
-        "drives": _get_system_drives(),
+        "drives": _get_cached_system_drives(),
         "quick_locations": quick_locations,
         "entries": entries,
+        "truncated": truncated,
     })
 
 

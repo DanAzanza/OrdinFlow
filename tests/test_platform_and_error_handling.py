@@ -24,9 +24,10 @@ def test_get_system_drives(monkeypatch):
     monkeypatch.setattr(os, "name", "posix")
     assert get_system_drives() == ["/"]
 
-    # 2. Windows simulation
+    # 2. Windows simulation with fallback (bitmask is None)
     monkeypatch.setattr(sys, "platform", "win32")
     monkeypatch.setattr(os, "name", "nt")
+    monkeypatch.setattr("core.platform_utils._get_logical_drives_bitmask", lambda: None)
 
     def mock_exists(path):
         return path in ("C:\\", "D:\\")
@@ -36,6 +37,23 @@ def test_get_system_drives(monkeypatch):
     assert "C:\\" in drives
     assert "D:\\" in drives
     assert "Z:\\" not in drives
+
+    # 3. Windows simulation with GetLogicalDrives bitmask (bit 2 = C, bit 6 = G)
+    # (1 << 2) | (1 << 6) = 4 | 64 = 68
+    monkeypatch.setattr("core.platform_utils._get_logical_drives_bitmask", lambda: (1 << 2) | (1 << 6))
+    monkeypatch.setattr(os.path, "exists", lambda p: True)
+    drives_bitmask = get_system_drives()
+    assert drives_bitmask == ["C:\\", "G:\\"]
+
+
+def test_get_logical_drives_bitmask(monkeypatch):
+    """Tests Win32 kernel32 bitmask retrieval and safety guards."""
+    from core.platform_utils import _get_logical_drives_bitmask
+
+    # On POSIX / Linux, returns None
+    monkeypatch.setattr(sys, "platform", "linux")
+    monkeypatch.setattr(os, "name", "posix")
+    assert _get_logical_drives_bitmask() is None
 
 
 def test_pick_path_dialog_tkinter_file_and_folder(monkeypatch):

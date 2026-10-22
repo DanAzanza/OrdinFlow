@@ -3721,13 +3721,16 @@ color: #fff;
     max-height: 85vh;
     display: flex;
     flex-direction: column;
+    backdrop-filter: none !important;
+    background: var(--surface-container-high, #161f36);
+    contain: layout style;
 }
 
 .path-picker-modal-body {
     padding: 16px 20px;
     display: flex;
     flex-direction: column;
-    gap: 12px;
+    gap: 10px;
     flex: 1;
     min-height: 0;
 }
@@ -3760,14 +3763,13 @@ color: #fff;
     border: 1px solid var(--border, rgba(255, 255, 255, 0.12));
     color: var(--text-primary, #f1f5f9);
     cursor: pointer;
-    transition: all 0.15s ease;
+    transition: background-color 0.08s ease, color 0.08s ease, border-color 0.08s ease;
 }
 
 .path-picker-pill-btn:hover {
     background: var(--accent);
     color: #ffffff;
     border-color: var(--accent);
-    transform: translateY(-1px);
 }
 
 .path-picker-pill-btn.active {
@@ -3795,7 +3797,7 @@ color: #fff;
     cursor: pointer;
     padding: 2px 5px;
     border-radius: 4px;
-    transition: all 0.15s ease;
+    transition: color 0.08s ease, background-color 0.08s ease;
 }
 
 .path-crumb:hover {
@@ -3813,7 +3815,34 @@ color: #fff;
     user-select: none;
 }
 
+.path-picker-search-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.path-picker-filter-input {
+    flex: 1;
+    padding: 6px 12px;
+    font-size: 0.8rem;
+    border-radius: 6px;
+    background: var(--surface-container-highest, #131b2e);
+    border: 1px solid var(--border, rgba(255, 255, 255, 0.1));
+    color: #f1f5f9;
+    transition: border-color 0.1s ease;
+}
+
+.path-picker-filter-input:focus {
+    border-color: var(--accent, #6366f1);
+    outline: none;
+}
+
+.path-picker-filter-input::placeholder {
+    color: #64748b;
+}
+
 .path-picker-list-wrapper {
+    position: relative;
     flex: 1;
     min-height: 250px;
     max-height: 360px;
@@ -3821,6 +3850,25 @@ color: #fff;
     border: 1px solid var(--border, rgba(255, 255, 255, 0.1));
     border-radius: 6px;
     background: var(--surface-container-lowest, #0b1120);
+    contain: content;
+    will-change: scroll-position;
+}
+
+.path-picker-loader-bar {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background: linear-gradient(90deg, var(--accent, #6366f1), #a855f7, var(--accent, #6366f1));
+    background-size: 200% 100%;
+    animation: pathPickerLoading 0.9s linear infinite;
+    z-index: 10;
+    display: none;
+}
+
+.path-picker-list-wrapper.is-loading .path-picker-loader-bar {
+    display: block;
 }
 
 .path-picker-list {
@@ -3828,15 +3876,34 @@ color: #fff;
     flex-direction: column;
 }
 
+.path-picker-list.loading {
+    opacity: 0.55;
+    pointer-events: none;
+}
+
+@keyframes pathPickerLoading {
+    0% { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+}
+
+.path-picker-truncation-note {
+    font-size: 0.72rem;
+    color: #f59e0b;
+    padding: 6px 12px;
+    background: rgba(245, 158, 11, 0.1);
+    border-bottom: 1px solid rgba(245, 158, 11, 0.2);
+}
+
 .path-picker-item {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 8px 12px;
+    padding: 7px 12px;
     border-bottom: 1px solid rgba(255, 255, 255, 0.04);
     cursor: pointer;
-    transition: background 0.15s ease;
+    transition: background-color 0.08s ease;
     font-size: 0.82rem;
+    user-select: none;
 }
 
 .path-picker-item:last-child {
@@ -3844,7 +3911,7 @@ color: #fff;
 }
 
 .path-picker-item:hover {
-    background: rgba(255, 255, 255, 0.06);
+    background: rgba(255, 255, 255, 0.07);
 }
 
 .path-picker-item.selected {
@@ -3875,9 +3942,33 @@ color: #fff;
     white-space: nowrap;
 }
 
+.path-picker-nav-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 2px 8px;
+    font-size: 0.72rem;
+    font-weight: 600;
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    color: #cbd5e1;
+    margin-left: 8px;
+    cursor: pointer;
+    transition: background-color 0.08s ease, color 0.08s ease;
+    flex-shrink: 0;
+}
+
+.path-picker-nav-btn:hover {
+    background: var(--accent, #6366f1);
+    border-color: var(--accent, #6366f1);
+    color: #ffffff;
+}
+
 .path-picker-item-meta {
     display: flex;
     gap: 12px;
+    align-items: center;
     font-size: 0.74rem;
     color: #64748b;
     font-family: var(--font-mono, monospace);

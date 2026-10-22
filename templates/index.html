@@ -680,10 +680,15 @@
                         <div class="path-picker-drives" id="pathPickerDrives"></div>
                         <div class="path-picker-quick" id="pathPickerQuick"></div>
                     </div>
-                    <!-- Breadcrumbs & Search -->
+                    <!-- Breadcrumbs & Quick Bar -->
                     <div class="path-picker-breadcrumb-bar" id="pathPickerBreadcrumbs"></div>
+                    <!-- Instant Search Filter -->
+                    <div class="path-picker-search-bar">
+                        <input type="text" class="path-picker-filter-input" id="pathPickerFilter" placeholder="🔍 Schnellsuchfilter in diesem Ordner..." oninput="filterPathPickerEntries(this.value)" autocomplete="off" />
+                    </div>
                     <!-- File / Folder Items List -->
-                    <div class="path-picker-list-wrapper">
+                    <div class="path-picker-list-wrapper" id="pathPickerListWrapper">
+                        <div class="path-picker-loader-bar" id="pathPickerLoaderBar"></div>
                         <div class="path-picker-list" id="pathPickerList">
                             <div class="path-picker-empty">Lade Verzeichnis...</div>
                         </div>
@@ -691,7 +696,7 @@
                     <!-- Selected Path Display -->
                     <div class="path-picker-selected-row">
                         <label for="pathPickerSelectedInput" class="doc-editor-label" style="margin: 0; white-space: nowrap; font-size: 0.75rem;">Ausgewählter Pfad:</label>
-                        <input type="text" class="doc-editor-input path-picker-input" id="pathPickerSelectedInput" placeholder="Pfad eingeben oder oben auswählen..." aria-label="Ausgewählter Dateipfad" />
+                        <input type="text" class="doc-editor-input path-picker-input" id="pathPickerSelectedInput" placeholder="Pfad eingeben oder oben auswählen..." aria-label="Ausgewählter Dateipfad" onkeydown="handlePathPickerInputKey(event)" />
                     </div>
                 </div>
                 <div class="modal-footer path-picker-footer">

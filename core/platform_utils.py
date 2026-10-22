@@ -16,14 +16,40 @@ from core.utils import sanitize_safe_path
 logger = logging.getLogger(__name__)
 
 
+def _get_logical_drives_bitmask() -> int | None:
+    """Retrieves Windows logical drives bitmask via kernel32 if available."""
+    if sys.platform != "win32" and os.name != "nt":
+        return None
+    try:
+        import ctypes
+
+        windll = getattr(ctypes, "windll", None)
+        if windll and hasattr(windll, "kernel32"):
+            kernel32 = windll.kernel32
+            if hasattr(kernel32, "GetLogicalDrives"):
+                mask = int(kernel32.GetLogicalDrives())
+                return mask if mask > 0 else None
+    except Exception as e:
+        logger.debug("[PlatformUtils] GetLogicalDrives query failed: %s", e)
+    return None
+
+
 def get_system_drives() -> list[str]:
     """Returns available drive letters on Windows or root directory on POSIX."""
     drives: list[str] = []
     if sys.platform == "win32" or os.name == "nt":
-        for letter in string.ascii_uppercase:
-            drive = f"{letter}:\\"
-            if os.path.exists(drive):
-                drives.append(drive)
+        bitmask = _get_logical_drives_bitmask()
+        if bitmask is not None:
+            for i in range(26):
+                if (bitmask >> i) & 1:
+                    drive = f"{chr(65 + i)}:\\"
+                    if os.path.exists(drive):
+                        drives.append(drive)
+        else:
+            for letter in string.ascii_uppercase:
+                drive = f"{letter}:\\"
+                if os.path.exists(drive):
+                    drives.append(drive)
     else:
         drives.append("/")
     return drives

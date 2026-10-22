@@ -716,6 +716,48 @@ def test_api_system_status_and_lifecycle(client):
     fs_data = res_fs.get_json()
     assert "entries" in fs_data
     assert "drives" in fs_data
+    assert "truncated" in fs_data
+
+
+def test_api_system_fs_list_modes_and_capping(client, tmp_path):
+    """Verifies fs_list folder vs file modes, system dir filtering, and truncation."""
+    test_root = tmp_path / "browser_test"
+    test_root.mkdir()
+
+    # Create subfolders
+    (test_root / "Folder_B").mkdir()
+    (test_root / "Folder_A").mkdir()
+    (test_root / "recovery").mkdir()  # blocked system dir name
+    (test_root / "$recycle.bin").mkdir()  # blocked system dir name
+
+    # Create files
+    (test_root / "model_alpha.gguf").touch()
+    (test_root / "notes.txt").touch()
+
+    # 1. Folder picker mode: files and blocked system dirs must be excluded
+    res_folder = client.get(f"/api/system/fs_list?path={test_root}&type=folder")
+    assert res_folder.status_code == 200
+    data_folder = res_folder.get_json()
+    entry_names = [e["name"] for e in data_folder["entries"]]
+    assert entry_names == ["Folder_A", "Folder_B"]
+    assert "model_alpha.gguf" not in entry_names
+    assert "recovery" not in entry_names
+    assert "$recycle.bin" not in entry_names
+    assert data_folder["truncated"] is False
+
+    # 2. File picker mode with .gguf filter: folders first, then matching files
+    res_file = client.get(f"/api/system/fs_list?path={test_root}&type=file&filter=.gguf")
+    assert res_file.status_code == 200
+    data_file = res_file.get_json()
+    entries_file = data_file["entries"]
+    assert len(entries_file) == 3
+    assert entries_file[0]["name"] == "Folder_A"
+    assert entries_file[0]["is_dir"] is True
+    assert entries_file[1]["name"] == "Folder_B"
+    assert entries_file[1]["is_dir"] is True
+    assert entries_file[2]["name"] == "model_alpha.gguf"
+    assert entries_file[2]["is_dir"] is False
+    assert "notes.txt" not in [e["name"] for e in entries_file]
 
 
 def test_api_cases_crud_and_approval(client, tmp_path):
