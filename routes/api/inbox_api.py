@@ -78,10 +78,9 @@ def api_inbox():
                         "modified": time.strftime("%Y-%m-%d %H:%M", time.localtime(stat.st_mtime)),
                         "preview_url": (
                             f"/api/inbox/preview/{urllib.parse.quote(rel_path, safe='/')}"
-                            + (f"?token={urllib.parse.quote(DashboardState.session_token)}" if DashboardState.session_token else "")
-                        )
-                        if f.lower().endswith(".pdf")
-                        else "",
+                            if f.lower().endswith(".pdf")
+                            else ""
+                        ),
                         "file_url": f"/api/file/inbox/{urllib.parse.quote(rel_path, safe='/')}",
                     }
                 )
@@ -206,7 +205,8 @@ def api_inbox_assign(filename: str):
                 DashboardState.processor.file_service.mark_as_processed(
                     src_path, extracted=data, routed_paths=[target_path]
                 )
-            logger.info(
+            logger.info("[Dashboard] Manual assignment completed (retained=True, doc_type=%s)", doc_type)
+            logger.debug(
                 "[Dashboard] Manual assignment (retained): %s → %s/%s",
                 filename,
                 folder_name,
@@ -214,13 +214,14 @@ def api_inbox_assign(filename: str):
             )
             return jsonify({"status": "ok", "folder": folder_name, "file": target_filename})
         except OSError as e:
-            logger.error("[Dashboard] Manual assignment copy error %s -> %s: %s", src_path, target_path, e, exc_info=True)
+            logger.error("[Dashboard] Manual assignment copy error: %s", e, exc_info=True)
             return jsonify({"error": "Failed to assign file"}), 500
     else:
         _remove_meta_sidecar(src_path)
         try:
             safe_move(src_path, target_path)
-            logger.info(
+            logger.info("[Dashboard] Manual assignment completed (retained=False, doc_type=%s)", doc_type)
+            logger.debug(
                 "[Dashboard] Manual assignment: %s → %s/%s",
                 filename,
                 folder_name,
@@ -228,7 +229,7 @@ def api_inbox_assign(filename: str):
             )
             return jsonify({"status": "ok", "folder": folder_name, "file": target_filename})
         except OSError as e:
-            logger.error("[Dashboard] Manual assignment move error %s -> %s: %s", src_path, target_path, e, exc_info=True)
+            logger.error("[Dashboard] Manual assignment move error: %s", e, exc_info=True)
             return jsonify({"error": "Failed to assign file"}), 500
 
 
@@ -319,19 +320,21 @@ def api_inbox_auto_assign(filename: str):
                 DashboardState.processor.file_service.mark_as_processed(
                     src_path, extracted=data, routed_paths=[target_path]
                 )
-            logger.info("[Dashboard] Auto-assign (retained): %s → %s", filename, target_filename)
+            logger.info("[Dashboard] Auto-assign completed (retained=True, doc_type=%s)", doc_type)
+            logger.debug("[Dashboard] Auto-assign (retained): %s → %s", filename, target_filename)
             return jsonify({"status": "ok"})
         except OSError as e:
-            logger.error("[Dashboard] Auto-assign copy error %s -> %s: %s", src_path, target_path, e, exc_info=True)
+            logger.error("[Dashboard] Auto-assign copy error: %s", e, exc_info=True)
             return jsonify({"error": "Failed to auto-assign file"}), 500
     else:
         _remove_meta_sidecar(src_path)
         try:
             safe_move(src_path, target_path)
-            logger.info("[Dashboard] Auto-assign: %s → %s", filename, target_filename)
+            logger.info("[Dashboard] Auto-assign completed (retained=False, doc_type=%s)", doc_type)
+            logger.debug("[Dashboard] Auto-assign: %s → %s", filename, target_filename)
             return jsonify({"status": "ok"})
         except OSError as e:
-            logger.error("[Dashboard] Auto-assign move error %s -> %s: %s", src_path, target_path, e, exc_info=True)
+            logger.error("[Dashboard] Auto-assign move error: %s", e, exc_info=True)
             return jsonify({"error": "Failed to auto-assign file"}), 500
 
 

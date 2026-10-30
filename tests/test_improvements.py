@@ -59,13 +59,17 @@ def test_api_events_sse_endpoint():
     app = Flask(__name__)
     app.config["TESTING"] = True
     app.register_blueprint(api_bp)
+    DashboardState.session_token = "sse-test-token"
 
-    client = app.test_client()
-    res = client.get("/api/events")
+    try:
+        client = app.test_client()
+        res = client.get("/api/events?token=sse-test-token", headers={"Host": "localhost"})
 
-    assert res.status_code == 200
-    assert "text/event-stream" in res.content_type
-    assert res.headers.get("Cache-Control") == "no-cache"
+        assert res.status_code == 200
+        assert "text/event-stream" in res.content_type
+        assert res.headers.get("Cache-Control") == "no-cache"
+    finally:
+        DashboardState.session_token = None
 
 
 def test_flushing_rotating_file_handler_rollover_and_permission_error(tmp_path):
@@ -131,6 +135,7 @@ def test_frontend_asset_cache_busting(test_sandbox):
     _, config, _ = test_sandbox
     config.app_version = "0.9.9"
     DashboardState.config = config
+    DashboardState.session_token = "cache-bust-token"
 
     real_templates = str(Path(__file__).resolve().parent.parent / "templates")
     app = Flask(__name__, template_folder=real_templates)
@@ -138,7 +143,7 @@ def test_frontend_asset_cache_busting(test_sandbox):
     app.register_blueprint(ui_bp)
 
     client = app.test_client()
-    res = client.get("/")
+    res = client.get("/", headers={"Host": "localhost", "X-OrdinFlow-Token": "cache-bust-token"})
     assert res.status_code == 200
     html = res.get_data(as_text=True)
 

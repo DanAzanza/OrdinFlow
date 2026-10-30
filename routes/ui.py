@@ -1,10 +1,58 @@
 import os
+import secrets
 
-from flask import Blueprint, jsonify, render_template
+from flask import Blueprint, jsonify, redirect, render_template, request
 
-from core.state import DashboardState
+from routes.state import DashboardState
 
 ui_bp = Blueprint("ui", __name__)
+
+_ALLOWED_HOSTS = {"127.0.0.1", "localhost", "::1", "[::1]"}
+
+
+@ui_bp.before_request
+def check_ui_security():
+    raw_host = request.host.split(":")[0].strip().lower()
+    if raw_host not in _ALLOWED_HOSTS:
+        return jsonify({"error": "Forbidden: Invalid Host header"}), 403
+
+    path = request.path.rstrip("/") or "/"
+    if path in ("/favicon.ico", "/auth/bootstrap"):
+        return None
+
+    expected_token = DashboardState.session_token
+    if not expected_token or not isinstance(expected_token, str):
+        return jsonify({"error": "Unauthorized: Session token not initialized"}), 403
+
+    token = request.headers.get("X-OrdinFlow-Token") or request.cookies.get("ordinflow_session")
+    if not token or not isinstance(token, str) or not secrets.compare_digest(token, expected_token):
+        return (
+            jsonify(
+                {
+                    "error": "Unauthorized: Invalid or missing session credentials. Launch OrdinFlow via Start_OrdinFlow to establish a session."
+                }
+            ),
+            403,
+        )
+    return None
+
+
+@ui_bp.route("/auth/bootstrap")
+def auth_bootstrap():
+    nonce = request.args.get("nonce", "")
+    expected_token = DashboardState.session_token
+    if not expected_token or not DashboardState.consume_bootstrap_token(nonce):
+        return jsonify({"error": "Forbidden: Invalid or expired bootstrap nonce"}), 403
+
+    resp = redirect("/")
+    resp.set_cookie(
+        "ordinflow_session",
+        expected_token,
+        httponly=True,
+        samesite="Strict",
+        path="/",
+    )
+    return resp
 
 
 @ui_bp.route("/")

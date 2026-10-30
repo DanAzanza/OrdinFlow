@@ -56,6 +56,8 @@ def test_sandbox():
 
     # Wire up isolated singleton state
     DashboardState.config = config
+    DashboardState.session_token = "test-session-token"
+    DashboardState.bootstrap_token = None
     skills_api_mod._SKILL_MANAGER = skill_mgr
     cases_api_mod._SKILL_MANAGER = skill_mgr
     queue_mod._SKILL_QUEUE_MANAGER = get_skill_queue_manager(skill_mgr)
@@ -71,6 +73,8 @@ def test_sandbox():
     cases_api_mod._SKILL_MANAGER = None
     DashboardState.config = None
     DashboardState.processor = None
+    DashboardState.session_token = None
+    DashboardState.bootstrap_token = None
 
     shutil.rmtree(tmp_dir, ignore_errors=True)
 
@@ -86,8 +90,11 @@ def app(test_sandbox):
 
 @pytest.fixture
 def client(app):
-    """Flask test client fixture for API tests."""
-    return app.test_client()
+    """Flask test client fixture for API tests with active session token."""
+    c = app.test_client()
+    c.environ_base["HTTP_X_ORDINFLOW_TOKEN"] = DashboardState.session_token or "test-session-token"
+    c.environ_base["HTTP_HOST"] = "localhost"
+    return c
 
 
 @pytest.fixture

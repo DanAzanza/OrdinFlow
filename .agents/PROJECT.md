@@ -53,7 +53,7 @@
 ### 📜 PowerShell Skill Execution Contract
 * `core/skills/script_runner.py` passes extracted document values to PowerShell.
 * Document values (names, case IDs) originate from untrusted OCR/VLM output and must NEVER be interpolated into command strings via string formatting/replace or blocklist escaping.
-* Values are injected strictly via `$env:ORDINFLOW_<KEY>` process environment variables (or `%ORDINFLOW_<KEY>%` for cmd.exe), bounded at 8192 characters. PowerShell scripts consume `$env:ORDINFLOW_*` directly.
+* Values are injected strictly via `$env:ORDINFLOW_<KEY>` process environment variables (or `$ORDINFLOW_<KEY>` on POSIX), bounded at 8192 characters. Execution via `cmd.exe` / `.bat` is strictly prohibited due to variable expansion vulnerabilities. PowerShell scripts consume `$env:ORDINFLOW_*` directly.
 
 ### 🛡️ Allowed Roots Security Boundary in File Exports
 * `export_case_to_gdt` and export actions enforce `is_within_allowed_roots(path)` to prevent rogue file writes across the filesystem.

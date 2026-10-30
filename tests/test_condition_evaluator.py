@@ -233,3 +233,18 @@ def test_regex_match_times_out_on_catastrophic_backtracking():
     assert evaluate_condition(condition, context) is False
 
 
+def test_placeholder_values_cannot_break_out_of_quotes_or_inject_ast():
+    """Verifies that untrusted OCR values with quotes/operators cannot alter AST branching."""
+    malicious_ctx = {
+        "Nachname": "x' or 1 == 1 or '",
+        "Kommentar": 'x" or True or "',
+        "RawExpr": "1 == 1",
+    }
+    assert evaluate_condition("'{Nachname}' == 'Admin'", malicious_ctx) is False
+    assert evaluate_condition('"{Nachname}" == "Admin"', malicious_ctx) is False
+    assert evaluate_condition("{Nachname} == 'Admin'", malicious_ctx) is False
+    assert evaluate_condition('"{Kommentar}" == "Admin"', malicious_ctx) is False
+    assert evaluate_condition("{RawExpr} == 'Admin'", malicious_ctx) is False
+
+
+

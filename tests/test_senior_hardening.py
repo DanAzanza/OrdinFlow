@@ -235,9 +235,18 @@ def test_api_token_and_host_validation():
     )
     assert resp_get_query.status_code == 200
 
-    # Public status endpoint is accessible without token
-    resp_status = client.get("/api/status", headers={"Host": "localhost"})
-    assert resp_status.status_code == 200
+    # Sensitive status endpoint requires token; public health endpoint is accessible without token
+    resp_status_unauth = client.get("/api/status", headers={"Host": "localhost"})
+    assert resp_status_unauth.status_code == 403
+
+    resp_health = client.get("/api/health", headers={"Host": "localhost"})
+    assert resp_health.status_code == 200
+
+    resp_status_auth = client.get(
+        "/api/status",
+        headers={"Host": "localhost", "X-OrdinFlow-Token": "valid_secret_token_12345"},
+    )
+    assert resp_status_auth.status_code == 200
 
     resp = client.post(
         "/api/cases/approve",

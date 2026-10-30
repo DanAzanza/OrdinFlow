@@ -83,14 +83,16 @@ def test_core_never_imports_routes():
                 for node in ast.walk(tree):
                     if isinstance(node, ast.Import):
                         for alias in node.names:
-                            if alias.name == "routes" or alias.name.startswith("routes."):
+                            if alias.name in ("routes", "flask") or alias.name.startswith(("routes.", "flask.")):
                                 violations.append((rel_path, node.lineno, alias.name))
                     elif isinstance(node, ast.ImportFrom):
-                        if node.module == "routes" or (node.module and node.module.startswith("routes.")):
+                        if node.module in ("routes", "flask") or (
+                            node.module and node.module.startswith(("routes.", "flask."))
+                        ):
                             violations.append((rel_path, node.lineno, node.module))
 
     assert not violations, (
-        f"Architecture violation! {len(violations)} import(s) from 'routes' found in 'core/':\n"
+        f"Architecture violation! {len(violations)} forbidden web/route import(s) found in 'core/':\n"
         + "\n".join(f"  - {path}:{line} imports '{mod}'" for path, line, mod in violations)
-        + "\n\nPer AGENTS.md Layer Separation, core/ must be completely independent of routes/."
+        + "\n\nPer AGENTS.md Layer Separation, core/ must be completely independent of routes/ and flask."
     )

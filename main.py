@@ -202,13 +202,86 @@ def is_port_in_use(port: int) -> bool:
         return s.connect_ex(("127.0.0.1", port)) == 0
 
 
-def is_ordinflow_running(port: int) -> bool:
-    """Checks if an active OrdinFlow backend is already responding to status healthchecks on this port."""
+def find_free_port() -> int:
+    """Finds an available ephemeral TCP port on 127.0.0.1."""
+    import socket
+
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind(("127.0.0.1", 0))
+        return int(s.getsockname()[1])
+
+
+def _get_user_session_file(base_dir: str) -> str:
+    """Returns a user-private path for storing active runtime session metadata."""
+    import hashlib
+
+    norm_base = os.path.abspath(base_dir).lower().encode("utf-8")
+    digest = hashlib.sha256(norm_base).hexdigest()[:12]
+    if sys.platform == "win32":
+        root = os.environ.get("LOCALAPPDATA") or os.path.expanduser("~")
+        session_dir = os.path.join(root, "OrdinFlow")
+    else:
+        session_dir = os.path.join(os.path.expanduser("~"), ".local", "share", "OrdinFlow")
+    os.makedirs(session_dir, mode=0o700, exist_ok=True)
+    return os.path.join(session_dir, f"runtime_session_{digest}.json")
+
+
+def _load_user_session(base_dir: str) -> dict:
+    """Loads stored per-user runtime session metadata if available."""
+    import json
+
+    path = _get_user_session_file(base_dir)
+    if not os.path.isfile(path):
+        return {}
+    try:
+        with open(path, encoding="utf-8") as f:
+            data = json.load(f)
+        return data if isinstance(data, dict) else {}
+    except (OSError, ValueError, TypeError):
+        return {}
+
+
+def _save_user_session(base_dir: str, port: int, session_token: str) -> None:
+    """Persists per-user runtime session metadata with owner-only permissions."""
+    import json
+
+    path = _get_user_session_file(base_dir)
+    payload = {"pid": os.getpid(), "port": int(port), "session_token": str(session_token)}
+    try:
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(payload, f)
+    except OSError as e:
+        logger.debug("[Main] Could not write user session file %s: %s", path, e)
+
+
+def _remove_user_session(base_dir: str) -> None:
+    """Removes the per-user runtime session file upon clean shutdown."""
+    path = _get_user_session_file(base_dir)
+    try:
+        if os.path.exists(path):
+            os.remove(path)
+    except OSError:
+        pass
+
+
+def is_ordinflow_running(port: int, session_token: str | None = None) -> bool:
+    """Checks if an active OrdinFlow backend is responding on this port.
+
+    When `session_token` is provided, verifies that the running instance belongs to
+    the current user via authenticated `/api/status`. Otherwise checks `/api/health`.
+    """
     import http.client
+
+    headers = {"User-Agent": "OrdinFlow-Launcher"}
+    endpoint = "/api/health"
+    if session_token:
+        headers["X-OrdinFlow-Token"] = session_token
+        endpoint = "/api/status"
 
     try:
         conn = http.client.HTTPConnection("127.0.0.1", port, timeout=1.5)
-        conn.request("GET", "/api/status", headers={"User-Agent": "OrdinFlow-Launcher"})
+        conn.request("GET", endpoint, headers=headers)
         resp = conn.getresponse()
         is_up = resp.status == 200
         conn.close()
@@ -217,9 +290,36 @@ def is_ordinflow_running(port: int) -> bool:
         return False
 
 
-def _cleanup_stale_instance(port: int) -> None:
-    """Attempts to kill stale processes occupying the port (Windows only)."""
-    if sys.platform != "win32":
+def request_bootstrap_nonce(port: int, session_token: str) -> str | None:
+    """Requests a fresh single-use bootstrap nonce from an authenticated local instance."""
+    import http.client
+    import json
+
+    try:
+        conn = http.client.HTTPConnection("127.0.0.1", port, timeout=1.5)
+        conn.request(
+            "POST",
+            "/api/auth/bootstrap_nonce",
+            headers={
+                "User-Agent": "OrdinFlow-Launcher",
+                "X-OrdinFlow-Token": session_token,
+            },
+        )
+        resp = conn.getresponse()
+        body = resp.read().decode("utf-8", errors="replace")
+        conn.close()
+        if resp.status == 200:
+            data = json.loads(body)
+            nonce = data.get("nonce")
+            return str(nonce) if isinstance(nonce, str) and nonce else None
+    except (OSError, TimeoutError, ValueError, TypeError):
+        pass
+    return None
+
+
+def _cleanup_stale_instance(port: int, expected_pid: int | None = None) -> None:
+    """Attempts to kill a stale unresponsive process occupying the port if verified (Windows only)."""
+    if sys.platform != "win32" or not expected_pid:
         return
     logger.warning("[!] Port %s is occupied by an unresponsive process. Inspecting...", port)
     try:
@@ -244,7 +344,7 @@ def _cleanup_stale_instance(port: int) -> None:
     for pid in pids:
         try:
             int_pid = int(pid)
-            if int_pid == os.getpid():
+            if int_pid == os.getpid() or int_pid != int(expected_pid):
                 continue
 
             # Verify process image name and command line before issuing taskkill
@@ -310,6 +410,8 @@ from core.utils import init_windows_dpi_awareness
 
 
 def main() -> None:
+    import secrets
+
     init_windows_dpi_awareness()
     args = parse_args()
     setup_logging()
@@ -318,20 +420,46 @@ def main() -> None:
     config.load_from_yaml()
     config.setup_paths()
 
-    # If OrdinFlow is already running and healthy: open browser and exit launcher cleanly
-    if is_ordinflow_running(config.dashboard_port):
+    saved_session = _load_user_session(config.base_dir)
+    saved_token = str(saved_session.get("session_token") or "")
+    saved_port = int(saved_session.get("port") or config.dashboard_port)
+    saved_pid = saved_session.get("pid")
+
+    # 1. If THIS user's OrdinFlow instance is already running and healthy: mint bootstrap nonce and open browser
+    if saved_token and is_ordinflow_running(saved_port, session_token=saved_token):
         logger.info(
-            "[*] OrdinFlow is already running on port %s. Opening Web Dashboard in browser...",
-            config.dashboard_port,
+            "[*] Active OrdinFlow session detected on port %s. Opening Web Dashboard in browser...",
+            saved_port,
         )
         from dashboard import open_browser
 
-        open_browser(config.dashboard_port)
+        nonce = request_bootstrap_nonce(saved_port, saved_token)
+        open_browser(saved_port, bootstrap_nonce=nonce)
         return
 
-    # If port is occupied by an unresponsive process: clean up stale instance
+    # 2. If configured port is occupied (either by another user's session or an unresponsive process):
     if is_port_in_use(config.dashboard_port):
-        _cleanup_stale_instance(config.dashboard_port)
+        if is_ordinflow_running(config.dashboard_port):
+            new_port = find_free_port()
+            logger.info(
+                "[*] Port %s is in use by another active session. Allocating isolated port %s for current user.",
+                config.dashboard_port,
+                new_port,
+            )
+            config.dashboard_port = new_port
+        else:
+            _cleanup_stale_instance(
+                config.dashboard_port,
+                expected_pid=int(saved_pid) if isinstance(saved_pid, int) else None,
+            )
+            if is_port_in_use(config.dashboard_port):
+                new_port = find_free_port()
+                logger.info(
+                    "[*] Port %s remains occupied. Allocating isolated port %s.",
+                    config.dashboard_port,
+                    new_port,
+                )
+                config.dashboard_port = new_port
 
     logger.info("%s", "=" * 60)
     logger.info("[*] Watch Directory (Inbox)        : %s", config.watch_dir)
@@ -345,8 +473,10 @@ def main() -> None:
 
     DashboardState.processor = processor
     DashboardState.config = config
+    DashboardState.session_token = secrets.token_urlsafe(32)
     DashboardState.shutdown_event.clear()
     DashboardState.last_heartbeat = time.time()
+    _save_user_session(config.base_dir, config.dashboard_port, DashboardState.session_token)
 
     # 1. Start Web Dashboard
     try:
@@ -391,6 +521,7 @@ def main() -> None:
     except Exception as e:
         logger.warning("[!] Error unloading models during shutdown: %s", e)
     processor.log_stats()
+    _remove_user_session(config.base_dir)
     logger.info("[*] Service terminated successfully.")
     time.sleep(0.5)
     os._exit(0)

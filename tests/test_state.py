@@ -108,10 +108,19 @@ def test_create_app_factory():
     assert "api.api_system_and_config" in flask_app.blueprints
     assert "ui" in flask_app.blueprints
 
-    # Verify host header validation
+    # Verify host header and token validation
     client = flask_app.test_client()
-    resp_valid = client.get("/api/status", headers={"Host": "127.0.0.1:8080"})
-    assert resp_valid.status_code in (200, 401)  # Depends on session token / auth
+    resp_unauth = client.get("/api/status", headers={"Host": "127.0.0.1:8080"})
+    assert resp_unauth.status_code == 403
+
+    resp_valid = client.get(
+        "/api/status",
+        headers={"Host": "127.0.0.1:8080", "X-OrdinFlow-Token": custom_dms.session_token},
+    )
+    assert resp_valid.status_code == 200
+
+    resp_health = client.get("/api/health", headers={"Host": "127.0.0.1:8080"})
+    assert resp_health.status_code == 200
 
     resp_invalid = client.get("/api/status", headers={"Host": "evil.com"})
     assert resp_invalid.status_code == 403

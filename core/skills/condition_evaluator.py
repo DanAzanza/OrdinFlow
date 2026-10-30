@@ -187,9 +187,8 @@ def evaluate_condition(
         return condition
 
     if isinstance(condition, str):
-        # Substitute curly-brace placeholders from context before parsing
-        expr_str = _substitute_placeholders_for_ast(condition, context)
-        evaluator = SafeASTEvaluator(context)
+        expr_str, bound_env = _bind_placeholders_to_ast_vars(condition, context)
+        evaluator = SafeASTEvaluator(bound_env)
         try:
             return bool(evaluator.evaluate(expr_str))
         except ConditionEvaluationError as e:
@@ -204,8 +203,8 @@ def evaluate_condition(
             target_win = str(condition.get("target") or condition.get("window_title") or "")
             if not target_win:
                 return False
-            # Resolve placeholders in target title
-            target_win = _substitute_placeholders_for_ast(target_win, context)
+            # Resolve placeholders in target title as plain text
+            target_win = _interpolate_text_placeholders(target_win, context)
             if window_checker:
                 return window_checker(target_win)
             return _default_window_exists(target_win)
@@ -216,7 +215,7 @@ def evaluate_condition(
             if not isinstance(locator, dict):
                 return False
             target_win = str(condition.get("window_title") or condition.get("target") or "")
-            target_win = _substitute_placeholders_for_ast(target_win, context)
+            target_win = _interpolate_text_placeholders(target_win, context)
             if element_checker:
                 return element_checker(locator, target_win)
             return False
@@ -289,8 +288,8 @@ def evaluate_condition(
         # 6. EXPRESSION (Default dict wrapper)
         expr = str(condition.get("expr") or condition.get("expression") or "")
         if expr:
-            expr_str = _substitute_placeholders_for_ast(expr, context)
-            evaluator = SafeASTEvaluator(context)
+            expr_str, bound_env = _bind_placeholders_to_ast_vars(expr, context)
+            evaluator = SafeASTEvaluator(bound_env)
             try:
                 return bool(evaluator.evaluate(expr_str))
             except ConditionEvaluationError:
@@ -299,42 +298,54 @@ def evaluate_condition(
     return False
 
 
-def _substitute_placeholders_for_ast(text: str, context: Mapping[str, Any]) -> str:
-    """Safely substitutes `{var_name}` inside expression strings with literal representation."""
+def _interpolate_text_placeholders(text: str, context: Mapping[str, Any]) -> str:
+    """Replaces `{var_name}` placeholders in a plain string without Python syntax quoting."""
     if "{" not in text:
         return text
 
-    # First handle placeholders already wrapped in single or double quotes
-    def repl_quoted(match: re.Match) -> str:
+    def _repl(match: re.Match[str]) -> str:
         key = match.group(1)
-        if key in context:
-            val = context[key]
-            if isinstance(val, str):
-                return repr(val)
-            if isinstance(val, bool):
-                return "True" if val else "False"
-            if val is None:
-                return "None"
-            return str(val)
-        return "''"
+        val = context.get(key)
+        return "" if val is None else str(val)
 
-    processed = re.sub(r"['\"]\{([\w\-]+)\}['\"]", repl_quoted, text)
+    return re.sub(r"\{([\w\-]+)\}", _repl, text)
 
-    # Next handle unquoted placeholders
-    def repl_unquoted(match: re.Match) -> str:
+
+def _bind_placeholders_to_ast_vars(text: str, context: Mapping[str, Any]) -> tuple[str, dict[str, Any]]:
+    """Binds `{var_name}` placeholders to synthetic AST identifiers resolved via `visit_Name`.
+
+    Values from `context` are never interpolated as Python source strings, preventing
+    any quote-escaping or AST-structure manipulation by untrusted OCR values.
+    """
+    env: dict[str, Any] = dict(context)
+    if "{" not in text:
+        return text, env
+
+    counter = 0
+
+    def _next_var(val: Any) -> str:
+        nonlocal counter
+        var_id = f"__ordinflow_var_{counter}"
+        counter += 1
+        env[var_id] = val
+        return var_id
+
+    # 1. Handle placeholders explicitly wrapped in matching quotes: '{var}' or "{var}"
+    def _repl_quoted(match: re.Match[str]) -> str:
+        key = match.group(2)
+        val = context.get(key, "")
+        return _next_var("" if val is None else str(val))
+
+    processed = re.sub(r"(['\"])\{([\w\-]+)\}\1", _repl_quoted, text)
+
+    # 2. Handle unquoted placeholders: {var}
+    def _repl_unquoted(match: re.Match[str]) -> str:
         key = match.group(1)
-        if key in context:
-            val = context[key]
-            if isinstance(val, str):
-                return repr(val)
-            if isinstance(val, bool):
-                return "True" if val else "False"
-            if val is None:
-                return "None"
-            return str(val)
-        return "''"
+        val = context.get(key, "")
+        return _next_var(val)
 
-    return re.sub(r"\{([\w\-]+)\}", repl_unquoted, processed)
+    bound_expr = re.sub(r"\{([\w\-]+)\}", _repl_unquoted, processed)
+    return bound_expr, env
 
 
 def _default_window_exists(pattern: str) -> bool:

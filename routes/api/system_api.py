@@ -77,6 +77,18 @@ _CONFIG_SAFE_KEYS = [
 # ── System & Status Endpoints ──
 
 
+@system_api_bp.route("/api/health", methods=["GET"])
+def api_health():
+    """Zero-PII readiness probe for local service startup checks."""
+    return jsonify({"status": "ok"})
+
+
+@system_api_bp.route("/api/auth/bootstrap_nonce", methods=["POST"])
+def api_issue_bootstrap_nonce():
+    """Mints a single-use bootstrap nonce for an authenticated local launcher."""
+    return jsonify({"nonce": DashboardState.issue_bootstrap_token()})
+
+
 @system_api_bp.route("/api/status")
 def api_status():
     DashboardState.last_heartbeat = time.time()
@@ -282,6 +294,8 @@ def api_system_config_get():
         return jsonify({"error": "Config not available"}), 503
     cfg = asdict(DashboardState.config)
     safe = {k: cfg.get(k) for k in _CONFIG_SAFE_KEYS if k in cfg}
+    if "server_api_key" in safe:
+        safe["server_api_key"] = "********" if safe["server_api_key"] else ""
     return jsonify(safe)
 
 
@@ -297,6 +311,8 @@ def api_system_config():
 
     changed = []
     for k, v in data.items():
+        if k == "server_api_key" and v == "********":
+            continue
         if k in _CONFIG_SAFE_KEYS and hasattr(DashboardState.config, k):
             setattr(DashboardState.config, k, v)
             changed.append(k)

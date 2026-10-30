@@ -62,19 +62,20 @@ def _build_case_folder_summary(
     delimiter: str,
 ) -> dict[str, Any] | None:
     """Inspects a candidate case folder and builds a normalized summary dictionary or None."""
+    is_approved = False
+    files: list[str] = []
     try:
-        folder_entries = sorted(os.scandir(folder_abs_path), key=lambda e: e.name)
+        with os.scandir(folder_abs_path) as it:
+            for fe in it:
+                if fe.name == ".approved":
+                    is_approved = True
+                elif fe.is_file() and not fe.name.startswith(".") and not fe.name.lower().endswith((".jpg", ".meta")):
+                    files.append(fe.name)
     except OSError as e:
         logger.debug("[Dashboard] Could not scandir folder %s: %s", folder_abs_path, e)
         return None
 
-    is_approved = False
-    files: list[str] = []
-    for fe in folder_entries:
-        if fe.name == ".approved":
-            is_approved = True
-        elif fe.is_file() and not fe.name.startswith(".") and not fe.name.lower().endswith((".jpg", ".meta")):
-            files.append(fe.name)
+    files.sort()
 
     folder_rel_posix = folder_rel_path.replace("\\", "/")
     folder_basename = os.path.basename(folder_abs_path)
@@ -214,11 +215,13 @@ def api_cases_approve():
         if approved:
             with open(marker_path, "w", encoding="utf-8") as f:
                 f.write(f"Approved at {time.ctime()}\n")
-            logger.info("[Dashboard] Approved case folder: %s", folder_name)
+            logger.info("[Dashboard] Approved case folder.")
+            logger.debug("[Dashboard] Approved case folder: %s", folder_name)
         else:
             if os.path.exists(marker_path):
                 os.remove(marker_path)
-            logger.info("[Dashboard] Revoked approval for case folder: %s", folder_name)
+            logger.info("[Dashboard] Revoked approval for case folder.")
+            logger.debug("[Dashboard] Revoked approval for case folder: %s", folder_name)
         return jsonify(
             {
                 "status": "ok",
@@ -264,9 +267,8 @@ def api_cases_detail(folder_name: str):
 
             stat = os.stat(fp)
             has_preview = f.lower().endswith(".pdf")
-            token_q = f"?token={urllib.parse.quote(DashboardState.session_token)}" if DashboardState.session_token else ""
             preview_url = (
-                f"/api/preview/Cases/{urllib.parse.quote(folder_name, safe='/')}/{urllib.parse.quote(f, safe='/')}{token_q}"
+                f"/api/preview/Cases/{urllib.parse.quote(folder_name, safe='/')}/{urllib.parse.quote(f, safe='/')}"
                 if has_preview
                 else ""
             )
@@ -349,10 +351,11 @@ def api_cases_edit(folder_name: str):
 
     try:
         _safe_rename_dir(folder_path, new_path)
-        logger.info("[Dashboard] Renamed folder: %s -> %s", folder_name, new_folder_name)
+        logger.info("[Dashboard] Case folder metadata updated.")
+        logger.debug("[Dashboard] Renamed folder: %s -> %s", folder_name, new_folder_name)
         return jsonify({"status": "ok", "folder": new_folder_name})
     except OSError as e:
-        logger.error("[Dashboard] Failed to rename folder %s -> %s: %s", folder_name, new_folder_name, e, exc_info=True)
+        logger.error("[Dashboard] Failed to rename case folder: %s", e, exc_info=True)
         return jsonify({"error": "Failed to rename folder"}), 500
 
 
@@ -417,7 +420,8 @@ def api_cases_edit_file(folder_name: str, filename: str):
 
     try:
         safe_move_with_meta(src_path, target_path)
-        logger.info(
+        logger.info("[Dashboard] Case file updated (doc_type=%s).", doc_type)
+        logger.debug(
             "[Dashboard] Edited file: %s → %s/%s",
             filename,
             new_folder_name,
@@ -426,7 +430,7 @@ def api_cases_edit_file(folder_name: str, filename: str):
         cleanup_empty_folder(os.path.dirname(src_path), stop_at=DashboardState.config.target_base_dir)
         return jsonify({"status": "ok", "folder": new_folder_name, "file": target_filename})
     except OSError as e:
-        logger.error("[Dashboard] Failed to edit file %s: %s", src_path, e, exc_info=True)
+        logger.error("[Dashboard] Failed to edit case file: %s", e, exc_info=True)
         return jsonify({"error": "Failed to edit file"}), 500
 
 
@@ -444,10 +448,11 @@ def api_cases_delete_file(folder_name: str, filename: str):
         send_to_trash(filepath)
         _remove_meta_sidecar(filepath, use_trash=True)
         cleanup_empty_folder(os.path.dirname(filepath), stop_at=DashboardState.config.target_base_dir)
-        logger.info("[Dashboard] Moved file to trash: %s", filepath)
+        logger.info("[Dashboard] Moved case file to trash.")
+        logger.debug("[Dashboard] Moved file to trash: %s", filepath)
         return jsonify({"status": "ok"})
     except OSError as e:
-        logger.error("[Dashboard] Failed to delete file %s: %s", filepath, e, exc_info=True)
+        logger.error("[Dashboard] Failed to delete case file: %s", e, exc_info=True)
         return jsonify({"error": "Failed to delete file"}), 500
 
 
@@ -468,10 +473,11 @@ def api_cases_delete_folder(folder_name: str):
 
     try:
         send_to_trash(folder_path)
-        logger.info("[Dashboard] Moved process folder to trash: %s", folder_path)
+        logger.info("[Dashboard] Moved process folder to trash.")
+        logger.debug("[Dashboard] Moved process folder to trash: %s", folder_path)
         return jsonify({"status": "ok"})
     except OSError as e:
-        logger.error("[Dashboard] Failed to delete folder %s: %s", folder_path, e, exc_info=True)
+        logger.error("[Dashboard] Failed to delete process folder: %s", e, exc_info=True)
         return jsonify({"error": "Failed to delete folder"}), 500
 
 

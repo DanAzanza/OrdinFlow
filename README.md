@@ -5,7 +5,7 @@
 [![Python](https://img.shields.io/badge/Python-3.10%2B%20%2864--bit%29-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
 [![Type Checking: Pyright](https://img.shields.io/badge/Type%20Checking-Pyright%20Standard-2b5b84?style=flat-square)](https://github.com/microsoft/pyright)
 [![Linter: Ruff](https://img.shields.io/badge/Linter-Ruff-black?style=flat-square&logo=ruff)](https://github.com/astral-sh/ruff)
-[![Tests: Pytest](https://img.shields.io/badge/Tests-359%20Passed-brightgreen?style=flat-square&logo=pytest)](https://pytest.org/)
+[![Tests: Pytest](https://img.shields.io/badge/Tests-Pytest%20CI%20Gate-brightgreen?style=flat-square&logo=pytest)](https://pytest.org/)
 [![Privacy: 100% Air--Gapped](https://img.shields.io/badge/Privacy-100%25%20Air--Gapped%20%2F%20GDPR-blue?style=flat-square)](docs/legal/PRIVACY_POLICY.md)
 [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-orange?style=flat-square)](LICENSE)
 
@@ -56,7 +56,7 @@ OrdinFlow solves the **three fatal flaws** of existing document management solut
 | **Data Sovereignty & Air-Gap** | 🟢 **100% Local & Air-Gapped**<br>No cloud keys, zero leakage | 🟢 **100% Local** | 🔴 **Cloud-Dependent**<br>Third-party servers & US cloud risk | 🟡 **Hybrid / Cloud-First**<br>Often requires cloud sync |
 | **Perception Architecture** | 🟢 **Dual-Pass Fusion**<br>Spatial ONNX OCR + Local VLM | 🟡 **Text-Only OCR**<br>Tesseract / ocrmypdf | 🟢 **Cloud Vision-LLM**<br>High quality, but remote | 🟡 **Zonal OCR Templates**<br>Rigid, breaks on layout change |
 | **Visual Element Reasoning** | 🟢 **Native**<br>Stamps, signatures, drawings, photos | 🔴 **None**<br>Discards non-text visual artifacts | 🟡 **Moderate**<br>Requires custom model training | 🔴 **None**<br>Pure text stream matching |
-| **Anti-Hallucination Gate** | 🟢 **Consensus Engine ($K \ge 0.67$)**<br>Weighted Levenshtein clustering | ⚪ **N/A**<br>(Deterministic OCR only) | 🔴 **Raw LLM Output**<br>Prone to silent hallucinations | ⚪ **N/A**<br>(Rigid template matching) |
+| **Anti-Hallucination Gate** | 🟢 **Consensus Engine ($K \ge 0.67$)**<br>Weighted SequenceMatcher clustering | ⚪ **N/A**<br>(Deterministic OCR only) | 🔴 **Raw LLM Output**<br>Prone to silent hallucinations | ⚪ **N/A**<br>(Rigid template matching) |
 | **Legacy Desktop RPA Bridge** | 🟢 **Built-in Agentic RPA**<br>Set-of-Mark (SoM) visual grounding | 🔴 **None**<br>Requires webhooks or external tools | 🔴 **None**<br>Returns raw JSON only | 🟡 **Complex Add-Ons**<br>Proprietary enterprise connectors |
 | **Operating Costs** | 🟢 **100% Free & Open Source**<br>Runs on consumer GPUs/CPUs | 🟢 **Free & Open Source** | 🔴 **Per-Page Pricing**<br>Recurring monthly cloud bills | 🔴 **5-Figure Licensing**<br>Heavy seat & maintenance fees |
 | **Storage & Portability** | 🟢 **Open Filesystem & Dynamic Hierarchy**<br>Zero DB lock-in; targeted `.meta` sidecars for review & RPA audit | 🟡 **Relational Database**<br>PostgreSQL / SQLite dependency | 🔴 **Cloud SaaS Silo**<br>Vendor lock-in | 🔴 **Proprietary DB Silo**<br>Closed schema |
@@ -154,7 +154,7 @@ flowchart TD
     end
 
     subgraph CONSENSUS ["3. Multi-Resolution Consensus Engine"]
-        OCR & VLM1 --> CLUST[Fuzzy Levenshtein Clustering\nGerman Umlaut & Phonetic Normalization]
+        OCR & VLM1 --> CLUST[Fuzzy SequenceMatcher Clustering\nGerman Umlaut & Token Contradiction Guard]
         CLUST --> EVAL{Consensus K >= 0.67\n& Winning Weight >= 1.25?}
         EVAL -- Disputed Fields --> VLM2[Tier 2 Targeted Pass: 1344px\nOnly Pending Fields]
         VLM2 --> EVAL2{Consensus Reached?}
@@ -264,14 +264,14 @@ OrdinFlow/
 │   ├── extraction_pipeline.py    # Multi-resolution tiers (896px → 1120px → 1344px → 1568px)
 │   ├── file_service.py           # Atomic file operations, PDF splitting & lock checks
 │   ├── image_processing.py       # OpenCV preprocessing, scaling & contour normalization
-│   ├── llm_backends.py          # Abstract LLM backend (embedded llama_cpp vs. server)
+│   ├── llm_backends.py          # Abstract LLM backend (embedded llama_cpp vs. local loopback server)
 │   ├── processor.py              # Main document processing orchestrator & queue manager
 │   ├── routing.py                # Dynamic folder & filename path templating
 │   ├── skill_recorder.py         # Live mouse/keyboard recorder with OCR element snippets
 │   ├── state.py                  # Unidirectional state container & DMSService
 │   ├── utils.py                  # Sidecar helpers, sanitization & date normalizers
 │   ├── vision.py                 # VLM prompt formatting & JSON extraction
-│   ├── voting.py                 # Consensus metric, Levenshtein clustering & weighted voting
+│   ├── voting.py                 # Consensus metric, SequenceMatcher clustering & weighted voting
 │   └── skills/                   # Agentic RPA & integration engines
 │       ├── engines/              # GDT 2.1/3.0 PVS engine, RPA executor, import engine
 │       ├── action_executor.py    # Win32 keystrokes & clicks with RPA focus guard
@@ -286,7 +286,7 @@ OrdinFlow/
 │   ├── setup_environment.py      # Hardware auto-detection & wheel installer
 │   ├── download_models.py        # Atomic model downloader with GGUF header validation
 │   └── verify_ci.py              # Full CI verification runner (Ruff, Pyright, Pytest)
-├── tests/                        # Comprehensive automated test suite (359 tests)
+├── tests/                        # Comprehensive automated test suite
 ├── Install_OrdinFlow.bat         # 1-Click Windows installer & hardware orchestrator
 ├── Start_OrdinFlow.bat           # 1-Click windowless background launcher
 └── main.py                       # CLI & service entrypoint
@@ -337,7 +337,7 @@ ruff check .
 # 2. Static Type Analysis
 pyright
 
-# 3. Automated Test Suite (359 tests)
+# 3. Automated Test Suite
 python -m pytest -q
 ```
 

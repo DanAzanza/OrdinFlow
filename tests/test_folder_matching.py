@@ -231,3 +231,36 @@ def test_api_config_match_folder_by_integration(client):
     get_res2 = client.get("/api/config")
     assert get_res2.status_code == 200
     assert get_res2.get_json()["match_folder_by"] == ["Nachname", "Vorname", "Titel"]
+
+
+def test_find_all_matching_folders_negative_and_boundary_cases(tmp_path):
+    """Tests boundary, negative, and deterministic behaviors of find_all_matching_folders_by_keywords."""
+    cases_dir = tmp_path / "Cases"
+    cases_dir.mkdir(parents=True, exist_ok=True)
+
+    config = AppConfig()
+    config.target_base_dir = str(cases_dir)
+    file_service = FileService(config)
+
+    # 1. Non-existent directory, empty keywords, or only missing/punctuation keywords -> []
+    assert file_service.find_all_matching_folders_by_keywords(str(tmp_path / "does_not_exist"), ["Mueller"]) == []
+    assert file_service.find_all_matching_folders_by_keywords(str(cases_dir), []) == []
+    assert file_service.find_all_matching_folders_by_keywords(str(cases_dir), ["[MISSING]", "----", "   ", "___"]) == []
+
+    # 2. Regular files matching keywords MUST be ignored (only directories may match)
+    matching_file = cases_dir / "2026__Rezept__Schmidt_Anna.pdf"
+    matching_file.write_bytes(b"%PDF-1.4 dummy")
+    assert file_service.find_all_matching_folders_by_keywords(str(cases_dir), ["Schmidt", "Anna"]) == []
+
+    # 3. Same-tick rapid directory creation visibility & deterministic alphabetical order
+    folder_b = cases_dir / "2026-02__Befund__Schmidt_Anna"
+    folder_a = cases_dir / "2026-01__Arztbrief__Schmidt_Anna"
+    folder_b.mkdir()
+    folder_a.mkdir()
+
+    matches = file_service.find_all_matching_folders_by_keywords(str(cases_dir), ["Schmidt", "Anna"])
+    assert [os.path.basename(m) for m in matches] == [
+        "2026-01__Arztbrief__Schmidt_Anna",
+        "2026-02__Befund__Schmidt_Anna",
+    ]
+

@@ -6,7 +6,9 @@ in a decoupled service interface (`DMSService`) and `DashboardState`.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 import queue
+import secrets
 import threading
 import time
 from typing import Any
@@ -63,6 +65,27 @@ class DMSService:
         self._last_heartbeat: float = time.time()
         self._shutdown_event = threading.Event()
         self.session_token: str | None = None
+        self.bootstrap_token: str | None = None
+
+    def issue_bootstrap_token(self) -> str:
+        """Generates and stores a single-use cryptographic bootstrap nonce."""
+        with _STATE_LOCK:
+            nonce = secrets.token_urlsafe(32)
+            self.bootstrap_token = nonce
+            return nonce
+
+    def consume_bootstrap_token(self, candidate: str | None) -> bool:
+        """Validates and atomically invalidates the single-use bootstrap nonce."""
+        if not candidate or not isinstance(candidate, str):
+            return False
+        with _STATE_LOCK:
+            expected = self.bootstrap_token
+            if not expected or not isinstance(expected, str):
+                return False
+            if secrets.compare_digest(candidate, expected):
+                self.bootstrap_token = None
+                return True
+            return False
 
 
 def create_dms_service(config: Any = None, processor: Any = None) -> DMSService:
@@ -79,23 +102,26 @@ def create_dms_service(config: Any = None, processor: Any = None) -> DMSService:
 dms_service = DMSService()
 
 _STATE_LOCK = threading.Lock()
+_CONTEXT_RESOLVER: Callable[[], DMSService | None] | None = None
+
+
+def register_dms_context_resolver(resolver: Callable[[], DMSService | None] | None) -> None:
+    """Registers an external context resolver (e.g. Flask app context) without coupling core to web frameworks."""
+    global _CONTEXT_RESOLVER
+    with _STATE_LOCK:
+        _CONTEXT_RESOLVER = resolver
 
 
 def get_current_dms() -> DMSService:
     """Retrieve the active DMSService instance.
 
-    Checks active Flask application context first if available and configured
-    via current_app.extensions['dms']; falls back to the process-level default.
+    Checks the registered context resolver first if available; falls back to the process-level default.
     """
-    try:
-        from flask import current_app, has_app_context
-
-        if has_app_context():
-            ext_dms = current_app.extensions.get("dms")
-            if ext_dms is not None and isinstance(ext_dms, DMSService):
-                return ext_dms
-    except ImportError:
-        pass
+    resolver = _CONTEXT_RESOLVER
+    if resolver is not None:
+        resolved = resolver()
+        if resolved is not None and isinstance(resolved, DMSService):
+            return resolved
     return dms_service
 
 
@@ -164,6 +190,24 @@ class _DashboardStateMeta(type):
         dms = get_current_dms()
         with _STATE_LOCK:
             dms.session_token = value
+
+    @property
+    def bootstrap_token(cls) -> str | None:
+        dms = get_current_dms()
+        with _STATE_LOCK:
+            return dms.bootstrap_token
+
+    @bootstrap_token.setter
+    def bootstrap_token(cls, value: str | None) -> None:
+        dms = get_current_dms()
+        with _STATE_LOCK:
+            dms.bootstrap_token = value
+
+    def issue_bootstrap_token(cls) -> str:
+        return get_current_dms().issue_bootstrap_token()
+
+    def consume_bootstrap_token(cls, candidate: str | None) -> bool:
+        return get_current_dms().consume_bootstrap_token(candidate)
 
 
 class DashboardState(metaclass=_DashboardStateMeta):

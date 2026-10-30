@@ -68,6 +68,9 @@ class DocumentProcessor:
         self.stats_failed = 0
         self.stats_skipped = 0
         self.stats_total_duration = 0.0
+        self._queue_size_cache_dir: str | None = None
+        self._queue_size_cache_ts: float = 0.0
+        self._cached_queue_size: int = 0
 
         # Document context for inherited data across multi-part files
         self.last_context: dict = {}
@@ -116,19 +119,32 @@ class DocumentProcessor:
             duration = self.stats_total_duration
 
         avg = (duration / total) if total > 0 else 0.0
-        queue_count = 0
-        try:
-            if os.path.exists(self.config.watch_dir):
-                valid_exts = {".pdf", ".png", ".jpg", ".jpeg", ".tif", ".tiff"}
-                queue_count = sum(
-                    1
-                    for root, _, files in os.walk(self.config.watch_dir)
-                    for f in files
-                    if os.path.splitext(f.lower())[1] in valid_exts
-                    and not os.path.exists(os.path.join(root, f + ".meta"))
-                )
-        except (OSError, ValueError) as e:
-            logger.debug("Error retrieving queue size: %s", e)
+        now = time.time()
+        watch_dir = getattr(self.config, "watch_dir", "") or ""
+        with self._stats_lock:
+            if self._queue_size_cache_dir == watch_dir and (now - self._queue_size_cache_ts) < 2.0:
+                queue_count = self._cached_queue_size
+            else:
+                queue_count = -1
+
+        if queue_count < 0:
+            queue_count = 0
+            try:
+                if watch_dir and os.path.exists(watch_dir):
+                    valid_exts = {".pdf", ".png", ".jpg", ".jpeg", ".tif", ".tiff"}
+                    queue_count = sum(
+                        1
+                        for root, _, files in os.walk(watch_dir)
+                        for f in files
+                        if os.path.splitext(f.lower())[1] in valid_exts
+                        and not os.path.exists(os.path.join(root, f + ".meta"))
+                    )
+            except (OSError, ValueError) as e:
+                logger.debug("Error retrieving queue size: %s", e)
+            with self._stats_lock:
+                self._queue_size_cache_dir = watch_dir
+                self._queue_size_cache_ts = now
+                self._cached_queue_size = queue_count
 
         return {
             "total": total,
@@ -373,6 +389,7 @@ class DocumentProcessor:
                 elif status == "skipped":
                     self.stats_skipped += 1
                 self.stats_total_duration += duration
+                self._queue_size_cache_ts = 0.0
             stats_recorded = True
 
         try:

@@ -88,6 +88,26 @@ class ConfigUpdateSchema(BaseModel):
     llm_backend: str | None = None
     server_url: str | None = None
     server_api_key: str | None = None
+
+    @field_validator("server_url")
+    @classmethod
+    def validate_local_server_url(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        clean = v.strip()
+        if not clean:
+            return ""
+        import urllib.parse
+
+        parsed = urllib.parse.urlparse(clean)
+        if parsed.scheme not in ("http", "https"):
+            raise ValueError("server_url must use http:// or https:// scheme")
+        if parsed.username or parsed.password:
+            raise ValueError("server_url must not contain embedded credentials")
+        host = (parsed.hostname or "").strip().lower()
+        if host not in ("127.0.0.1", "localhost", "::1"):
+            raise ValueError("server_url must point to a local loopback address (127.0.0.1, localhost, or ::1)")
+        return clean
     llm_model_path: str | None = None
     mmproj_path: str | None = None
     n_gpu_layers: int | None = None

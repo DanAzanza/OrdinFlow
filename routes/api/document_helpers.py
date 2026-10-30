@@ -225,14 +225,14 @@ def _generate_pdf_thumbnail(full_path: str):
     if request.headers.get("If-None-Match") == etag:
         res = Response(status=304)
         res.headers["ETag"] = etag
-        res.headers["Cache-Control"] = "public, max-age=86400"
+        res.headers["Cache-Control"] = "private, no-store"
         return res
 
     cached = _thumbnail_cache.get(full_path)
     if cached and cached[0] == mtime:
         res = Response(cached[1], mimetype="image/jpeg")
         res.headers["ETag"] = etag
-        res.headers["Cache-Control"] = "public, max-age=86400"
+        res.headers["Cache-Control"] = "private, no-store"
         return res
 
     if not fitz:
@@ -251,7 +251,7 @@ def _generate_pdf_thumbnail(full_path: str):
         _thumbnail_cache.set(full_path, (mtime, img_bytes))
         res = Response(img_bytes, mimetype="image/jpeg")
         res.headers["ETag"] = etag
-        res.headers["Cache-Control"] = "public, max-age=86400"
+        res.headers["Cache-Control"] = "private, no-store"
         return res
     except Exception as e:
         logger.error("[DocumentHelpers] Error generating PDF preview for %s: %s", full_path, e, exc_info=True)

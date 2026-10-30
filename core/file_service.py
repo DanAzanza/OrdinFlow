@@ -45,19 +45,28 @@ def _count_missing_placeholders(path_or_name: str) -> int:
     return b.upper().count("MISSING") + b.count("----")
 
 
+def _compile_keyword_patterns(valid_keywords: list[str]) -> list[re.Pattern[str]]:
+    """Compiles word-boundary regex patterns for cleaned non-empty keywords."""
+    cleaned_kw = [_clean_folder_match_name(kw) for kw in valid_keywords if _clean_folder_match_name(kw)]
+    return [re.compile(rf"(?<!\w){re.escape(kw_clean)}(?!\w)") for kw_clean in cleaned_kw]
+
+
+def _matches_compiled_patterns(item_name: str, patterns: list[re.Pattern[str]]) -> bool:
+    """Checks whether an item_name matches all pre-compiled keyword patterns."""
+    if not item_name or not patterns:
+        return False
+    item_clean = _clean_folder_match_name(item_name)
+    if not item_clean:
+        return False
+    return all(p.search(item_clean) is not None for p in patterns)
+
+
 def matches_folder_keywords(item_name: str, valid_keywords: list[str]) -> bool:
     """Checks whether an item_name contains all valid_keywords using word boundaries."""
     if not item_name or not valid_keywords:
         return False
-    item_clean = _clean_folder_match_name(item_name)
-    cleaned_kw = [_clean_folder_match_name(kw) for kw in valid_keywords if _clean_folder_match_name(kw)]
-    if not cleaned_kw:
-        return False
-    for kw_clean in cleaned_kw:
-        pattern = rf"(?<!\w){re.escape(kw_clean)}(?!\w)"
-        if not re.search(pattern, item_clean):
-            return False
-    return True
+    patterns = _compile_keyword_patterns(valid_keywords)
+    return _matches_compiled_patterns(item_name, patterns)
 
 
 def is_file_processed_and_fresh(filepath: str) -> bool:
@@ -117,17 +126,24 @@ class FileService:
         if not valid_kw:
             return []
 
+        patterns = _compile_keyword_patterns(valid_kw)
+        if not patterns:
+            return []
+
+        matches: list[str] = []
         try:
-            entries = os.listdir(base_dir)
+            with os.scandir(base_dir) as it:
+                for entry in it:
+                    try:
+                        if entry.is_dir() and _matches_compiled_patterns(entry.name, patterns):
+                            matches.append(entry.path)
+                    except OSError:
+                        continue
         except OSError as e:
             logger.debug("[FileService] Error reading base_dir '%s': %s", base_dir, e)
             return []
 
-        matches: list[str] = []
-        for item in entries:
-            item_path = os.path.join(base_dir, item)
-            if os.path.isdir(item_path) and matches_folder_keywords(item, valid_kw):
-                matches.append(item_path)
+        matches.sort(key=lambda p: os.path.basename(p))
         return matches
 
     def find_existing_folder_by_keywords(self, base_dir: str, keywords: list[str]) -> str | None:
@@ -204,8 +220,11 @@ class FileService:
                     # Try direct atomic directory rename with retries for transient locks
                     for attempt in range(3):
                         try:
-                            logger.info(
-                                f"[+] Renaming existing case folder: '{existing_folder_name}' -> '{target_folder_name}'"
+                            logger.info("[+] Renaming existing case folder to complete metadata.")
+                            logger.debug(
+                                "[+] Renaming existing case folder: '%s' -> '%s'",
+                                existing_folder_name,
+                                target_folder_name,
                             )
                             os.rename(existing_folder, target_dir)
                             renamed = True
@@ -231,18 +250,23 @@ class FileService:
                             os.rmdir(existing_folder)
                         except OSError as rm_err:
                             logger.debug("Could not remove empty case folder %s: %s", existing_folder, rm_err)
-                        logger.info(
-                            f"[+] Migrated contents of case folder: '{existing_folder_name}' -> '{target_folder_name}'"
+                        logger.info("[+] Migrated contents of incomplete case folder.")
+                        logger.debug(
+                            "[+] Migrated contents of case folder: '%s' -> '%s'",
+                            existing_folder_name,
+                            target_folder_name,
                         )
                         active_target = target_dir
                     except Exception as e:
                         logger.warning(f"[!] Migration of case folder failed: {e}")
                         active_target = existing_folder
             else:
-                logger.info(f"[*] Using existing case folder: '{existing_folder_name}'")
+                logger.info("[*] Using existing case folder.")
+                logger.debug("[*] Using existing case folder: '%s'", existing_folder_name)
                 active_target = existing_folder
         else:
-            logger.info(f"[+] Creating new case folder: '{target_folder_name}'")
+            logger.info("[+] Creating new case folder.")
+            logger.debug("[+] Creating new case folder: '%s'", target_folder_name)
             os.makedirs(target_dir, exist_ok=True)
             active_target = target_dir
 
@@ -253,8 +277,11 @@ class FileService:
                 if orphan_missing > 0:
                     orphan_name = os.path.basename(orphan)
                     try:
-                        logger.info(
-                            f"[+] Consolidating orphaned incomplete folder '{orphan_name}' -> '{os.path.basename(active_target)}'"
+                        logger.info("[+] Consolidating orphaned incomplete case folder.")
+                        logger.debug(
+                            "[+] Consolidating orphaned incomplete folder '%s' -> '%s'",
+                            orphan_name,
+                            os.path.basename(active_target),
                         )
                         for item in os.listdir(orphan):
                             s_p = os.path.join(orphan, item)
@@ -265,21 +292,23 @@ class FileService:
                         except OSError as rm_err:
                             logger.debug("Could not remove emptied orphan folder %s: %s", orphan, rm_err)
                     except Exception as e:
-                        logger.warning(f"[!] Consolidation of orphan folder {orphan} failed: {e}")
+                        logger.warning("[!] Consolidation of orphan folder failed: %s", e)
 
         return active_target
 
     def move_file(self, filepath: str, target_dir: str, target_filename: str) -> str:
         """Safely moves a file into the target directory."""
         target_filepath = deduplicate_path(os.path.join(target_dir, target_filename))
-        logger.info(f"[+] Moving file '{os.path.basename(filepath)}' -> '{target_filepath}'")
+        logger.info(f"[+] Moving file '{os.path.basename(filepath)}' -> [case archive]")
+        logger.debug("[+] Moving file '%s' -> '%s'", os.path.basename(filepath), target_filepath)
         safe_move(filepath, target_filepath)
         return target_filepath
 
     def copy_file(self, filepath: str, target_dir: str, target_filename: str) -> str:
         """Safely copies a file into the target directory."""
         target_filepath = deduplicate_path(os.path.join(target_dir, target_filename))
-        logger.info(f"[+] Copying file '{os.path.basename(filepath)}' -> '{target_filepath}'")
+        logger.info(f"[+] Copying file '{os.path.basename(filepath)}' -> [case archive]")
+        logger.debug("[+] Copying file '%s' -> '%s'", os.path.basename(filepath), target_filepath)
         safe_copy(filepath, target_filepath)
         return target_filepath
 
@@ -584,9 +613,8 @@ class FileService:
                         new_doc.save(target_filepath, garbage=4, deflate=True, clean=True)
                         saved_files.append(target_filepath)
 
-                    logger.info(
-                        f"[+] Partial PDF '{os.path.basename(target_filepath)}' (pages {g_pages}) saved successfully."
-                    )
+                    logger.info(f"[+] Partial PDF (pages {g_pages}) saved successfully.")
+                    logger.debug("[+] Partial PDF '%s' (pages %s) saved successfully.", target_filepath, g_pages)
 
             if keep_source:
                 marked = self.mark_as_processed(

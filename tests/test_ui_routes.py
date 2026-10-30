@@ -22,13 +22,17 @@ def ui_client():
     app.register_blueprint(ui_bp)
 
     DashboardState.session_token = "test-token-12345"
+    DashboardState.bootstrap_token = None
     with app.test_client() as client:
+        client.environ_base["HTTP_X_ORDINFLOW_TOKEN"] = "test-token-12345"
+        client.environ_base["HTTP_HOST"] = "localhost"
         yield client
     DashboardState.session_token = None
+    DashboardState.bootstrap_token = None
 
 
 def test_index_route(ui_client):
-    """Verifies that GET / renders index.html with the active session token injected."""
+    """Verifies that authenticated GET / renders index.html with the active session token injected."""
     res = ui_client.get("/")
     assert res.status_code == 200
     assert "text/html" in res.content_type
@@ -36,6 +40,45 @@ def test_index_route(ui_client):
     html = res.get_data(as_text=True)
     assert 'content="test-token-12345"' in html
     assert "OrdinFlow" in html
+
+
+def test_index_route_unauthenticated_and_bootstrap_flow():
+    """Verifies that GET / rejects unauthenticated requests (403) and /auth/bootstrap sets a single-use HttpOnly cookie."""
+    app = Flask(__name__, template_folder=str(ROOT_DIR / "templates"))
+    app.register_blueprint(ui_bp)
+    DashboardState.session_token = "secret-session-tok-999"
+    nonce = DashboardState.issue_bootstrap_token()
+
+    try:
+        with app.test_client() as anon_client:
+            # 1. Unauthenticated GET / MUST return 403 and NEVER leak the token
+            res_unauth = anon_client.get("/", headers={"Host": "127.0.0.1:8080"})
+            assert res_unauth.status_code == 403
+            assert "secret-session-tok-999" not in res_unauth.get_data(as_text=True)
+
+            # 2. Invalid bootstrap nonce returns 403 and does NOT consume the valid nonce
+            res_bad_nonce = anon_client.get("/auth/bootstrap?nonce=wrong_nonce", headers={"Host": "127.0.0.1:8080"})
+            assert res_bad_nonce.status_code == 403
+
+            # 3. Valid bootstrap nonce redirects to / and sets HttpOnly SameSite=Strict cookie
+            res_boot = anon_client.get(f"/auth/bootstrap?nonce={nonce}", headers={"Host": "127.0.0.1:8080"})
+            assert res_boot.status_code == 302
+            set_cookie_hdr = res_boot.headers.get("Set-Cookie", "")
+            assert "ordinflow_session=secret-session-tok-999" in set_cookie_hdr
+            assert "HttpOnly" in set_cookie_hdr
+            assert "SameSite=Strict" in set_cookie_hdr
+
+            # 4. Replaying the same bootstrap nonce MUST fail (single-use)
+            res_replay = anon_client.get(f"/auth/bootstrap?nonce={nonce}", headers={"Host": "127.0.0.1:8080"})
+            assert res_replay.status_code == 403
+
+            # 5. Subsequent GET / with the established session cookie succeeds
+            res_authed = anon_client.get("/", headers={"Host": "127.0.0.1:8080"})
+            assert res_authed.status_code == 200
+            assert 'content="secret-session-tok-999"' in res_authed.get_data(as_text=True)
+    finally:
+        DashboardState.session_token = None
+        DashboardState.bootstrap_token = None
 
 
 def test_favicon_route(ui_client):

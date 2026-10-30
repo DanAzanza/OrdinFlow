@@ -1,8 +1,8 @@
 import secrets
 
-from flask import Blueprint, current_app, jsonify, request
+from flask import Blueprint, jsonify, request
 
-from core.state import DashboardState
+from routes.state import DashboardState
 from routes.api.documents_api import (
     _deduplicate_filename,
     _get_doc_routing_cfg,
@@ -27,29 +27,31 @@ from routes.schemas import (
 
 api_bp = Blueprint("api", __name__)
 
+_ALLOWED_HOSTS = {"127.0.0.1", "localhost", "::1", "[::1]"}
+
 
 @api_bp.before_request
 def check_api_security():
-    if current_app.config.get("TESTING"):
-        return None
-
     # 1. Host validation against DNS rebinding
     raw_host = request.host.split(":")[0].strip().lower()
-    allowed_hosts = {"127.0.0.1", "localhost", "::1", "[::1]"}
-    if raw_host not in allowed_hosts:
+    if raw_host not in _ALLOWED_HOSTS:
         return jsonify({"error": "Forbidden: Invalid Host header"}), 403
 
-    # Public, unauthenticated endpoints (heartbeat & readiness/status healthchecks)
+    # Public, unauthenticated endpoints (strictly zero-PII liveness/heartbeat probes)
     path = request.path.rstrip("/")
-    if path.endswith("/api/heartbeat") or path.endswith("/api/status"):
+    if path.endswith("/api/heartbeat") or path.endswith("/api/health"):
         return None
 
-    # 2. Token validation for all other API endpoints (fail-closed)
+    # 2. Token / Session Cookie validation for all other API endpoints (fail-closed)
     expected_token = DashboardState.session_token
-    if not expected_token:
+    if not expected_token or not isinstance(expected_token, str):
         return jsonify({"error": "Unauthorized: Session token not initialized"}), 403
 
-    token = request.headers.get("X-OrdinFlow-Token") or request.args.get("token")
+    token = (
+        request.headers.get("X-OrdinFlow-Token")
+        or request.cookies.get("ordinflow_session")
+        or request.args.get("token")
+    )
     if not token or not isinstance(token, str) or not secrets.compare_digest(token, expected_token):
         return jsonify({"error": "Unauthorized: Invalid or missing session token"}), 403
 
