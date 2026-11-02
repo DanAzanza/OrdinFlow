@@ -6,7 +6,7 @@
 #define MyAppURL "https://github.com/DanAzanza/OrdinFlow"
 #define MyAppExeName "Start_OrdinFlow.bat"
 #ifndef MyAppVersion
-  #define MyAppVersion "0.9.0"
+  #define MyAppVersion "0.9.5"
 #endif
 
 [Setup]

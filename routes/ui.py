@@ -57,7 +57,7 @@ def auth_bootstrap():
 
 @ui_bp.route("/")
 def index():
-    app_version = getattr(DashboardState.config, "app_version", "0.9.0") if DashboardState.config else "0.9.0"
+    app_version = getattr(DashboardState.config, "app_version", "0.9.5") if DashboardState.config else "0.9.5"
     return render_template(
         "index.html",
         session_token=DashboardState.session_token,

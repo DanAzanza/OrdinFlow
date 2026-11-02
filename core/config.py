@@ -62,7 +62,7 @@ class AppConfig:
     vision_patch_size: int = 28
     vision_api_timeout: float = 120.0
     vision_api_retries: int = 3
-    app_version: str = "0.9.0"
+    app_version: str = "0.9.5"
 
     # Path settings (calculated via setup_paths)
     base_dir: str = "."
