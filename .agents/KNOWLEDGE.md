@@ -51,6 +51,10 @@
 * **Detached Desktop / Lock Screen**: When Windows is locked (`LockApp.exe`, `LogonUI.exe`) or screen saver is active, `GetForegroundWindow()` returns 0 or the lock screen handle. Keystroke simulation must fail-closed immediately to avoid typing sensitive data into login screens or failing silently.
 * **PII Clipboard Sanitization**: Pasting patient metadata via clipboard requires explicitly clearing the Win32 clipboard (`EmptyClipboard()`) in `finally` blocks to prevent sensitive patient data from leaking into Windows Clipboard History (`Win+V`).
 
+### 🌐 WSGI Socket Binding Before Browser Launch Race
+* On multi-user Terminal Server / RDS environments, spawning the browser (`webbrowser.open()`) before the WSGI server (`make_server(...)`) successfully binds the socket creates a severe security race: if port binding fails (e.g. port collision or permission denied), the browser opens anyway and connects to the existing instance of another user on that port, displaying their session.
+* Always construct and bind the WSGI server (`server = make_server(host, port, app)`) first; only launch the browser and the serving thread after the socket handle is demonstrably acquired.
+
 ---
 
 ## 3. Medical PVS & RPA Integration Quirks

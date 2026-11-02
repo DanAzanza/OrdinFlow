@@ -6,7 +6,7 @@
 
 ## 1. Quality Gate & Commit Scopes
 * **CI Verification**: `python scripts/verify_ci.py` (Ruff, Pyright across `core/` and `routes/`, full pytest suite).
-* **Commit Scopes**: `[Core]`, `[Vision]`, `[RPA]`, `[Skills]`, `[API]`, `[UI]`, `[CI]`.
+* **Commit Scopes**: `[Core]`, `[Vision]`, `[RPA]`, `[Skills]`, `[API]`, `[UI]`, `[CI]`, `[Docs]`.
 * **Subagent Roles**: `plan_critic` (Architecture sparring), `pre_commit_auditor` (Pre-commit diff audit).
 
 ---
@@ -41,10 +41,22 @@
 
 ## 3. Security, Multi-User & Compliance Contracts
 
-### 🔒 Windows Terminal Server / Citrix Threat Model (`127.0.0.1:8080`)
+### 🔒 Windows Terminal Server / Citrix Threat Model & Bootstrap Nonce Protocol
 * OrdinFlow target deployments include medical practices and legal offices on shared Windows Terminal Server / Citrix RDS hosts.
 * On shared terminal servers, all concurrently logged-in users share `localhost` (`127.0.0.1`). Unauthenticated endpoints or fail-open token logic allow other local OS users to read patient files or inject skills.
-* Every mutating endpoint and SSE event stream (`/api/events`) requires authentication via `X-OrdinFlow-Token` or `?token=...`. Test bypass headers (`X-OrdinFlow-Test-Bypass`) are strictly forbidden in production routes.
+* **Bootstrap Nonce & Session Cookie Handshake**: To prevent token leakage in HTML `<meta>` tags or DOM source, browser launches supply a single-use ephemeral nonce (`GET /auth/bootstrap?nonce=...`). The server validates the nonce, exchanges it for an `HttpOnly; SameSite=Strict` `ordinflow_session` cookie, and redirects to `/`. Unauthenticated requests to `/` or `/api/*` (except `/api/health` and `/api/auth/bootstrap_nonce`) fail closed with `403 Forbidden`.
+* **Multi-User Port Isolation & Per-User Runtime State**: OrdinFlow binds to an ephemeral port (`find_free_port()`, defaulting to 8080 with automatic fallback to free ports) to prevent cross-session port collision. Runtime state files are strictly partitioned per OS user (`%LOCALAPPDATA%/OrdinFlow/runtime_session_<user_hash>.json`), and stale process cleanup is strictly scoped to verified PIDs belonging to the current user.
+* **Security Headers & Cache Privacy**: Production responses enforce strict security headers (CSP, `X-Frame-Options: SAMEORIGIN`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: strict-origin-when-cross-origin`). Medical documents, thumbnails, and preview endpoints enforce `Cache-Control: private, no-store` to prevent caching sensitive patient images on shared local disks.
+* Every mutating endpoint and SSE event stream (`/api/events`) requires authentication via cookie, `X-OrdinFlow-Token`, or `?token=...`. Test bypass headers (`X-OrdinFlow-Test-Bypass`) or `TESTING` mode security bypasses are strictly forbidden in production routes.
+
+### 🌐 Server URL Loopback Restriction & Credential Masking
+* `ConfigUpdateSchema` enforces `validate_local_server_url`: `server_url` can only be set to local loopback addresses (`127.0.0.1`, `localhost`, `::1`). Configuring external/remote endpoints is blocked to prevent accidental or malicious document exfiltration to unauthorized remote servers.
+* `GET /api/config` masks `server_api_key` (`"********"`) to prevent exposure of sensitive credentials via browser inspection or status queries.
+
+### 🛡️ Condition Evaluator AST Variable Isolation
+* `core/skills/condition_evaluator.py` dynamically resolves extracted document variables (`{var}`).
+* String substitution into Python expressions before AST parsing is strictly forbidden (AST injection vulnerability).
+* The evaluator replaces placeholder patterns with synthetic AST identifiers (`__ordinflow_var_N`) and resolves their actual values via a custom AST `NodeVisitor` (`visit_Name`), guaranteeing that untrusted OCR/VLM text cannot break out of literals or alter expression semantics.
 
 ### 🛡️ Medical PII Logging Policy (§ 203 StGB, DSGVO / GDPR)
 * Medical documentation requires strict minimization. `core/processor.py` and downstream routers must NEVER log raw extracted JSON payloads (patient names, dates of birth, diagnoses) at `INFO` level.
