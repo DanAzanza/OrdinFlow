@@ -62,3 +62,9 @@
 * **Fail-Fast Integrity**: Tag 3000 (Patienten-ID) is strictly required; missing patient IDs fail fast with `ValueError` rather than guessing generic IDs. Tag 3103 (Geburtsdatum) must be omitted if unparseable or absent—never synthesize current date into patient master data.
 * **70-Character Line Limit**: Legacy DOS/Windows PVS parsers (Medistar, TurboMed, Albis) truncate or crash if Tag 6220 (Befund) exceeds 70 characters. Free text must be word-wrapped into consecutive 6220 tags.
 * **Directory Watcher Ingestion Race**: PVS directory watchers scan folders continuously and ingest incomplete files if written directly. Exports must write to `.gdt.tmp`, call `os.fsync()`, and atomically swap via `os.replace()`. Optional semaphore trigger files (`.sem` / `.ok`) must be written strictly *after* the `.gdt` rename.
+
+### 🔒 CodeQL & Security Scanning Traps in Medical Desktop Contexts
+* **GDT Plaintext Cleartext Storage (CWE-312 / CWE-359)**: CodeQL's `py/clear-text-storage-sensitive-data` flags `f.write(payload)` in `gdt_engine.py` because patient metadata (`pat_id`, `birth_date`) is written unencrypted. This is a systemic *false positive*: The German GDT standard (QMS Satzart 6310) strictly mandates unencrypted CP437 encoding for PVS file interfaces.
+* **In-App File Picker vs. Path Injection (CWE-022)**: CodeQL's `py/path-injection` flags `/api/system/fs_list` on `os.scandir(target_dir)`. In local desktop applications, this is an authenticated, intended directory browser for configuring local application paths (Inbox/Cases/Models).
+* **Dependabot Semver-Capping Trap**: Dependabot cannot automatically apply security updates and reports *"Dependabot cannot update to the required version"* if a rigid upper bound (e.g. `<13.0.0`) in `pyproject.toml` excludes the patched release. The upper bound in `pyproject.toml` must be manually raised to the next major version.
+
