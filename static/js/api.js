@@ -30,9 +30,7 @@ let _serverEventSource = null;
 function initServerEvents() {
 	if (typeof EventSource === "undefined" || _serverEventSource) return;
 	try {
-		const tokenMeta = document.querySelector('meta[name="ordinflow-token"]');
-		const token = tokenMeta ? tokenMeta.getAttribute("content") : "";
-		const sseUrl = "/api/events" + (token ? `?token=${encodeURIComponent(token)}` : "");
+		const sseUrl = "/api/events";
 		_serverEventSource = new EventSource(sseUrl);
 		_serverEventSource.onmessage = (event) => {
 			if (!event.data) return;
@@ -92,15 +90,9 @@ function safePathEncode(path) {
 }
 
 function withAuthToken(url) {
-	if (!url) return "";
-	const tokenMeta = document.querySelector('meta[name="ordinflow-token"]');
-	const token = tokenMeta ? tokenMeta.getAttribute("content") : "";
-	if (!token) return url;
-	const [baseAndQuery, hash] = url.split("#");
-	if (baseAndQuery.includes("token=")) return url;
-	const separator = baseAndQuery.includes("?") ? "&" : "?";
-	const authed = `${baseAndQuery}${separator}token=${encodeURIComponent(token)}`;
-	return hash ? `${authed}#${hash}` : authed;
+	// Session authentication for iframes and media is handled strictly via HttpOnly cookies.
+	// Query tokens are omitted to prevent leakage into browser history or logs.
+	return url || "";
 }
 
 function isPdfUrl(urlOrPath) {

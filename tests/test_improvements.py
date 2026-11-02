@@ -63,7 +63,8 @@ def test_api_events_sse_endpoint():
 
     try:
         client = app.test_client()
-        res = client.get("/api/events?token=sse-test-token", headers={"Host": "localhost"})
+        client.set_cookie("ordinflow_session", "sse-test-token")
+        res = client.get("/api/events", headers={"Host": "localhost"})
 
         assert res.status_code == 200
         assert "text/event-stream" in res.content_type

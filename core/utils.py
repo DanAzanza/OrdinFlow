@@ -641,17 +641,18 @@ def is_within_allowed_roots(
     if allowed_roots is None:
         import tempfile
 
-        roots: list[str | Path] = [tempfile.gettempdir(), os.getcwd()]
+        roots: list[str | Path] = [tempfile.gettempdir()]
         try:
             from core.state import DashboardState
 
             if DashboardState.config:
-                if DashboardState.config.base_dir:
-                    roots.append(DashboardState.config.base_dir)
                 if DashboardState.config.watch_dir:
                     roots.append(DashboardState.config.watch_dir)
                 if DashboardState.config.target_base_dir:
                     roots.append(DashboardState.config.target_base_dir)
+                bdir = DashboardState.config.base_dir
+                if bdir and bdir != "." and os.path.isabs(bdir):
+                    roots.append(bdir)
         except (ImportError, AttributeError):
             pass
         if allow_desktop:

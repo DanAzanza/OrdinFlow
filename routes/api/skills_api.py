@@ -5,6 +5,7 @@ from __future__ import annotations
 import ctypes
 import json
 import logging
+import math
 import re
 import sys
 import time
@@ -259,7 +260,15 @@ def pick_element_live():
     data = request.json or {}
     window_title = data.get("window_title")
 
-    delay_s = float(data.get("delay_seconds", 0.5))
+    raw_delay = data.get("delay_seconds", 0.5)
+    try:
+        delay_s = float(raw_delay)
+        if math.isnan(delay_s) or math.isinf(delay_s):
+            delay_s = 0.5
+        else:
+            delay_s = max(0.0, min(delay_s, 5.0))
+    except (ValueError, TypeError):
+        delay_s = 0.5
     if delay_s > 0:
         time.sleep(delay_s)
 

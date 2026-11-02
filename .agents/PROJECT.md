@@ -44,10 +44,10 @@
 ### 🔒 Windows Terminal Server / Citrix Threat Model & Bootstrap Nonce Protocol
 * OrdinFlow target deployments include medical practices and legal offices on shared Windows Terminal Server / Citrix RDS hosts.
 * On shared terminal servers, all concurrently logged-in users share `localhost` (`127.0.0.1`). Unauthenticated endpoints or fail-open token logic allow other local OS users to read patient files or inject skills.
-* **Bootstrap Nonce & Session Cookie Handshake**: To prevent token leakage in HTML `<meta>` tags or DOM source, browser launches supply a single-use ephemeral nonce (`GET /auth/bootstrap?nonce=...`). The server validates the nonce, exchanges it for an `HttpOnly; SameSite=Strict` `ordinflow_session` cookie, and redirects to `/`. Unauthenticated requests to `/` or `/api/*` (except `/api/health` and `/api/auth/bootstrap_nonce`) fail closed with `403 Forbidden`.
+* **Bootstrap Nonce & Session Cookie Handshake**: To prevent token leakage in HTML `<meta>` tags or DOM source, browser launches supply a single-use ephemeral nonce with a 60-second monotonic TTL (`GET /auth/bootstrap?nonce=...`). The server validates the nonce, exchanges it for an `HttpOnly; SameSite=Strict` `ordinflow_session` cookie, and redirects to `/`. Unauthenticated requests to `/` or `/api/*` (except `/api/health` and `/api/auth/bootstrap_nonce`) fail closed with `403 Forbidden`.
 * **Multi-User Port Isolation & Per-User Runtime State**: OrdinFlow binds to an ephemeral port (`find_free_port()`, defaulting to 8080 with automatic fallback to free ports) to prevent cross-session port collision. Runtime state files are strictly partitioned per OS user (`%LOCALAPPDATA%/OrdinFlow/runtime_session_<user_hash>.json`), and stale process cleanup is strictly scoped to verified PIDs belonging to the current user.
 * **Security Headers & Cache Privacy**: Production responses enforce strict security headers (CSP, `X-Frame-Options: SAMEORIGIN`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: strict-origin-when-cross-origin`). Medical documents, thumbnails, and preview endpoints enforce `Cache-Control: private, no-store` to prevent caching sensitive patient images on shared local disks.
-* Every mutating endpoint and SSE event stream (`/api/events`) requires authentication via cookie, `X-OrdinFlow-Token`, or `?token=...`. Test bypass headers (`X-OrdinFlow-Test-Bypass`) or `TESTING` mode security bypasses are strictly forbidden in production routes.
+* Every mutating endpoint and SSE event stream (`/api/events`) requires authentication via cookie or `X-OrdinFlow-Token`. Query parameter token authentication (`?token=...`) is strictly rejected with `403 Forbidden` to prevent session token leakage in browser history, proxy access logs, and process inspection. Test bypass headers (`X-OrdinFlow-Test-Bypass`) or `TESTING` mode security bypasses are strictly forbidden in production routes.
 
 ### 🌐 Server URL Loopback Restriction & Credential Masking
 * `ConfigUpdateSchema` enforces `validate_local_server_url`: `server_url` can only be set to local loopback addresses (`127.0.0.1`, `localhost`, `::1`). Configuring external/remote endpoints is blocked to prevent accidental or malicious document exfiltration to unauthorized remote servers.
@@ -69,12 +69,12 @@
 
 ### 🛡️ Allowed Roots Security Boundary in File Exports
 * `export_case_to_gdt` and export actions enforce `is_within_allowed_roots(path)` to prevent rogue file writes across the filesystem.
-* Test fixtures or export configurations must reside within configured target roots or temporary directories (`tempfile.TemporaryDirectory()`). Arbitrary paths fail closed with permission errors.
+* Allowed roots strictly comprise system temp (`tempfile.gettempdir()`), configured data roots (`watch_dir`, `target_base_dir`, absolute non-default `base_dir`), and optionally desktop (`allow_desktop=True`). The application installation root (`os.getcwd()`) is strictly excluded. Arbitrary paths fail closed with permission errors.
 
-### 🌐 Iframe Auth & URL Hash Fragment Security
-* Endpoints like `/api/file/...` and `/api/preview/...` enforce strict token validation.
-* In browser iframes, appending `?token=...` after a URL hash fragment (e.g. `/api/file/...#toolbar=0?token=...`) breaks RFC 3986 parsing: browsers interpret parameters after `#` as client-side fragments and strip them before HTTP transmission, causing 403 Forbidden responses.
-* Frontend helper `withAuthToken(url)` must split URLs at `#`, append `?token=...` to the pathname/search query, and preserve the `#fragment` at the end.
+### 🌐 Iframe Auth & Cookie Confinement
+* Endpoints like `/api/file/...` and `/api/preview/...` enforce strict token/cookie validation.
+* In browser iframes and media previews, authentication relies strictly on the `HttpOnly; SameSite=Strict` `ordinflow_session` cookie automatically transmitted on same-origin requests. Query parameter tokens are omitted to protect browser history.
+* Frontend helper `withAuthToken(url)` serves as a transparent pass-through helper returning `url` directly without leaking credentials in query strings.
 * Backend authentication uses `secrets.compare_digest` with explicit `isinstance(token, str)` checking to prevent timing attacks and type confusion.
 
 ### 🗂️ Flask `<path:folder>` vs `<folder>` in Nested Case Routes

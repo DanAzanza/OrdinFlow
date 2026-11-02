@@ -4,7 +4,7 @@ Verifies:
 - Host header validation against DNS rebinding
 - Fail-closed token authentication on API endpoints
 - Header (X-OrdinFlow-Token) authentication
-- Query parameter (?token=...) authentication for iframe previews
+- Session cookie (ordinflow_session) authentication; ?token= query parameter is rejected to prevent history leakage
 - Timing-safe secrets.compare_digest verification
 """
 
@@ -80,15 +80,21 @@ def test_valid_header_token_succeeds(real_sec_app):
         assert resp.status_code == 200
 
 
-def test_valid_query_param_token_succeeds_for_iframes(real_sec_app):
-    """Iframes cannot set custom headers; query parameter token MUST authenticate properly."""
+def test_valid_query_param_token_is_rejected_cookie_succeeds(real_sec_app):
+    """Query parameter ?token= is rejected to prevent browser history leakage; cookie authenticates."""
     app, token = real_sec_app
     with app.test_client() as client:
+        # Query parameter alone -> 403 Forbidden
         resp = client.get(
             f"/api/config?token={token}",
             headers={"Host": "localhost"},
         )
-        assert resp.status_code == 200
+        assert resp.status_code == 403
+
+        # HttpOnly session cookie -> 200 OK
+        client.set_cookie("ordinflow_session", token)
+        resp_cookie = client.get("/api/config", headers={"Host": "localhost"})
+        assert resp_cookie.status_code == 200
 
 
 def test_uninitialized_session_token_fails_closed(real_sec_app):
@@ -97,16 +103,16 @@ def test_uninitialized_session_token_fails_closed(real_sec_app):
     DashboardState.session_token = None
     with app.test_client() as client:
         resp = client.get(
-            "/api/config?token=any_token",
-            headers={"Host": "localhost"},
+            "/api/config",
+            headers={"Host": "localhost", "X-OrdinFlow-Token": "any_token"},
         )
         assert resp.status_code == 403
         data = resp.get_json()
         assert "not initialized" in data["error"]
 
 
-def test_file_endpoints_authenticate_with_query_token(real_sec_app, tmp_path):
-    """File serving endpoints allow iframe preview access via query token under active security."""
+def test_file_endpoints_authenticate_with_cookie_reject_query_token(real_sec_app, tmp_path):
+    """File serving endpoints reject query parameter tokens and require session cookie or header."""
     app, token = real_sec_app
     dummy_file = tmp_path / "test.txt"
     dummy_file.write_text("secure file content", encoding="utf-8")
@@ -122,10 +128,15 @@ def test_file_endpoints_authenticate_with_query_token(real_sec_app, tmp_path):
         res_no_tok = client.get("/api/file/inbox/test.txt", headers={"Host": "localhost"})
         assert res_no_tok.status_code == 403
 
-        # With query token -> 200
-        res_with_tok = client.get(f"/api/file/inbox/test.txt?token={token}", headers={"Host": "localhost"})
-        assert res_with_tok.status_code == 200
-        assert res_with_tok.get_data(as_text=True) == "secure file content"
+        # With query token alone -> 403 (rejected)
+        res_query_tok = client.get(f"/api/file/inbox/test.txt?token={token}", headers={"Host": "localhost"})
+        assert res_query_tok.status_code == 403
+
+        # With session cookie -> 200
+        client.set_cookie("ordinflow_session", token)
+        res_cookie = client.get("/api/file/inbox/test.txt", headers={"Host": "localhost"})
+        assert res_cookie.status_code == 200
+        assert res_cookie.get_data(as_text=True) == "secure file content"
 
 
 def test_all_url_map_routes_enforce_auth():

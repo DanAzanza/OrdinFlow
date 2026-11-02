@@ -50,7 +50,6 @@ def check_api_security():
     token = (
         request.headers.get("X-OrdinFlow-Token")
         or request.cookies.get("ordinflow_session")
-        or request.args.get("token")
     )
     if not token or not isinstance(token, str) or not secrets.compare_digest(token, expected_token):
         return jsonify({"error": "Unauthorized: Invalid or missing session token"}), 403

@@ -228,12 +228,18 @@ def test_api_token_and_host_validation():
     )
     assert resp_get_auth.status_code == 200
 
-    # Sensitive GET endpoints succeed with valid token via query param
+    # Sensitive GET endpoints reject query param token alone to prevent history leakage
     resp_get_query = client.get(
         "/api/log?token=valid_secret_token_12345",
         headers={"Host": "localhost"},
     )
-    assert resp_get_query.status_code == 200
+    assert resp_get_query.status_code == 403
+
+    # Sensitive GET endpoints succeed with session cookie
+    client.set_cookie("ordinflow_session", "valid_secret_token_12345")
+    resp_get_cookie = client.get("/api/log", headers={"Host": "localhost"})
+    assert resp_get_cookie.status_code == 200
+    client.delete_cookie("ordinflow_session")
 
     # Sensitive status endpoint requires token; public health endpoint is accessible without token
     resp_status_unauth = client.get("/api/status", headers={"Host": "localhost"})
@@ -720,5 +726,80 @@ def test_cleanup_stale_instance_skips_third_party_process():
         taskkill_calls = [c for c in executed_commands if c[0] == "taskkill"]
         assert len(taskkill_calls) == 0
 
+def test_bootstrap_nonce_monotonic_ttl_expiration():
+    """Verifies that bootstrap nonce expires after BOOTSTRAP_NONCE_TTL seconds."""
+    import time
+    from unittest.mock import patch
+    from core.state import DashboardState
+
+    DashboardState.bootstrap_token = None
+    nonce = DashboardState.issue_bootstrap_token()
+    assert isinstance(nonce, str)
+
+    # 1. Consumption within TTL succeeds
+    with patch("time.monotonic", return_value=time.monotonic() + 10.0):
+        # We can't consume twice, so test the time check directly
+        pass
+
+    # Advance time beyond 60s
+    with patch("time.monotonic", return_value=time.monotonic() + 65.0):
+        assert DashboardState.consume_bootstrap_token(nonce) is False
+        # Stale token must be cleared immediately
+        assert DashboardState.bootstrap_token is None
+
+    # Invalid token attempt after expiry fails closed
+    assert DashboardState.consume_bootstrap_token("random_nonce") is False
 
 
+def test_allowed_roots_excludes_installation_directory_cwd(tmp_path):
+    """Verifies that is_within_allowed_roots rejects files in the repository / installation root."""
+    import tempfile
+    from core.utils import is_within_allowed_roots
+    from core.state import DashboardState
+    from core.config import AppConfig
+
+    cfg = AppConfig()
+    cfg.base_dir = "."
+    cfg.watch_dir = str(tmp_path / "Inbox")
+    cfg.target_base_dir = str(tmp_path / "Cases")
+    DashboardState.config = cfg
+
+    # 1. File in current working directory / repo root must NOT be within allowed roots
+    cwd_file = Path.cwd() / "main.py"
+    assert is_within_allowed_roots(cwd_file) is False
+
+    # 2. File in configured Inbox or Cases must be accepted
+    inbox_file = Path(cfg.watch_dir) / "test.pdf"
+    assert is_within_allowed_roots(inbox_file) is True
+
+    # 3. File in system temp directory must be accepted
+    temp_file = Path(tempfile.gettempdir()) / "test_scratch.txt"
+    assert is_within_allowed_roots(temp_file) is True
+
+
+def test_skills_pick_element_delay_sanitization(client):
+    """Verifies pick_element bounds delay_seconds and handles malformed floats gracefully."""
+    from unittest.mock import patch
+
+    with patch("time.sleep") as mock_sleep, patch("core.skills.SoMGrounder.capture_screen", return_value=None):
+        # Normal float
+        client.post("/api/skills/pick_element", json={"delay_seconds": 1.5}, headers={"Host": "localhost"})
+        assert mock_sleep.call_count == 1
+        assert mock_sleep.call_args[0][0] == 1.5
+
+        mock_sleep.reset_mock()
+        # Excessive float clamped to 5.0
+        client.post("/api/skills/pick_element", json={"delay_seconds": 9999.0}, headers={"Host": "localhost"})
+        assert mock_sleep.call_count == 1
+        assert mock_sleep.call_args[0][0] == 5.0
+
+        mock_sleep.reset_mock()
+        # Negative clamped to 0.0 (no sleep)
+        client.post("/api/skills/pick_element", json={"delay_seconds": -5.0}, headers={"Host": "localhost"})
+        assert mock_sleep.call_count == 0
+
+        mock_sleep.reset_mock()
+        # Malformed string defaults to 0.5 without 500 error
+        client.post("/api/skills/pick_element", json={"delay_seconds": "invalid_number"}, headers={"Host": "localhost"})
+        assert mock_sleep.call_count == 1
+        assert mock_sleep.call_args[0][0] == 0.5

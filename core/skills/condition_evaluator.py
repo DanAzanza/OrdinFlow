@@ -18,9 +18,6 @@ import regex
 
 logger = logging.getLogger(__name__)
 
-# Constants for loop and recursion safety
-MAX_BRANCH_DEPTH = 5
-MAX_EVALUATION_STEPS = 300
 REGEX_MATCH_TIMEOUT_SECONDS = 0.05
 
 # Supported AST comparison operators

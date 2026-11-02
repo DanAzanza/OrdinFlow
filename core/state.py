@@ -59,6 +59,8 @@ event_broadcaster = EventBroadcaster()
 class DMSService:
     """Service wrapper for OrdinFlow runtime components."""
 
+    BOOTSTRAP_NONCE_TTL: float = 60.0
+
     def __init__(self) -> None:
         self.config: Any = None
         self.processor: Any = None
@@ -66,24 +68,32 @@ class DMSService:
         self._shutdown_event = threading.Event()
         self.session_token: str | None = None
         self.bootstrap_token: str | None = None
+        self.bootstrap_token_created_at: float = 0.0
 
     def issue_bootstrap_token(self) -> str:
-        """Generates and stores a single-use cryptographic bootstrap nonce."""
+        """Generates and stores a single-use cryptographic bootstrap nonce with monotonic TTL."""
         with _STATE_LOCK:
             nonce = secrets.token_urlsafe(32)
             self.bootstrap_token = nonce
+            self.bootstrap_token_created_at = time.monotonic()
             return nonce
 
     def consume_bootstrap_token(self, candidate: str | None) -> bool:
-        """Validates and atomically invalidates the single-use bootstrap nonce."""
+        """Validates, bounds by monotonic TTL, and atomically invalidates the single-use bootstrap nonce."""
         if not candidate or not isinstance(candidate, str):
             return False
         with _STATE_LOCK:
             expected = self.bootstrap_token
+            created_at = self.bootstrap_token_created_at
             if not expected or not isinstance(expected, str):
+                return False
+            if time.monotonic() - created_at > self.BOOTSTRAP_NONCE_TTL:
+                self.bootstrap_token = None
+                self.bootstrap_token_created_at = 0.0
                 return False
             if secrets.compare_digest(candidate, expected):
                 self.bootstrap_token = None
+                self.bootstrap_token_created_at = 0.0
                 return True
             return False
 
@@ -202,6 +212,7 @@ class _DashboardStateMeta(type):
         dms = get_current_dms()
         with _STATE_LOCK:
             dms.bootstrap_token = value
+            dms.bootstrap_token_created_at = time.monotonic() if value is not None else 0.0
 
     def issue_bootstrap_token(cls) -> str:
         return get_current_dms().issue_bootstrap_token()
