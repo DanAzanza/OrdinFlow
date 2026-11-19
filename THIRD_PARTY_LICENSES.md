@@ -96,6 +96,18 @@ The full license text is available in `licenses/BSD-3NUMPY.txt`.
 
 The full license text is available in `licenses/MIT_PYTEST.txt`.
 
+### 13. Frontend UI Dependencies (Pre-built Air-Gapped Bundle) – MIT / ISC Licenses
+
+All browser dependencies are pre-compiled and bundled locally into `static/app/assets/` with zero runtime Node.js requirement or external CDN calls:
+
+* **React & React DOM** (`react`, `react-dom`) – MIT License
+* **Vite & @tailwindcss/vite / Tailwind CSS** – MIT License
+* **Radix UI Primitives** (`@radix-ui/react-*`: Dialog, Select, Tabs, Switch, Checkbox, Popover, Tooltip, Scroll Area, Label, Slot) – MIT License
+* **Lucide Icons** (`lucide-react`) – ISC License
+* **cmdk** & **Sonner** – MIT License
+* **clsx**, **tailwind-merge**, **class-variance-authority** – MIT License
+* **Vitest & Testing Library** (dev/CI only, excluded from runtime release bundles) – MIT License
+
 ---
 
 ## Compliance Statement for GitHub Open-Source Release

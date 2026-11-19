@@ -279,13 +279,15 @@ OrdinFlow/
 │       └── grounder.py           # Set-of-Mark visual grounding for desktop UIs
 ├── routes/                       # Flask REST API endpoints & UI handlers
 │   └── api/                      # Cases, inbox, skills CRUD, split & system APIs
-├── static/ & templates/          # Modern web dashboard UI & stylesheet
+├── frontend/                     # React 19 + TypeScript + Tailwind v4 + shadcn/ui SPA source & Vitest suite
+├── static/app/ & templates/      # Pre-built air-gapped SPA bundle & Flask host template (zero Node at runtime)
 ├── settings/                     # Runtime YAML configurations & skill definitions
 ├── sample_data/                  # Bundled recipe PDFs, photos, scans & example skills
 ├── scripts/
 │   ├── setup_environment.py      # Hardware auto-detection & wheel installer
 │   ├── download_models.py        # Atomic model downloader with GGUF header validation
-│   └── verify_ci.py              # Full CI verification runner (Ruff, Pyright, Pytest)
+│   ├── build_frontend.py         # Cross-platform Vite frontend build & test runner
+│   └── verify_ci.py              # Full CI verification runner (Frontend, Ruff, Pyright, Pytest)
 ├── tests/                        # Comprehensive automated test suite
 ├── Install_OrdinFlow.bat         # 1-Click Windows installer & hardware orchestrator
 ├── Start_OrdinFlow.bat           # 1-Click windowless background launcher
@@ -304,7 +306,7 @@ OrdinFlow/
 | **OCR Engine** | RapidOCR (`onnxruntime`) | Lightweight deep-learning OCR in ONNX format; zero system `.exe` dependencies (cross-platform, zero setup). |
 | **PVS Integration** | QMS / bvitg GDT 2.1 | Implements headless Satzart 6310 file transfer for German EHR systems with atomic file swaps and CP437/ISO-8859-1 encoding. |
 | **PDF & Graphics** | PyMuPDF (`fitz`), OpenCV, PIL | Fast C-backed PDF rendering, contour detection, and spatial block extraction. |
-| **Web Dashboard** | Flask, HTML5, Vanilla JS, CSS3 | Clean, dependency-light presentation layer without fragile npm/node build chains. |
+| **Web Dashboard** | React 19, TypeScript, Tailwind CSS v4, Radix UI (`shadcn/ui`), Lucide, Flask | Typed, air-gapped SPA with `Ctrl+K` command palette, 3-Tier OCR telemetry funnel, keyboard inbox triage, and zero-Node deployment via pre-built `static/app/` assets. |
 | **Static Typing** | Microsoft Pyright (Standard) | Enforces type consistency across all core orchestrators and routes. |
 | **Code Quality** | Ruff, Pytest | High-velocity linting and comprehensive automated test coverage across all routing logic. |
 
@@ -324,20 +326,23 @@ OrdinFlow/
 OrdinFlow follows strict engineering standards. Run the entire CI quality gate locally with a single command:
 
 ```bash
-# Run all CI gates (Ruff Linter, Pyright Type Checker & Full Pytest Suite)
+# Run all CI gates (Frontend Typecheck/Vitest/Vite, Ruff, Pyright & Full Pytest Suite)
 python scripts/verify_ci.py
 ```
 
 Or run the individual components directly:
 
 ```bash
-# 1. Fast Linter Check
+# 1. Frontend Build, Typecheck & Component Tests
+python scripts/build_frontend.py --all
+
+# 2. Fast Linter Check
 ruff check .
 
-# 2. Static Type Analysis
+# 3. Static Type Analysis
 pyright
 
-# 3. Automated Test Suite
+# 4. Automated Test Suite
 python -m pytest -q
 ```
 
