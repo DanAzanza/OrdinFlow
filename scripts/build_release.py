@@ -78,10 +78,15 @@ def is_excluded_path(rel_path: str) -> bool:
         ".vscode",
         ".idea",
         "htmlcov",
-        "dist",
         "build",
+        "node_modules",
+        "frontend",
+        ".vite",
+        "coverage",
     }
     if any(p in denied_dir_names for p in parts[:-1]):
+        return True
+    if parts[0] == "dist" or posix_path.startswith("frontend/dist/"):
         return True
 
     # Excluded filenames and patterns
@@ -89,8 +94,8 @@ def is_excluded_path(rel_path: str) -> bool:
     if filename.startswith(".git") or filename.startswith(".coverage"):
         return True
 
-    # Deny log files, temporary and debug files
-    if filename.endswith(".log") or filename.endswith(".tmp") or filename.endswith(".flag") or filename.endswith(".bak"):
+    # Deny log files, temporary, debug, and frontend source map files
+    if filename.endswith((".log", ".tmp", ".flag", ".bak", ".map")):
         return True
 
     # Deny compiled bytecode
@@ -107,6 +112,21 @@ def is_excluded_path(rel_path: str) -> bool:
             return True
 
     return False
+
+
+def _assert_frontend_bundle_present(root_dir: Path) -> None:
+    """Fails fast if the pre-built air-gapped React SPA assets are missing."""
+    required = [
+        root_dir / "templates" / "index.html",
+        root_dir / "static" / "app" / "assets" / "ordinflow.js",
+        root_dir / "static" / "app" / "assets" / "ordinflow.css",
+    ]
+    missing = [str(p.relative_to(root_dir).as_posix()) for p in required if not p.is_file()]
+    if missing:
+        raise FileNotFoundError(
+            f"Pre-built frontend assets missing ({', '.join(missing)}). "
+            "Run 'python scripts/build_frontend.py --build' (or 'cd frontend && npm ci && npm run build') first."
+        )
 
 
 def build_release_archive(
@@ -138,6 +158,7 @@ def build_release_archive(
             f"Please update pyproject.toml or use the correct version tag."
         )
 
+    _assert_frontend_bundle_present(root_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     zip_filename = f"OrdinFlow-v{normalized_version}.zip"
     zip_path = output_dir / zip_filename
@@ -315,6 +336,7 @@ def build_inno_installer(
     if not iss_file.is_file():
         raise FileNotFoundError(f"Inno Setup script not found at {iss_file}")
 
+    _assert_frontend_bundle_present(root_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     exe_filename = f"OrdinFlow-Setup-v{normalized_version}.exe"
     exe_path = output_dir / exe_filename

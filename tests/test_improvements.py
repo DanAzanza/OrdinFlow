@@ -148,6 +148,7 @@ def test_frontend_asset_cache_busting(test_sandbox):
     assert res.status_code == 200
     html = res.get_data(as_text=True)
 
-    assert 'href="/static/css/app.css?v=0.9.9"' in html
-    assert 'src="/static/js/api.js?v=0.9.9"' in html
-    assert 'src="/static/js/app.js?v=0.9.9"' in html
+    assert 'href="/static/app/assets/ordinflow.css?v=0.9.9"' in html
+    assert 'src="/static/app/assets/ordinflow.js?v=0.9.9"' in html
+    assert 'type="module"' in html
+    assert "onclick=" not in html

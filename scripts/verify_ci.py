@@ -70,6 +70,17 @@ def main() -> int:
     print(" OrdinFlow Local CI Pre-Commit Quality Gate ")
     print("=" * 60)
 
+    # 0. Frontend Quality Gate (TypeScript + Vitest + Air-gapped Vite Bundle)
+    frontend_pkg = ROOT_DIR / "frontend" / "package.json"
+    if frontend_pkg.is_file():
+        frontend_ok = run_gate(
+            "Frontend Typecheck, Vitest & Vite Bundle",
+            [sys.executable, str(ROOT_DIR / "scripts" / "build_frontend.py"), "--typecheck", "--test", "--build"],
+        )
+        if not frontend_ok:
+            print("\n\033[91m[!] CI Gate Blocked by Frontend verification failure.\033[0m")
+            return 1
+
     # 1. Ruff Linter
     ruff_ok = run_gate("Ruff Linter", [sys.executable, "-m", "ruff", "check", "."])
     if not ruff_ok:

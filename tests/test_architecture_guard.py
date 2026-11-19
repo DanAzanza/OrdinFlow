@@ -16,21 +16,20 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 
 def test_source_file_line_limits():
-    """Guarantees no single source file in core/, routes/, or static/js/ exceeds 800 lines.
+    """Guarantees no single source file in core/, routes/, or frontend/src/ exceeds 800 lines.
 
     Violations force the agent to modularize and separate responsibilities (SRP)
     before commits can pass.
     """
-    targets = ["core", "routes", "static/js"]
+    targets = ["core", "routes", "frontend/src"]
     oversized_files: list[tuple[str, int]] = []
 
     for target in targets:
         target_dir = BASE_DIR / target
-        if not target_dir.exists():
-            continue
+        assert target_dir.is_dir(), f"Expected source directory missing: {target_dir}"
         for root, _, files in os.walk(target_dir):
             for file in files:
-                if file.endswith((".py", ".js")):
+                if file.endswith((".py", ".ts", ".tsx", ".css")):
                     file_path = Path(root) / file
                     with open(file_path, encoding="utf-8", errors="ignore") as f:
                         count = len(f.readlines())

@@ -98,6 +98,9 @@ def check_manifest(bundle_dir: Path) -> bool:
         "sample_data/cake_recipe_skill_example.yaml",
         "sample_data/recipes_pdf/Recipe__01_Black_Forest_Cake.pdf",
         "settings/config.yaml",
+        "templates/index.html",
+        "static/app/assets/ordinflow.js",
+        "static/app/assets/ordinflow.css",
         "models/.gitkeep",
     ]
 
@@ -131,6 +134,7 @@ def check_hygiene(bundle_dir: Path) -> bool:
         "main.log",
         "queue_state.json",
         ".cursorrules",
+        "node_modules",
     ]
 
     violations = []
@@ -152,6 +156,23 @@ def check_hygiene(bundle_dir: Path) -> bool:
                 violations.append(f"File exceeds 10MB limit ({size / (1024*1024):.2f} MB): {rel_posix}")
             if path.suffix.lower() in {".gguf", ".safetensors", ".bin", ".pt"}:
                 violations.append(f"Heavy model weight file included: {rel_posix}")
+            if rel_posix.startswith("static/app/") and path.suffix.lower() == ".map":
+                violations.append(f"Frontend source map leaked in release bundle: {rel_posix}")
+
+    # Verify strict air-gap compliance in SPA shell and stylesheet
+    import re
+
+    index_html = bundle_dir / "templates" / "index.html"
+    if index_html.is_file():
+        html_text = index_html.read_text(encoding="utf-8", errors="ignore")
+        if re.search(r"""(?:src|href)\s*=\s*["']https?://""", html_text, re.IGNORECASE):
+            violations.append("templates/index.html references external http(s) URL (violates air-gap)")
+
+    bundle_css = bundle_dir / "static" / "app" / "assets" / "ordinflow.css"
+    if bundle_css.is_file():
+        css_text = bundle_css.read_text(encoding="utf-8", errors="ignore")
+        if re.search(r"""(?:url\(|@import\s+)[^)]*https?://""", css_text, re.IGNORECASE):
+            violations.append("static/app/assets/ordinflow.css references external http(s) URL (violates air-gap)")
 
     # Check that settings/config.yaml is cleansed
     cfg_file = bundle_dir / "settings" / "config.yaml"

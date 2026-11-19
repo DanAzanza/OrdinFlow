@@ -234,7 +234,10 @@ def test_security_headers_and_no_store_cache_control():
         assert resp.headers.get("X-Content-Type-Options") == "nosniff"
         assert resp.headers.get("X-Frame-Options") == "SAMEORIGIN"
         assert resp.headers.get("Referrer-Policy") == "no-referrer"
-        assert "default-src 'self'" in (resp.headers.get("Content-Security-Policy") or "")
+        csp = resp.headers.get("Content-Security-Policy") or ""
+        assert "default-src 'self'" in csp
+        assert "script-src 'self'" in csp
+        assert "script-src 'self' 'unsafe-inline'" not in csp
         assert resp.headers.get("Cache-Control") == "private, no-store"
 
 
