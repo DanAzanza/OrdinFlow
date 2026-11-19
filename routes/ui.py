@@ -1,10 +1,13 @@
+import logging
 import os
+from pathlib import Path
 import secrets
 
-from flask import Blueprint, jsonify, redirect, render_template, request
+from flask import Blueprint, current_app, jsonify, redirect, render_template, request
 
 from routes.state import DashboardState
 
+logger = logging.getLogger(__name__)
 ui_bp = Blueprint("ui", __name__)
 
 _ALLOWED_HOSTS = {"127.0.0.1", "localhost", "::1", "[::1]"}
@@ -58,6 +61,14 @@ def auth_bootstrap():
 @ui_bp.route("/")
 def index():
     app_version = getattr(DashboardState.config, "app_version", "0.9.5") if DashboardState.config else "0.9.5"
+    if current_app.static_folder:
+        bundle_path = Path(current_app.static_folder) / "app" / "assets" / "ordinflow.js"
+        if not bundle_path.is_file():
+            logger.warning(
+                "Frontend SPA bundle missing at %s. Build it via: python scripts/build_frontend.py --build "
+                "(or cd frontend && npm ci && npm run build).",
+                bundle_path,
+            )
     return render_template(
         "index.html",
         session_token=DashboardState.session_token,

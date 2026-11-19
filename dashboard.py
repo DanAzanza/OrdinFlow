@@ -23,6 +23,7 @@ from routes.ui import ui_bp
 def create_app(dms: DMSService | None = None) -> Flask:
     """Application factory for OrdinFlow web dashboard."""
     flask_app = Flask(__name__, template_folder="templates", static_folder="static")
+    flask_app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 0
     flask_app.extensions["dms"] = dms or get_current_dms()
     flask_app.register_blueprint(api_bp)
     flask_app.register_blueprint(ui_bp)
@@ -46,7 +47,7 @@ def create_app(dms: DMSService | None = None) -> Flask:
         response.headers.setdefault("Referrer-Policy", "no-referrer")
         response.headers.setdefault(
             "Content-Security-Policy",
-            "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; "
+            "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; "
             "img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; "
             "frame-src 'self' blob:; object-src 'self' blob:; frame-ancestors 'self'; base-uri 'self'",
         )
